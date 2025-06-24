@@ -8,8 +8,8 @@ It includes:
 - 📃 Documentation structure using [mkdocs](http://www.mkdocs.org);
 - 🧪 Testing structure using [pytest](https://docs.pytest.org/en/latest/);
 - ✅ Code linting using [pylint](https://pypi.org/project/pylint/);
-- 🎯 Entry points to execute your program using `python -m <ukp_project_template>` with basic CLI argument parsing;
-- 🔄 Continuous integration using [Github Actions](https://github.com/UKPLab/ukp-project-template/actions) with jobs to check, lint and test your project;
+- 🎯 Entry points to execute your program using `python -m <murano>` with basic CLI argument parsing;
+- 🔄 Continuous integration using [Github Actions](https://github.com/UKPLab/murano/actions) with jobs to check, lint and test your project;
 - 🌐 An out-of-the-box project page created automatically for your project.
 
 Are there any changes you'd like to request? Feel free to fork and open a pull request!
@@ -49,7 +49,7 @@ Lets take a look at the structure of this template:
 │
 ├───static                          # Images & CSS files to generate the project page 
 │
-├───ukp_project_template             # The main python package for the project
+├───murano             # The main python package for the project
 │       base.py                     # The base module for the project
 │       cli.py                      # Defines CLI instructions
 │       __init__.py                 # This tells Python that this is a package
@@ -77,7 +77,7 @@ Good news, you can display a repository website right next to your description. 
 
 ### Where should I add new stuff ?
 
-You should create new files and subpackages inside ukp_project_template and implement your functionalities there. Remember to add what you write to `__init__.py` so that the imports work smoothly. Take a look at `base.py` and `__init__.py` to understand how it works.
+You should create new files and subpackages inside murano and implement your functionalities there. Remember to add what you write to `__init__.py` so that the imports work smoothly. Take a look at `base.py` and `__init__.py` to understand how it works.
 
 ### Why is `requirements.txt` empty ?
 
@@ -93,7 +93,7 @@ This file lists all the requirements for testing and development. Use it to sepa
 
 ### What is the `.github` folder?
 
-It contains [GitHub Actions](https://docs.github.com/en/actions) that are executed automatically when pushing your code. You can see results for your repository [here](https://github.com/UKPLab/ukp-project-template/actions).
+It contains [GitHub Actions](https://docs.github.com/en/actions) that are executed automatically when pushing your code. You can see results for your repository [here](https://github.com/UKPLab/murano/actions).
 
 ### What does the linter workflow do?
 
