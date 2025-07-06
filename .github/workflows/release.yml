@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release-build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    needs: [checks]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          version: 0.7.2
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Build
+        run: uv build
+
+      - name: Create “latest” wheel copy
+        run: |
+          wheel=$(ls dist/*.whl)
+          cp "$wheel" dist/murano-latest.whl
+
+      - name: Publish wheels to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+          fail_on_unmatched_files: true
+  checks:
+    uses: ./.github/workflows/shared.yml
