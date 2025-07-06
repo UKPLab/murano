@@ -29,3 +29,6 @@ jobs:
         with:
           name: release-dists
           path: dist/
+
+  checks:
+    uses: ./.github/workflows/shared.yml
