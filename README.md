@@ -4,12 +4,14 @@
 
 ## Installation
 ```bash
-pip install https://github.com/yourusername/your-repo/releases/download/v0.1.0/your_package-0.1.0-py3-none-any.whl
+pip install ...
 ```
 
 ## Development
 
-blablabla.
+```bash
+uv sync --frozen --all-extras --dev
+```
 
 ## Cite
 
