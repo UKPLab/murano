@@ -24,13 +24,16 @@ jobs:
       - name: Build
         run: uv build
 
-      - name: Upload wheel to GitHub Release
-        uses: actions/upload-release-asset@v4
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/*.whl
-          asset_name: murano-latest.whl #ToDo: do not hardcode project name
-          asset_content_type: application/octet-stream
+      - name: Create “latest” wheel copy
+        run: |
+          wheel=$(ls dist/*.whl)
+          cp "$wheel" dist/myproject-latest.whl
 
+      - name: Publish wheels to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+          fail_on_unmatched_files: true
   checks:
     uses: ./.github/workflows/shared.yml
