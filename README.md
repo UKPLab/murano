@@ -4,7 +4,7 @@
 
 ## Installation
 ```bash
-pip install ...
+pip install https://github.com/UKPLab/murano/releases/latest/download/murano-latest.whl
 ```
 
 ## Development
