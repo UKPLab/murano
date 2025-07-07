@@ -5,6 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "nnsight>=0.4.8",
+    "plotly>=6.2.0",
+    "torch>=2.7.1",
 ]
 
 [build-system]
