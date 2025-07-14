@@ -8,6 +8,7 @@ dependencies = [
     "nnsight>=0.4.8",
     "plotly>=6.2.0",
     "torch>=2.7.1",
+    "datasets>=4.0.0",
 ]
 
 [build-system]
