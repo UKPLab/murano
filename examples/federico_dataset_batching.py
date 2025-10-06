@@ -7,7 +7,7 @@ import random
 
 from murano.lenses.base_lens import BaseLens
 
-# Custom collate function
+# Custom collate function stitches separate inputs coming from dataset
 def collate_fn(batch):
     collated = {}
     for key in batch[0]:
@@ -18,14 +18,20 @@ def collate_fn(batch):
             collated[key] = values  # keep as list
     return collated
 
+# Utility function to tokenize used in map dataset
 def process_dataset(example, tokenizer, max_length=10):
-    example["input_ids"] = tokenizer(example["text"], return_tensors="pt", max_length=10)["input_ids"][0]
-    return example    
+    example["input_ids"] = tokenizer(example["text"], return_tensors="pt",
+                                     max_length=max_length)["input_ids"][0]
+    return example
 
 class BatchedMuranoModel(MuranoModel):
     def run_recording(
         self, input: Union[str, torch.Tensor, dict], locations: List[LayerLocation], **kwargs
-    ) -> dict:    
+    ) -> dict:
+        """
+        Run the model with tracing enabled to record activations at specified locations.
+        Computes a single forward pass for a batch of inputs.
+        """
         activations = []
         layer_indices = []
         if isinstance(input, torch.Tensor):
@@ -53,6 +59,7 @@ class BatchedMuranoModel(MuranoModel):
                     for layer_idx in selected_layers:
                         layer = layers_list[layer_idx]
 
+                        # Specify a different location here
                         # output = layer.output
                         # output = layer.attn.output
                         output = layer.mlp.output
@@ -79,14 +86,19 @@ class BatchedMuranoModel(MuranoModel):
     
     def _stack_activations(self, obj):
         """
-        Wrapper to handle the final cleaning.
+        Utility function that reshapes activations to
+        (num_examples, num_layers, seq_len, hidden_dim)
+        Necessary because activations are returned in heterogeneous nested structures.
         """
         obj = self._stack_activations_recursive(obj)
         obj = obj.permute(0, 2, 1, 3, 4)
         obj = obj.reshape(obj.shape[0] * obj.shape[1], obj.shape[2], obj.shape[3], obj.shape[4])
         return obj
 
-    def _stack_activations_recursive(self,obj):
+    def _stack_activations_recursive(self, obj):
+        """
+        Recursively stack activations from a nested structure.
+        """
         if isinstance(obj, dict):
             # Only recurse into the "activations" field
             if "activations" not in obj:
@@ -106,6 +118,9 @@ class BatchedMuranoModel(MuranoModel):
 
 
     def _get_dataloader(self, dataset: Dataset, batch_size: int = 4) -> DataLoader:
+        """
+        Create a DataLoader for the given dataset.
+        """
         return DataLoader(
             dataset,
             batch_size=batch_size,
@@ -114,6 +129,11 @@ class BatchedMuranoModel(MuranoModel):
         )
 
     def run_task(self, dataset: Dataset, locations: List[LayerLocation], **kwargs) -> dict:
+        """
+        Run the model on a dataset with tracing enabled to record activations 
+        at specified locations.
+        Processes the dataset in batches by calling run_recording for each batch.
+        """
         dataset = dataset.map(
             lambda x: process_dataset(x, self.model.tokenizer),
             batched=False,
