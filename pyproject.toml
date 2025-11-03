@@ -8,6 +8,9 @@ dependencies = [
     "nnsight>=0.4.8",
     "plotly>=6.2.0",
     "torch>=2.7.1",
+    "sae-lens>=1.0.0",
+    "datasets>=2.0.0",
+    "scikit-learn>=1.0.0",
 ]
 
 [build-system]
