@@ -6,7 +6,7 @@ linear probes on hidden state activations.
 """
 
 from typing import Dict, Optional
-import json
+import pickle
 import os
 from datetime import datetime
 
@@ -247,7 +247,7 @@ class LinearProbe(nn.Module):
 
     def save(self, save_dir: str, prefix: str = "probe") -> str:
         """
-        Save the probe and metadata to disk.
+        Save the probe and metadata to disk as pickle.
 
         Args:
             save_dir: Directory to save the probe
@@ -258,33 +258,29 @@ class LinearProbe(nn.Module):
         """
         os.makedirs(save_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        checkpoint_path = os.path.join(save_dir, f"{prefix}_{timestamp}.pt")
-        metadata_path = os.path.join(save_dir, f"{prefix}_{timestamp}_metadata.json")
+        checkpoint_path = os.path.join(save_dir, f"{prefix}_{timestamp}.pkl")
 
-        # Save model state
-        torch.save(
-            {
-                "state_dict": self.state_dict(),
-                "input_dim": self.input_dim,
-                "num_classes": self.num_classes,
-                "loss_fn": self.loss_fn_name,
+        # Create nested dict structure
+        output_dict = {
+            "general_metadata": {
+                "timestamp": timestamp,
+                "component": "linear_probe",
             },
-            checkpoint_path,
-        )
-
-        # Save metadata
-        metadata = {
-            "input_dim": self.input_dim,
-            "num_classes": self.num_classes,
-            "loss_fn": self.loss_fn_name,
-            "timestamp": timestamp,
+            "linear_probe": {
+                "state_dict": self.state_dict(),
+                "metadata": {
+                    "input_dim": self.input_dim,
+                    "num_classes": self.num_classes,
+                    "loss_fn": self.loss_fn_name,
+                },
+            },
         }
 
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
+        # Save as pickle
+        with open(checkpoint_path, "wb") as f:
+            pickle.dump(output_dict, f)
 
         print(f"Probe saved to {checkpoint_path}")
-        print(f"Metadata saved to {metadata_path}")
 
         return checkpoint_path
 
@@ -294,19 +290,106 @@ class LinearProbe(nn.Module):
         Load a probe from disk.
 
         Args:
-            checkpoint_path: Path to checkpoint file
+            checkpoint_path: Path to checkpoint pickle file
 
         Returns:
             Loaded LinearProbe instance
         """
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        with open(checkpoint_path, "rb") as f:
+            checkpoint = pickle.load(f)
+
+        # Handle both old format (torch.save) and new format (pickle dict)
+        if isinstance(checkpoint, dict) and "linear_probe" in checkpoint:
+            probe_data = checkpoint["linear_probe"]
+            metadata = probe_data["metadata"]
+            state_dict = probe_data["state_dict"]
+        else:
+            # Fallback for old format
+            metadata = checkpoint
+            state_dict = checkpoint.get("state_dict", checkpoint)
+
         probe = cls(
-            input_dim=checkpoint["input_dim"],
-            num_classes=checkpoint["num_classes"],
-            loss_fn=checkpoint["loss_fn"],
+            input_dim=metadata["input_dim"],
+            num_classes=metadata["num_classes"],
+            loss_fn=metadata["loss_fn"],
         )
-        probe.load_state_dict(checkpoint["state_dict"])
+        probe.load_state_dict(state_dict)
         return probe
+
+    def save_workflow_output(
+        self,
+        activations: torch.Tensor,
+        labels: torch.Tensor,
+        training_history: Dict,
+        metrics: Dict,
+        artifact: Optional[Dict] = None,
+        save_dir: str = "outputs",
+        prefix: str = "workflow",
+    ) -> str:
+        """
+        Save complete workflow output including activations, probe, training history, and metrics.
+
+        Args:
+            activations: Extracted activations tensor
+            labels: Labels tensor
+            training_history: Training history dictionary
+            metrics: Evaluation metrics dictionary
+            artifact: Optional artifact from model.run_task()
+            save_dir: Directory to save the output
+            prefix: Prefix for saved file
+
+        Returns:
+            Path to saved pickle file
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = os.path.join(save_dir, f"{prefix}_{timestamp}.pkl")
+
+        # Create nested dict structure with general metadata at top level
+        output_dict = {
+            "general_metadata": {
+                "timestamp": timestamp,
+                "component": "workflow_output",
+                "input_dim": self.input_dim,
+                "num_classes": self.num_classes,
+                "loss_fn": self.loss_fn_name,
+            },
+            "activations": {
+                "data": activations.cpu(),
+                "metadata": {
+                    "shape": list(activations.shape),
+                    "dtype": str(activations.dtype),
+                },
+            },
+            "labels": {
+                "data": labels.cpu() if labels is not None else None,
+                "metadata": {
+                    "num_labels": len(labels) if labels is not None else 0,
+                },
+            },
+            "linear_probe": {
+                "state_dict": self.state_dict(),
+                "metadata": {
+                    "input_dim": self.input_dim,
+                    "num_classes": self.num_classes,
+                    "loss_fn": self.loss_fn_name,
+                },
+            },
+            "training_history": training_history,
+            "metrics": metrics,
+        }
+
+        # Add artifact metadata if provided
+        if artifact is not None:
+            output_dict["artifact_metadata"] = artifact.get("global_metadata", {})
+
+        # Save as pickle
+        with open(output_path, "wb") as f:
+            pickle.dump(output_dict, f)
+
+        print(f"Workflow output saved to {output_path}")
+
+        return output_path
 
     def visualize(self, training_history: Dict, metrics: Optional[Dict] = None) -> None:
         """

@@ -65,6 +65,18 @@ if __name__ == "__main__":
     metrics = probe.evaluate(artifact["activations"], artifact["labels"])
     probe.visualize(training_history, metrics)
 
+    # Save complete workflow output as pickle
+    output_path = probe.save_workflow_output(
+        activations=artifact["activations"],
+        labels=artifact["labels"],
+        training_history=training_history,
+        metrics=metrics,
+        artifact=artifact,
+        save_dir="outputs",
+        prefix="sae_linear_probe",
+    )
+    print(f"\nComplete workflow output saved to: {output_path}")
+
     # Example 2: Use SAE activations directly (optional, requires SAE)
     print("\n=== Example 2: Using SAE activations directly (optional) ===")
     print("To use SAE activations directly without training:")
