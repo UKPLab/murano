@@ -5,16 +5,18 @@ This module provides SAEMuranoModel which extends MuranoModel to extract activat
 from residual stream hook points (resid_pre, resid_post) using nnsight.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 import torch
 from datasets import Dataset
 from torch.utils.data import DataLoader
 
 from .model import MuranoModel
-from sae_lens import SAE  # Optional: only needed if using SAE activations directly
 
 from .dataset_utils import collate_fn, process_dataset
+
+if TYPE_CHECKING:
+    from sae_lens import SAE
 
 
 class SAEMuranoModel(MuranoModel):
@@ -34,7 +36,7 @@ class SAEMuranoModel(MuranoModel):
         model_name: str,
         hook_points: List[str],
         layers: List[int],
-        sae: Optional[SAE] = None,
+        sae: Optional["SAE"] = None,
         device: Optional[torch.device] = None,
     ):
         """
@@ -84,6 +86,13 @@ class SAEMuranoModel(MuranoModel):
         """
         sae = None
         if sae_release is not None and sae_id is not None:
+            try:
+                from sae_lens import SAE
+            except ImportError as e:
+                raise ImportError(
+                    "sae-lens is required for SAE functionality. "
+                    "Install it with: pip install sae-lens"
+                ) from e
             device = device or ("cuda" if torch.cuda.is_available() else "cpu")
             sae = SAE.from_pretrained(release=sae_release, sae_id=sae_id, device=device)
         return cls(model_name, hook_points, layers, sae, device)
@@ -110,7 +119,6 @@ class SAEMuranoModel(MuranoModel):
         Returns:
             Dictionary containing activations and metadata
         """
-        batch_size, seq_len = input_ids.shape
         activations_list = []
 
         # Move input to device
@@ -205,7 +213,7 @@ class SAEMuranoModel(MuranoModel):
         # Recursively stack
         stacked = []
         for layer_acts in activations_list:
-            layer_stacked = torch.stack([act for act in layer_acts], dim=0)
+            layer_stacked = torch.stack(layer_acts, dim=0)
             stacked.append(layer_stacked)
 
         # Stack along layer dimension: (num_layers, num_hook_points, batch, seq_len, hidden_dim)
