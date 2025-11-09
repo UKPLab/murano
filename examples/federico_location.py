@@ -81,6 +81,76 @@ class BatchedMuranoModel(MuranoModel):
 
         return artifact
     
+    def record_intervene(
+        self, input: Union[str, torch.Tensor, dict], location: Location, 
+        activation: torch.Tensor, **kwargs
+    ) -> dict:
+        """
+        Run the model with tracing enabled to record activations at specified locations,
+        then intervene by inserting the provided activation at that location.
+        Computes a single forward pass for a batch of inputs with intervention.
+        
+        Args:
+            input: Input to the model (string, tensor, or dict with 'input_ids')
+            location: Location object specifying layers, modules, and token positions
+            activation: Tensor to insert at the specified location
+            **kwargs: Additional arguments to pass to the model
+            
+        Returns:
+            dict: Artifact containing recorded activations, input_ids, and output
+        """
+        activations = []
+        if isinstance(input, torch.Tensor):
+            input_ids = input
+        elif isinstance(input, dict):
+            input_ids = input["input_ids"]
+        else:
+            raise ValueError("Input must be a string, tensor, or dictionary with 'input_ids'.")
+
+        with self.model.trace() as tracer:
+            with tracer.invoke(input_ids, max_length=10, **kwargs) as invoker:
+                
+                layers_list = list(self.model.transformer.h)
+
+                for layer_idx, layer in enumerate(location.layers):
+                    layer_activation = []
+                    for module_idx, module in enumerate(location.modules):
+                        layer_module = getattr(layers_list[layer], module)
+                        output = layer_module.output
+                        
+                        # Record original activation
+                        if isinstance(output, tuple):
+                            hidden_states = output[0][:, location.token_pos, :] if location.token_pos is not None else output[0]
+                        else:
+                            hidden_states = output[:, location.token_pos, :] if location.token_pos is not None else output
+
+                        module_activation = hidden_states.save()
+                        layer_activation.append(module_activation)
+                        
+                        # Intervene by inserting the provided activation
+                        if location.token_pos is not None:
+                            if isinstance(output, tuple):
+                                output[0][:, location.token_pos, :] = activation
+                            else:
+                                layer_module.output[:, location.token_pos, :] = activation
+                        else:
+                            if isinstance(output, tuple):
+                                output[0][:] = activation
+                            else:
+                                layer_module.output[:] = activation
+                                
+                    activations.append(layer_activation)
+                
+                output_ids = invoker.output.save()
+
+        artifact = {
+            "activations": activations,  # nested list of shape: (num_layers, num_modules, batch_size, seq_len, hidden_dim)
+            "input_ids": input_ids,  # type: ignore
+            "output_ids": output_ids,
+        }
+
+        return artifact
+    
     def _stack_activations(self, obj):
         """
         Utility function that reshapes activations to
