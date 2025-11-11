@@ -306,7 +306,7 @@ class BatchedMuranoModel(MuranoModel):
             lambda x: process_dataset(x, self.model.tokenizer),
             batched=False,
         )
-        batch_size = kwargs.get("batch_size", 4)
+        batch_size = kwargs.pop("batch_size", 4)
         dataloader = self._get_dataloader(dataset, batch_size)
         activations = []
         global_metadata = {
