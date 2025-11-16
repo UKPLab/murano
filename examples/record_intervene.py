@@ -24,23 +24,26 @@ def record_intervene(
     **kwargs
 ) -> dict:
     """
-    Run the model with tracing enabled to intervene at one location and record 
-    activations at another location after the intervention.
-    Computes a single forward pass for a batch of inputs with intervention.
+    Run the model with tracing enabled to record activations before and after intervention.
+    Performs two forward passes:
+    1. First pass: Record activations at record_location (baseline)
+    2. Second pass: Intervene at intervene_location and record at record_location (post-intervention)
     
     Args:
         model: MuranoModel instance to run
         input: Input to the model (string, tensor, or dict with 'input_ids')
         intervene_location: Location where intervention should occur
-        record_location: Location where to record activations after intervention
+        record_location: Location where to record activations before and after intervention
         activation_dataset: ActivationDataset containing activations to use for intervention
         example_idx: Index of the example in activation_dataset to use for intervention
         **kwargs: Additional arguments to pass to the model
         
     Returns:
-        dict: Artifact containing recorded activations, input_ids, and output
+        dict: Artifact containing:
+            - activations_before: Recorded activations before intervention
+            - activations_after: Recorded activations after intervention
+            - input_ids: The input IDs used
     """
-    activations = []
     if isinstance(input, torch.Tensor):
         input_ids = input
     elif isinstance(input, dict):
@@ -51,12 +54,37 @@ def record_intervene(
     # Extract the activation to use for intervention from the dataset
     intervention_activation = torch.tensor(activation_dataset[intervene_location][example_idx])
 
+    # Record baseline activations (no intervention)
+    activations_before = []
     with model.model.trace() as tracer:
-        with tracer.invoke(input_ids, max_length=10, **kwargs) as invoker:
+        with tracer.invoke(input_ids, max_length=10, **kwargs):
+            layers_list = list(model.model.transformer.h)
             
+            # Record activations at record_location
+            for layer_idx, layer in enumerate(record_location.layers):
+                layer_activation = []
+                for module_idx, module in enumerate(record_location.modules):
+                    layer_module = getattr(layers_list[layer], module)
+                    output = layer_module.output
+                    
+                    # Record baseline activation
+                    if isinstance(output, tuple):
+                        hidden_states = output[0][:, record_location.token_pos[0], :] if record_location.token_pos[0] is not None else output[0]
+                    else:
+                        hidden_states = output[:, record_location.token_pos[0], :] if record_location.token_pos[0] is not None else output
+
+                    module_activation = hidden_states.save()
+                    layer_activation.append(module_activation)
+                            
+                activations_before.append(layer_activation)
+
+    # SECOND PASS: Intervene and record post-intervention activations
+    activations_after = []
+    with model.model.trace() as tracer:
+        with tracer.invoke(input_ids, max_length=10, **kwargs):
             layers_list = list(model.model.transformer.h)
 
-            # First, perform intervention at intervene_location
+            # Perform intervention at intervene_location
             for layer_idx, layer in enumerate(intervene_location.layers):
                 for module_idx, module in enumerate(intervene_location.modules):
                     layer_module = getattr(layers_list[layer], module)
@@ -74,7 +102,7 @@ def record_intervene(
                         else:
                             layer_module.output[:] = intervention_activation
             
-            # Then, record activations at record_location
+            # Record activations at record_location after intervention
             for layer_idx, layer in enumerate(record_location.layers):
                 layer_activation = []
                 for module_idx, module in enumerate(record_location.modules):
@@ -90,10 +118,11 @@ def record_intervene(
                     module_activation = hidden_states.save()
                     layer_activation.append(module_activation)
                             
-                activations.append(layer_activation)
+                activations_after.append(layer_activation)
 
     artifact = {
-        "activations": activations,  # nested list of shape: (num_layers, num_modules, batch_size, seq_len, hidden_dim)
+        "activations_before": activations_before,  # Baseline activations before intervention
+        "activations_after": activations_after,    # Activations after intervention
         "input_ids": input_ids,  # type: ignore
     }
 
@@ -103,9 +132,6 @@ def record_intervene(
 def test_record_intervene():
     """Simple test function to verify record_intervene works correctly."""
     print("Testing record_intervene functionality...")
-    
-    # Import needed for dataset creation
-
     
     # Load model
     model = BatchedMuranoModel.from_pretrained("gpt2")
@@ -129,13 +155,9 @@ def test_record_intervene():
     text = "The quick brown fox"
     input_ids = tokenizer(text, return_tensors="pt")["input_ids"]
     
-    # Define two locations:
-    # 1. Where to intervene (layer 2, mlp)
     intervene_location = Location(layers=[2], modules=["mlp"], token_pos=-1)
-    # 2. Where to record after intervention (layer 6, mlp)
     record_location = Location(layers=[6], modules=["mlp"], token_pos=-1)
     
-    # Run record_intervene
     artifact = record_intervene(
         model, 
         input_ids, 
@@ -150,7 +172,14 @@ def test_record_intervene():
     print(f"  Input shape: {input_ids.shape}")
     print(f"  Intervention location: {intervene_location}")
     print(f"  Recording location: {record_location}")
-    print(f"  Recorded activations shape: {artifact['activations'][0][0].value.shape}")
+    print(f"  Activations BEFORE intervention shape: {artifact['activations_before'][0][0].value.shape}")
+    print(f"  Activations AFTER intervention shape: {artifact['activations_after'][0][0].value.shape}")
+    
+    # Compare the difference
+    before = artifact['activations_before'][0][0].value
+    after = artifact['activations_after'][0][0].value
+    diff = torch.abs(after - before).mean().item()
+    print(f"  Mean absolute difference: {diff:.6f}")
     
     print("\n✓ Test passed!")
 
