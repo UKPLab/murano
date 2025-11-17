@@ -137,12 +137,18 @@ def test_record_intervene():
     model = BatchedMuranoModel.from_pretrained("gpt2")
     tokenizer = model.model.tokenizer
     
-    # Create a simple dataset to get activations from
     data = [
-        {"text": f"Sample text number {i}.", "label": i % 2}
-        for i in range(8)
-    ]
-    toy_dataset = Dataset.from_list(data)
+            "Aisha studies late to prepare for her final philosophy exam.",
+            "Jamal spends his weekend hiking with friends in the redwood forest.",
+            "Lucia bakes fresh sourdough before opening her neighborhood café.",
+            "Rafi fixes vintage radios in his garage while listening to smooth jazz.",
+            "Mira drafts grant proposals to fund clean water projects abroad.",
+            "Theo volunteers at the animal shelter every Saturday morning.",
+            "Hana mentors high-school robotics teams after work.",
+            "Carlos restores classic bicycles and rides them along the coast.",
+        ]
+    
+    toy_dataset = Dataset.from_list([{"text": text} for text in data])
     
     # First, create an ActivationDataset by recording activations
     print("Step 1: Recording activations from dataset...")
@@ -180,9 +186,6 @@ def test_record_intervene():
     after = artifact['activations_after'][0][0].value
     diff = torch.abs(after - before).mean().item()
     print(f"  Mean absolute difference: {diff:.6f}")
-    
-    print("\n✓ Test passed!")
-
 
 if __name__ == "__main__":
     test_record_intervene()
