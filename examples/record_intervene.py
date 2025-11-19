@@ -26,23 +26,24 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         intervene_location: Location,
         record_location: Location,
         activation_dataset: ActivationDataset,
-        example_idx: int = 0,
         **kwargs,
     ) -> dict:
         """
         Run a single forward pass where we intervene at `intervene_location`
-        using activations pulled from `activation_dataset` (taken from the
-        example indexed by `example_idx`), then record the resulting activations
-        at `record_location`. Mirrors `run_recording` but includes the
-        intervention step.
+        using activations pulled from `activation_dataset`, then record the 
+        resulting activations at `record_location`. Mirrors `run_recording` 
+        but includes the intervention step.
+        
+        All elements in the `activation_dataset` will be applied as the 
+        intervention activation. The batch dimension of the activation must 
+        match the batch size of the input.
         
         Args:
             input: Input sequence(s) to feed the model.
             intervene_location: Where to inject the stored activation.
             record_location: Where to record activations after the injection.
             activation_dataset: Pre-recorded activations to source interventions from.
-            example_idx: Which example inside `activation_dataset` to use for the
-                injected activation (0-indexed).
+                The batch dimension must match the input batch size.
             **kwargs: Extra arguments forwarded to `tracer.invoke`.
                 
         Returns:
@@ -59,34 +60,46 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         else:
             raise ValueError("Input must be a tensor or dict with 'input_ids'.")
 
+        # Get intervention activations from the dataset
         intervention_activation = torch.tensor(
-            activation_dataset[intervene_location][example_idx]
+            activation_dataset[intervene_location]
         )
+        
+        # Make sure it's at least 2D: [batch, hidden]
+        while intervention_activation.ndim < 2:
+            intervention_activation = intervention_activation.unsqueeze(0)
+        
+        # Check batch size matches input
+        batch_size = input_ids.shape[0]
+        if intervention_activation.shape[0] == 1 and batch_size > 1:
+            # Broadcast single activation to all examples in batch
+            intervention_activation = intervention_activation.expand(batch_size, -1)
+        elif intervention_activation.shape[0] != batch_size:
+            raise ValueError(
+                f"Batch size mismatch: activation has {intervention_activation.shape[0]} "
+                f"examples but input has {batch_size}"
+            )
 
         activations = []
         with self.model.trace() as tracer:
             with tracer.invoke(input_ids, max_length=10, **kwargs):
                 layers_list = list(self.model.transformer.h)
 
-                # Intervene
+                # Intervene: inject the stored activation
                 for layer in intervene_location.layers:
                     for module in intervene_location.modules:
                         layer_module = getattr(layers_list[layer], module)
                         output = layer_module.output
+                        
+                        # Handle tuple outputs (some modules return (hidden_states, ...))
+                        if isinstance(output, tuple):
+                            output = output[0]
+                        
+                        # Inject activation at specific token position or everywhere
                         if intervene_location.token_pos[0] is not None:
-                            if isinstance(output, tuple):
-                                output[0][:, intervene_location.token_pos[0], :] = (
-                                    intervention_activation
-                                )
-                            else:
-                                layer_module.output[
-                                    :, intervene_location.token_pos[0], :
-                                ] = intervention_activation
+                            output[:, intervene_location.token_pos[0], :] = intervention_activation
                         else:
-                            if isinstance(output, tuple):
-                                output[0][:] = intervention_activation
-                            else:
-                                layer_module.output[:] = intervention_activation
+                            output[:] = intervention_activation
 
                 # Record after intervention
                 for layer in record_location.layers:
@@ -147,10 +160,24 @@ def test_record_intervene():
     )
     print(f"  Recorded activations shape: {activation_dataset.activations.shape}")
     
-    # Step 2: test intervention vs baseline
-    print("\nStep 2: Testing intervention...")
-    text = "The quick brown fox"
-    input_ids = tokenizer(text, return_tensors="pt")["input_ids"]
+    # Step 2: test intervention vs baseline using all activations
+    print("\nStep 2: Testing intervention with batch of 8 inputs...")
+    
+    # Create a batch of test inputs matching the number of activations
+    test_texts = [
+        "The quick brown fox",
+        "Machine learning is fascinating",
+        "Climate change affects everyone",
+        "Music brings people together",
+        "Technology advances rapidly",
+        "Ocean waves crash gently",
+        "Books open new worlds",
+        "Coffee fuels morning productivity"
+    ]
+    
+    # Tokenize all texts into a batch
+    tokenized = tokenizer(test_texts, return_tensors="pt", padding=True)
+    input_ids = tokenized["input_ids"]
     
     intervene_location = Location(layers=[2], modules=["mlp"], token_pos=[-1])
     record_location = Location(layers=[6], modules=["mlp"], token_pos=[-1])
@@ -160,13 +187,12 @@ def test_record_intervene():
         input_ids,
         intervene_location,
         record_location,
-        activation_dataset,
-        example_idx=0,
+        activation_dataset,  # Use all 8 activations
     )
     
     # Print results
-    print(f"  Input text: {text}")
-    print(f"  Input shape: {input_ids.shape}")
+    print(f"  Number of test inputs: {len(test_texts)}")
+    print(f"  Input batch shape: {input_ids.shape}")
     print(f"  Intervention location: {intervene_location}")
     print(f"  Recording location: {record_location}")
     print(f"  Baseline activations shape:   {baseline['activations'][0][0].value.shape}")
@@ -175,7 +201,13 @@ def test_record_intervene():
     before = baseline["activations"][0][0].value
     after = intervened["activations"][0][0].value
     diff = torch.abs(after - before).mean().item()
-    print(f"  Mean absolute difference: {diff:.6f}")
+    print(f"  Mean absolute difference across all examples: {diff:.6f}")
+    
+    # Show per-example differences
+    print("\n  Per-example differences:")
+    for i in range(len(test_texts)):
+        example_diff = torch.abs(after[i] - before[i]).mean().item()
+        print(f"    Example {i+1}: {example_diff:.6f}")
 
 
 if __name__ == "__main__":
