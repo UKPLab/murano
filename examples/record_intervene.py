@@ -188,9 +188,7 @@ def compute_steering_vector(
         test_texts = [ex["text"] for ex in test_dataset]
         tokenized = tokenizer(test_texts, return_tensors="pt", padding=True, truncation=True, max_length=kwargs.get("max_length", 10))
         
-        intervened = model.record_intervene(
-            tokenized["input_ids"], intervene_location, record_location, steering_ds, **kwargs
-        )
+        intervened = model.record_intervene(tokenized["input_ids"], intervene_location, record_location, steering_ds)
         
         stacked = model._stack_activations([intervened['activations']])
         intervened_ds = ActivationDataset(
