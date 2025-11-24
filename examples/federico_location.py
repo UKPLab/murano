@@ -149,7 +149,7 @@ class BatchedMuranoModel(MuranoModel):
         }
         for example in dataloader:
             input_ids = example["input_ids"]
-            activation = self.run_recording(input_ids, location, **kwargs)
+            activation = self.run_recording(input_ids, location)
             activations.append(activation)
         activations = self._stack_activations(activations)
         artifact = {

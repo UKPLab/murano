@@ -18,7 +18,6 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         intervene_location: Location,
         record_location: Location,
         activation_dataset: ActivationDataset,
-        **kwargs,
     ) -> dict:
         """
         Perform a forward pass with causal intervention and record the resulting activations.
@@ -36,7 +35,6 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
             activation_dataset: An `ActivationDataset` containing the activations to 
                 inject. If batch size > 1, the dataset should contain matching batch 
                 activations, or a single activation will be broadcasted.
-            **kwargs: Additional keyword arguments passed to `tracer.invoke` (e.g., `max_length`).
 
         Returns:
             dict: A dictionary containing:
@@ -65,10 +63,9 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
             raise ValueError(f"Batch size mismatch: {intervention_activation.shape[0]} vs {batch_size}")
 
         activations = []
-        kwargs.pop("batch_size", None)  # Remove batch_size if present to avoid tokenizer error
         
         with self.model.trace() as tracer:
-            with tracer.invoke(input_ids, max_length=10, **kwargs):
+            with tracer.invoke(input_ids, max_length=10):
                 layers_list = list(self.model.transformer.h)
 
                 # Intervene
