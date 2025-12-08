@@ -20,6 +20,7 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         intervene_location: Location,
         record_location: Location,
         activation_dataset: ActivationDataset,
+        intervention_mode: str = "replace",
     ) -> dict:
         """
         Perform a forward pass with causal intervention and record the resulting activations.
@@ -37,6 +38,9 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
             activation_dataset: An `ActivationDataset` containing the activations to 
                 inject. If batch size > 1, the dataset should contain matching batch 
                 activations, or a single activation will be broadcasted.
+            intervention_mode: How to apply the intervention. Options:
+                - "replace": Replace the activation with the intervention (default, for atomic intervention)
+                - "add": Add the intervention to the original activation (for steering vectors)
 
         Returns:
             dict: A dictionary containing:
@@ -69,11 +73,21 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
                             if pos < 0:
                                 pos = target.shape[1] + pos
                             pos = max(0, min(pos, target.shape[1] - 1))
-                            # ADD steering vector to original activation (not replace)
-                            target[:, pos, :] = target[:, pos, :] + intervention_activation
+                            # Apply intervention based on mode
+                            if intervention_mode == "add":
+                                # ADD intervention to original activation (for steering vectors)
+                                target[:, pos, :] = target[:, pos, :] + intervention_activation
+                            else:
+                                # REPLACE activation with intervention (for atomic intervention)
+                                target[:, pos, :] = intervention_activation
                         else:
-                            # ADD steering vector to all positions
-                            target[:] = target[:] + intervention_activation
+                            # Apply to all positions
+                            if intervention_mode == "add":
+                                # ADD intervention to all positions
+                                target[:] = target[:] + intervention_activation
+                            else:
+                                # REPLACE all positions with intervention
+                                target[:] = intervention_activation
 
                 # Record
                 for layer in record_location.layers:
@@ -88,7 +102,7 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
                             if pos < 0:
                                 pos = source.shape[1] + pos
                             pos = max(0, min(pos, source.shape[1] - 1))
-                            # Preserve dimension: [batch, hidden] -> [batch, 1, hidden]
+                            # Preserve dimension: [batch, h idden] -> [batch, 1, hidden]
                             hidden_states = source[:, pos, :].unsqueeze(1)
                         else:
                             hidden_states = source
@@ -152,17 +166,12 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         handles = []
         layers = raw_model.transformer.h
         
-        hook_call_count = [0]  # Track if hook is being called
         
         def create_hook(intervention_act, token_pos):
             """Create a hook function that applies intervention at each forward pass."""
             def hook_fn(module, args, output):
-                hook_call_count[0] += 1
                 output_tensor = (output[0] if isinstance(output, tuple) else output).clone()
                 seq_len = output_tensor.shape[1]
-                
-                # Store original norm for debugging
-                orig_norm = output_tensor.norm().item()
                 
                 # Normalize intervention activation shape to [batch, seq, hidden]
                 act = intervention_act
@@ -195,12 +204,6 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
                 else:
                     # If no token_pos specified, apply to all positions
                     output_tensor[:] = output_tensor[:] + act_full
-                
-                # Debug: Check if intervention changed the activation
-                # new_norm = output_tensor.norm().item()
-                # if hook_call_count[0] <= 3:  # Only print first few calls
-                #     print(f"DEBUG: Hook call {hook_call_count[0]}, seq_len={seq_len}, orig_norm={orig_norm:.4f}, new_norm={new_norm:.4f}, change={new_norm-orig_norm:.4f}")
-                
                 return (output_tensor,) + output[1:] if isinstance(output, tuple) else output_tensor
             return hook_fn
         
@@ -227,9 +230,6 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
                 
                 # Call HF's generate() - hooks will apply intervention at each step
                 output_ids = raw_model.generate(input_ids, **gen_kwargs)
-                
-                # Debug: Check if hooks were called
-                # print(f"DEBUG: Hook was called {hook_call_count[0]} times during generation")
         finally:
             # Remove all hooks
             for handle in handles:
@@ -298,12 +298,6 @@ def extract_steering_vector(
     pos_mean = torch.tensor(pos_acts.activations).mean(0)
     neg_mean = torch.tensor(neg_acts.activations).mean(0)
     steering_vector = pos_mean - neg_mean
-    
-    # Debug: Check steering vector magnitude
-    # print(f"DEBUG: Steering vector shape: {steering_vector.shape}")
-    # print(f"DEBUG: Steering vector norm: {steering_vector.norm().item():.4f}")
-    # print(f"DEBUG: Positive mean norm: {pos_mean.norm().item():.4f}")
-    # print(f"DEBUG: Negative mean norm: {neg_mean.norm().item():.4f}")
     
     return {
         "steering_vector": steering_vector,
@@ -401,6 +395,7 @@ def apply_steering_vector(
             intervene_location=intervene_location,
             record_location=record_location,
             activation_dataset=sv_dataset,
+            intervention_mode="add",  # Use "add" for steering vectors
         )
         result.update(rec_result)
     
