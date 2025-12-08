@@ -164,29 +164,29 @@ class BatchedMuranoModel(MuranoModel):
 def ordinal(n):
     return f"{n}{'th' if 11<=n<=13 else {1:'st', 2:'nd', 3:'rd'}.get(n%10, 'th')}"
 
-data = [
-    {
-        "text": f"Mary is born on the {i+1} of August.",
-        "label": i % 2,
-        "metadata": {"id": i, "source": "synthetic"},
-        "confidence": torch.tensor(i / 15.0),
-    }
-    for i in range(16)
-]
+if __name__ == "__main__":
+    data = [
+        {
+            "text": f"Mary is born on the {i+1} of August.",
+            "label": i % 2,
+            "metadata": {"id": i, "source": "synthetic"},
+            "confidence": torch.tensor(i / 15.0),
+        }
+        for i in range(16)
+    ]
 
+    model = BatchedMuranoModel.from_pretrained("gpt2")
+    tokenizer = model.model.tokenizer
+    toy_dataset = Dataset.from_list(data)
+    processed_dataset = toy_dataset.map(
+        lambda x: process_dataset(x, tokenizer),
+        batched=False,
+    )
+    processed_dataset.set_format(type="torch")
+    dataloader = DataLoader(processed_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
 
-model = BatchedMuranoModel.from_pretrained("gpt2")
-tokenizer = model.model.tokenizer
-toy_dataset = Dataset.from_list(data)
-processed_dataset = toy_dataset.map(
-    lambda x: process_dataset(x, tokenizer),
-    batched=False,
-)
-processed_dataset.set_format(type="torch")
-dataloader = DataLoader(processed_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
-
-lens = LogitLens()
-location = Location(layers=[2, 4, 6], modules=["mlp"], token_pos=None)
-# 3 Layers, 1 module, all token positions
-artifact = model.run_task(processed_dataset, location)
-pass
+    lens = LogitLens()
+    location = Location(layers=[2, 4, 6], modules=["mlp"], token_pos=None)
+    # 3 Layers, 1 module, all token positions
+    artifact = model.run_task(processed_dataset, location)
+    pass

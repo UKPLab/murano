@@ -333,36 +333,36 @@ class BatchedMuranoModel(MuranoModel):
 def ordinal(n):
     return f"{n}{'th' if 11<=n<=13 else {1:'st', 2:'nd', 3:'rd'}.get(n%10, 'th')}"
 
+if __name__ == "__main__":
+    model = BatchedMuranoModel.from_pretrained("gpt2")
+    tokenizer = model.model.tokenizer
 
-model = BatchedMuranoModel.from_pretrained("gpt2")
-tokenizer = model.model.tokenizer
+    # Load as pandas dataframe
+    df = pd.read_csv('examples/dates.csv')
+    # Add day of year int column
+    df['month'] = pd.to_datetime(df['date']).dt.month_name()
+    toy_dataset = Dataset.from_pandas(df)
+    processed_dataset = toy_dataset.map(
+        lambda x: process_dataset(x, tokenizer),
+        batched=False,
+    )
+    processed_dataset.set_format(type="torch")
+    dataloader = DataLoader(processed_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
 
-# Load as pandas dataframe
-df = pd.read_csv('examples/dates.csv')
-# Add day of year int column
-df['month'] = pd.to_datetime(df['date']).dt.month_name()
-toy_dataset = Dataset.from_pandas(df)
-processed_dataset = toy_dataset.map(
-    lambda x: process_dataset(x, tokenizer),
-    batched=False,
-)
-processed_dataset.set_format(type="torch")
-dataloader = DataLoader(processed_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
+    lens = LogitLens()
+    location = Location(layers=[2, 6, 11], modules=["output", "mlp"], token_pos=-1)
+    # 3 Layers, 2 modules, last token
+    artifact = model.run_task(processed_dataset, location)
 
-lens = LogitLens()
-location = Location(layers=[2, 6, 11], modules=["output", "mlp"], token_pos=-1)
-# 3 Layers, 2 modules, last token
-artifact = model.run_task(processed_dataset, location)
+    # Initialize plotter
+    plotter = PlotterLens(
+        reducer=LDA(n_components=2),
+        save_path="plots/activation_pca.html",
+        label_columns="month",
+    )
 
-# Initialize plotter
-plotter = PlotterLens(
-    reducer=LDA(n_components=2),
-    save_path="plots/activation_pca.html",
-    label_columns="month",
-)
+    plot_slice = Location(layers=[6], modules=["output"], token_pos=-1)
 
-plot_slice = Location(layers=[6], modules=["output"], token_pos=-1)
-
-# Observe activations
-fig = plotter.observe(artifact, plot_slice, title="PCA of Layer 6 Activations")
-fig.show()
+    # Observe activations
+    fig = plotter.observe(artifact, plot_slice, title="PCA of Layer 6 Activations")
+    fig.show()
