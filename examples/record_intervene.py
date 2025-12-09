@@ -312,94 +312,76 @@ def apply_steering_vector(
     input: Union[str, torch.Tensor, dict, Dataset],
     steering_vector: torch.Tensor,
     intervene_location: Location,
-    mode: str = "generate",
-    record_location: Location = None,
     coeff: float = 1.0,
     **kwargs,
 ) -> dict:
     """
-    Apply a pre-computed steering vector to input(s).
-    
-    Args:
-        model: The `BatchedMuranoModel` instance to use for intervention.
-        input: The input(s) to apply the steering vector to. Can be a string, tensor, 
-            dict, or Dataset.
-        steering_vector: The steering vector tensor to apply.
-        intervene_location: The `Location` to inject the steering vector.
-        mode: The mode of operation. Options:
-            - "generate": Generate text with intervention (default)
-            - "record": Record activations with intervention
-            - "both": Both generate and record
-        record_location: The `Location` to record activations after intervention. 
-            Required if mode is "record" or "both".
-        coeff: Multiplier for the steering vector strength. Defaults to 1.0.
-        **kwargs: Additional arguments passed to `generate_intervene` or `record_intervene` 
-            (e.g., `max_new_tokens`, `batch_size`).
-    
-    Returns:
-        dict: A dictionary containing results based on the mode:
-            - If mode="generate": {"output_ids", "output_text", "input_ids"}
-            - If mode="record": {"activations", "input_ids"}
-            - If mode="both": All of the above
+    Apply a steering vector to generate text (generation-only helper).
+
+    Use this for generation; for recording with a steering vector call
+    `record_with_steering_vector` (or `record_intervene` directly with
+    `intervention_mode="add"`).
     """
     # Convert steering vector to ActivationDataset
     sv_dataset = steering_vector_to_activation_dataset(steering_vector, intervene_location)
     
-    # Handle different input types
+    # Handle Dataset input by mapping over examples
     if isinstance(input, Dataset):
-        # For Dataset, process each example
-        results = []
-        for ex in input:
-            result = apply_steering_vector(
+        return [
+            apply_steering_vector(
                 model=model,
                 input=ex["text"],
                 steering_vector=steering_vector,
                 intervene_location=intervene_location,
-                mode=mode,
-                record_location=record_location,
                 coeff=coeff,
-                **kwargs
+                **kwargs,
             )
-            results.append(result)
-        return results
+            for ex in input
+        ]
     
     # Prepare input_ids for single input
     tokenizer = model.model.tokenizer
     device = next(model.model.parameters()).device
     input_ids, attention_mask = prepare_input_ids(input, tokenizer, device)
     
-    result = {}
-    
-    # Generate with intervention
-    if mode in ["generate", "both"]:
-        # Prepare input dict with attention_mask if available
-        input_dict = {"input_ids": input_ids}
-        if attention_mask is not None:
-            input_dict["attention_mask"] = attention_mask
-        
-        gen_result = model.generate_intervene(
-            input=input_dict,
-            intervene_location=intervene_location,
-            activation_dataset=sv_dataset,
-            coeff=coeff,
-            **{k: v for k, v in kwargs.items() if k not in ["batch_size", "max_length", "attention_mask"]}
-        )
-        result.update(gen_result)
-    
-    # Record with intervention
-    if mode in ["record", "both"]:
-        if record_location is None:
-            raise ValueError("record_location must be provided when mode is 'record' or 'both'")
-        rec_result = model.record_intervene(
-            input=input_ids,
-            intervene_location=intervene_location,
-            record_location=record_location,
-            activation_dataset=sv_dataset,
-            intervention_mode="add",  # Use "add" for steering vectors
-        )
-        result.update(rec_result)
-    
-    return result
+    # Prepare input dict with attention_mask if available
+    input_dict = {"input_ids": input_ids}
+    if attention_mask is not None:
+        input_dict["attention_mask"] = attention_mask
+
+    return model.generate_intervene(
+        input=input_dict,
+        intervene_location=intervene_location,
+        activation_dataset=sv_dataset,
+        coeff=coeff,
+        **{k: v for k, v in kwargs.items() if k not in ["batch_size", "max_length", "attention_mask"]},
+    )
+
+
+def record_with_steering_vector(
+    model: BatchedMuranoModel,
+    input: Union[str, torch.Tensor, dict],
+    steering_vector: torch.Tensor,
+    intervene_location: Location,
+    record_location: Location,
+    coeff: float = 1.0,
+    **kwargs,
+) -> dict:
+    """
+    Record activations while applying a steering vector (single forward pass).
+
+    This is a thin helper around `record_intervene` with `intervention_mode="add"`.
+    """
+    sv_dataset = steering_vector_to_activation_dataset(steering_vector, intervene_location)
+    input_ids, _ = prepare_input_ids(input, model.model.tokenizer, next(model.model.parameters()).device)
+    return model.record_intervene(
+        input=input_ids,
+        intervene_location=intervene_location,
+        record_location=record_location,
+        activation_dataset=sv_dataset,
+        intervention_mode="add",
+        **kwargs,
+    )
 
 
 def compute_steering_vector(
@@ -408,8 +390,6 @@ def compute_steering_vector(
     negative_dataset: Dataset,
     location: Location,
     test_dataset: Dataset = None,
-    intervene_location: Location = None,
-    record_location: Location = None,
     coeff: float = 1.0,
     **kwargs,
 ) -> dict:
@@ -458,7 +438,7 @@ def compute_steering_vector(
     
     # Apply to test dataset if provided
     if test_dataset:
-        intervene_location = intervene_location or location
+        intervene_location = location
         
         # Get baseline generation (without intervention)
         tokenizer = model.model.tokenizer
@@ -492,7 +472,6 @@ def compute_steering_vector(
             input=input_dict,
             steering_vector=sv_result["steering_vector"],
             intervene_location=intervene_location,
-            mode="generate",
             coeff=coeff,
             max_new_tokens=max_new,
         )

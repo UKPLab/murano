@@ -18,7 +18,8 @@ from record_intervene import (
     BatchedMuranoModel, 
     compute_steering_vector,
     extract_steering_vector,
-    apply_steering_vector
+    apply_steering_vector,
+    record_with_steering_vector,
 )
 from federico_visualization import Location, ActivationDataset
 
@@ -396,52 +397,44 @@ class TestApplySteeringVector:
         
         return instance, model
 
-    @pytest.mark.parametrize("mode,expected_keys", [
-        ("generate", ["output_ids", "output_text", "input_ids"]),
-        ("record", ["activations", "input_ids"]),
-        ("both", ["output_ids", "activations", "input_ids"])
-    ])
-    def test_modes(self, mock_model, mode, expected_keys):
-        """Test apply_steering_vector with different modes."""
-        instance, model = mock_model
-        if mode in ["record", "both"]:
-            setup_layer_outputs(model, 8, 10)
-            # Mock record_intervene to return proper dict
-            instance.record_intervene = Mock(return_value={
-                "activations": [[Mock()]],
-                "input_ids": torch.tensor([[1, 2, 3]])
-            })
-        
+    def test_generate_only(self, mock_model):
+        """apply_steering_vector should generate text (no mode flag)."""
+        instance, _ = mock_model
         steering_vector = torch.randn(1, 1, 1, 768)
         intervene_location = Location(layers=[8], modules=["mlp"], token_pos=[-1])
-        record_location = Location(layers=[10], modules=["mlp"], token_pos=[-1]) if mode != "generate" else None
         
         result = apply_steering_vector(
             model=instance,
-            input={"input_ids": torch.tensor([[1, 2, 3]])} if mode == "generate" else torch.tensor([[1, 2, 3]]),
+            input={"input_ids": torch.tensor([[1, 2, 3]])},
             steering_vector=steering_vector,
             intervene_location=intervene_location,
-            mode=mode,
-            record_location=record_location,
-            max_new_tokens=3 if mode != "record" else None
+            max_new_tokens=3,
         )
         
         assert isinstance(result, dict)
-        assert all(k in result for k in expected_keys)
+        for key in ["output_ids", "output_text", "input_ids"]:
+            assert key in result
 
-    def test_requires_record_location_for_record_mode(self, mock_model):
-        """Test that record_location is required for record/both modes."""
-        instance, _ = mock_model
+    def test_record_with_steering_vector(self, mock_model):
+        """record_with_steering_vector records activations with add mode."""
+        instance, model = mock_model
+        setup_layer_outputs(model, 8, 10)
+        instance.model = model.model
         steering_vector = torch.randn(1, 1, 1, 768)
+        intervene_location = Location(layers=[8], modules=["mlp"], token_pos=[-1])
+        record_location = Location(layers=[10], modules=["mlp"], token_pos=[-1])
         
-        with pytest.raises(ValueError, match="record_location must be provided"):
-            apply_steering_vector(
-                model=instance,
-                input=torch.tensor([[1, 2, 3]]),
-                steering_vector=steering_vector,
-                intervene_location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),
-                mode="record"
-            )
+        result = record_with_steering_vector(
+            model=instance,
+            input=torch.tensor([[1, 2, 3]]),
+            steering_vector=steering_vector,
+            intervene_location=intervene_location,
+            record_location=record_location,
+        )
+        
+        assert isinstance(result, dict)
+        for key in ["activations", "input_ids"]:
+            assert key in result
 
     def test_with_dataset_input(self, mock_model):
         """Test apply_steering_vector processes Dataset input."""
@@ -474,7 +467,6 @@ class TestApplySteeringVector:
             input=test_dataset,
             steering_vector=torch.randn(1, 1, 1, 768),
             intervene_location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),
-            mode="generate",
             max_new_tokens=3
         )
         
