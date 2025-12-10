@@ -324,7 +324,7 @@ class TestExtractSteeringVector:
             model=mock_model,
             positive_dataset=pos_dataset,
             negative_dataset=neg_dataset,
-            location=Location(layers=[8], modules=["mlp"], token_pos=[-1])
+            extract_location=Location(layers=[8], modules=["mlp"], token_pos=[-1])
         )
         
         assert all(k in result for k in ["steering_vector", "positive_activations", "negative_activations", "location"])
@@ -340,7 +340,7 @@ class TestExtractSteeringVector:
             model=mock_model,
             positive_dataset=pos_dataset,
             negative_dataset=neg_dataset,
-            location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),
+            extract_location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),
             batch_size=4
         )
         
@@ -485,7 +485,7 @@ class TestComputeSteeringVector:
             model=mock_model,
             positive_dataset=datasets["positive"],
             negative_dataset=datasets["negative"],
-            location=Location(layers=[8], modules=["mlp"], token_pos=[-1])
+            extract_location=Location(layers=[8], modules=["mlp"], token_pos=[-1])
         )
         
         assert all(k in result for k in ["steering_vector", "positive_activations", "negative_activations"])
@@ -547,7 +547,7 @@ class TestComputeSteeringVector:
                 model=instance,
                 positive_dataset=datasets["positive"],
                 negative_dataset=datasets["negative"],
-                location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),
+                extract_location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),
                 test_dataset=datasets["test"],
                 max_new_tokens=10
             )
@@ -564,7 +564,7 @@ class TestComputeSteeringVector:
             model=mock_model,
             positive_dataset=datasets["positive"],
             negative_dataset=datasets["negative"],
-            location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),
+            extract_location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),
             batch_size=8
         )
         

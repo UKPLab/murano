@@ -154,11 +154,14 @@ def extract_steering_vector(
     model: BatchedMuranoModel,
     positive_dataset: Dataset,
     negative_dataset: Dataset,
-    location: Location,
+    extract_location: Location,
     **kwargs,
 ) -> dict:
     """
-    Compute steering vector as mean(positive_activations) - mean(negative_activations) at location.
+    Compute steering vector as mean(positive_activations) - mean(negative_activations) at extract_location.
+    
+    Note: Steering vector is location-specific. For full semantic difference, extract multiple
+    vectors at different locations or use a different approach.
     
     Returns: {"steering_vector": tensor, "positive_activations": ActivationDataset, 
              "negative_activations": ActivationDataset, "location": Location}
@@ -166,8 +169,8 @@ def extract_steering_vector(
     kwargs.setdefault("batch_size", 1)
     
     # Record activations from both datasets
-    pos_artifact = model.run_task(positive_dataset, location, **kwargs)
-    neg_artifact = model.run_task(negative_dataset, location, **kwargs)
+    pos_artifact = model.run_task(positive_dataset, extract_location, **kwargs)
+    neg_artifact = model.run_task(negative_dataset, extract_location, **kwargs)
     
     # Convert to ActivationDataset if needed
     def to_activation_dataset(artifact, loc):
@@ -180,8 +183,8 @@ def extract_steering_vector(
             dataset=artifact.get("dataset"),
         )
 
-    pos_acts = to_activation_dataset(pos_artifact, location)
-    neg_acts = to_activation_dataset(neg_artifact, location)
+    pos_acts = to_activation_dataset(pos_artifact, extract_location)
+    neg_acts = to_activation_dataset(neg_artifact, extract_location)
     
     pos_mean = torch.tensor(pos_acts.activations).mean(0)
     neg_mean = torch.tensor(neg_acts.activations).mean(0)
@@ -191,7 +194,7 @@ def extract_steering_vector(
         "steering_vector": steering_vector,
         "positive_activations": pos_acts,
         "negative_activations": neg_acts,
-        "location": location,
+        "location": extract_location,
     }
 
 
@@ -244,7 +247,7 @@ def compute_steering_vector(
     model: BatchedMuranoModel,
     positive_dataset: Dataset,
     negative_dataset: Dataset,
-    location: Location,
+    extract_location: Location,
     test_dataset: Dataset = None,
     intervene_location: Location = None,
     coeff: float = 1.0,
@@ -260,7 +263,7 @@ def compute_steering_vector(
         model=model,
         positive_dataset=positive_dataset,
         negative_dataset=negative_dataset,
-        location=location,
+        extract_location=extract_location,
         **{k: v for k, v in kwargs.items() if k != "max_new_tokens"}
     )
     
@@ -272,7 +275,7 @@ def compute_steering_vector(
     
     if test_dataset:
         if intervene_location is None:
-            intervene_location = location
+            intervene_location = extract_location
         
         # Get baseline generation (without intervention)
         tokenizer = model.model.tokenizer
@@ -346,7 +349,7 @@ def test_all():
         model=model,
         positive_dataset=Dataset.from_list([{"text": t} for t in pos_data]),
         negative_dataset=Dataset.from_list([{"text": t} for t in neg_data]),
-        location=loc_extract,  # Extract requires concrete token_pos
+        extract_location=loc_extract,  # Extract requires concrete token_pos
         test_dataset=Dataset.from_list([{"text": t} for t in test_data]),
         intervene_location=loc_intervene,  # Apply at last token
         max_new_tokens=15,
@@ -360,7 +363,7 @@ def test_all():
         model=model,
         positive_dataset=Dataset.from_list([{"text": t} for t in pos_data]),
         negative_dataset=Dataset.from_list([{"text": t} for t in neg_data]),
-        location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),  # Extract at last token
+        extract_location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),  # Extract at last token
         test_dataset=Dataset.from_list([{"text": t} for t in test_data]),
         intervene_location=loc_all,  # Apply to all tokens during generation
         max_new_tokens=15,

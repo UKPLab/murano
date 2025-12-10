@@ -11,7 +11,7 @@ def prepare_input_ids(
     tokenizer,
     device,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Convert string/tensor/dict to (input_ids, attention_mask) tensors on device."""
+    """Prepare input_ids and attention_mask from string, tensor, or dict inputs."""
     if isinstance(input, str):
         inputs = tokenizer(input, return_tensors="pt", padding=True, truncation=True)
         input_ids = inputs["input_ids"].to(device)
@@ -37,7 +37,7 @@ def prepare_intervention_activation(
     device,
     coeff: float = 1.0,
 ) -> torch.Tensor:
-    """Extract activation from dataset, broadcast to batch_size, apply coeff, move to device."""
+    """Prepare the intervention activation tensor with correct shape and device."""
     intervention_activation = torch.tensor(activation_dataset[intervene_location])
 
     while intervention_activation.ndim < 2:
@@ -56,7 +56,7 @@ def prepare_intervention_activation(
 def steering_vector_to_activation_dataset(
     steering_vector: torch.Tensor, location: Location
 ) -> ActivationDataset:
-    """Convert steering vector tensor to ActivationDataset with proper shape expansion."""
+    """Convert a steering vector tensor to an ActivationDataset."""
     sv_array = steering_vector.detach().cpu().numpy()
 
     # Expand to [1, num_layers, num_modules, num_token_pos, hidden_dim]
@@ -85,10 +85,22 @@ def steering_vector_to_activation_dataset(
 
 def create_intervention_hook(intervention_activation: torch.Tensor, location: Location):
     """
-    Create forward hook that adds intervention_activation based on location.token_pos.
+    Create a forward hook function that applies intervention at each forward pass.
     
-    token_pos=None/[None] → all tokens, [-1] → last token, [0] → first token, etc.
-    Returns hook function for register_forward_hook().
+    The hook fires at each generation step. At each step:
+    - seq_len = current sequence length (prompt + tokens generated so far)
+    - User controls where intervention is applied via Location.token_pos:
+      * None or [None] → apply to all tokens in current sequence
+      * [-1] → apply to last token (changes as tokens are generated)
+      * [0] → apply to first token
+      * [0, -1] → apply to first and last tokens
+    
+    Args:
+        intervention_activation: The activation tensor to add (shape: [batch, hidden] or [batch, seq, hidden])
+        location: Location object specifying where to apply the intervention
+    
+    Returns:
+        A hook function that can be registered with register_forward_hook()
     """
     def hook_fn(module, args, output):
         output_tensor = (output[0] if isinstance(output, tuple) else output).clone()
