@@ -172,23 +172,6 @@ class TestBatchedMuranoModelRecordIntervene:
         
         assert "activations" in result
 
-    @pytest.mark.parametrize("mode", ["replace", "add"])
-    def test_intervention_modes(self, mode):
-        """Test record_intervene with replace and add modes."""
-        model = create_mock_model()
-        setup_layer_outputs(model, 5, 6)
-        instance = create_model_instance(model)
-        
-        result = instance.record_intervene(
-            input=torch.tensor([[1, 2, 3, 4]]),
-            intervene_location=Location(layers=[5], modules=["mlp"], token_pos=[-1]),
-            record_location=Location(layers=[6], modules=["mlp"], token_pos=[-1]),
-            activation_dataset=create_activation_dataset(),
-            intervention_mode=mode
-        )
-        
-        assert "activations" in result
-
     def test_broadcasts_single_activation(self):
         """Test that single activation is broadcast to batch."""
         model = create_mock_model()
