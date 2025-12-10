@@ -9,7 +9,9 @@ from utils import (
     prepare_input_ids,
     prepare_intervention_activation,
     steering_vector_to_activation_dataset,
+    create_intervention_hook,
 )
+from sentiment_data import POSITIVE_SAMPLES, NEGATIVE_SAMPLES
 
 class BatchedMuranoModel(BaseBatchedMuranoModel):
     """Extension of BatchedMuranoModel with intervention capabilities."""
@@ -20,33 +22,12 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         intervene_location: Location,
         record_location: Location,
         activation_dataset: ActivationDataset,
-        intervention_mode: str = "replace",
     ) -> dict:
         """
-        Perform a forward pass with causal intervention and record the resulting activations.
-
-        This method intervenes at `intervene_location` by injecting activations from 
-        `activation_dataset`, then records the activations at `record_location`.
-
-        Args:
-            input: The input to the model. Can be a string, tensor of input_ids, or 
-                a dictionary containing "input_ids".
-            intervene_location: The `Location` object specifying where to intervene 
-                (layer, module, token position).
-            record_location: The `Location` object specifying where to record activations 
-                after the intervention.
-            activation_dataset: An `ActivationDataset` containing the activations to 
-                inject. If batch size > 1, the dataset should contain matching batch 
-                activations, or a single activation will be broadcasted.
-            intervention_mode: How to apply the intervention. Options:
-                - "replace": Replace the activation with the intervention (default, for atomic intervention)
-                - "add": Add the intervention to the original activation (for steering vectors)
-
-        Returns:
-            dict: A dictionary containing:
-                - "activations": A nested list structure containing recorded activations 
-                  from `nnsight`.
-                - "input_ids": The input tensor used for the forward pass.
+        Replace activations at intervene_location with activation_dataset, then record at record_location.
+        
+        Returns: {"activations": [...], "input_ids": tensor}
+        For steering vectors (additive), use same pattern but add instead of replace.
         """
         input_ids, _ = prepare_input_ids(input, self.model.tokenizer, next(self.model.parameters()).device)
         batch_size = input_ids.shape[0]
@@ -73,21 +54,11 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
                             if pos < 0:
                                 pos = target.shape[1] + pos
                             pos = max(0, min(pos, target.shape[1] - 1))
-                            # Apply intervention based on mode
-                            if intervention_mode == "add":
-                                # ADD intervention to original activation (for steering vectors)
-                                target[:, pos, :] = target[:, pos, :] + intervention_activation
-                            else:
-                                # REPLACE activation with intervention (for atomic intervention)
-                                target[:, pos, :] = intervention_activation
+                            # REPLACE activation with intervention (atomic intervention)
+                            target[:, pos, :] = intervention_activation
                         else:
-                            # Apply to all positions
-                            if intervention_mode == "add":
-                                # ADD intervention to all positions
-                                target[:] = target[:] + intervention_activation
-                            else:
-                                # REPLACE all positions with intervention
-                                target[:] = intervention_activation
+                            # Apply to all positions - REPLACE all positions with intervention
+                            target[:] = intervention_activation
 
                 # Record
                 for layer in record_location.layers:
@@ -102,7 +73,7 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
                             if pos < 0:
                                 pos = source.shape[1] + pos
                             pos = max(0, min(pos, source.shape[1] - 1))
-                            # Preserve dimension: [batch, h idden] -> [batch, 1, hidden]
+                            # Preserve dimension: [batch, hidden] -> [batch, 1, hidden]
                             hidden_states = source[:, pos, :].unsqueeze(1)
                         else:
                             hidden_states = source
@@ -122,31 +93,10 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         **generation_kwargs,
     ) -> dict:
         """
-        Generate text with intervention applied at specified location.
+        Generate text with intervention applied via hooks at each forward pass.
         
-        This method applies intervention during text generation by setting up hooks
-        that inject activations at each forward pass step. It uses HuggingFace's
-        generate() method internally, overriding the default behavior when intervention
-        arguments are provided.
-        
-        Args:
-            input: The input to the model. Can be a string, tensor of input_ids, or 
-                a dictionary containing "input_ids".
-            intervene_location: The `Location` object specifying where to intervene 
-                (layer, module, token position).
-            activation_dataset: An `ActivationDataset` containing the activations to 
-                inject. If batch size > 1, the dataset should contain matching batch 
-                activations, or a single activation will be broadcasted.
-            max_new_tokens: Maximum number of new tokens to generate. Defaults to 20.
-            coeff: Multiplier for the intervention activations. Defaults to 1.0.
-            **generation_kwargs: Additional arguments passed to HuggingFace's generate() 
-                method (e.g., temperature, top_p, top_k, do_sample, etc.).
-        
-        Returns:
-            dict: A dictionary containing:
-                - "output_ids": The generated token IDs (torch.Tensor).
-                - "output_text": The decoded generated text (List[str]).
-                - "input_ids": The input tensor used for generation.
+        Uses HF's generate() with hooks that add activation_dataset at intervene_location.
+        Returns: {"output_ids": tensor, "output_text": list, "input_ids": tensor}
         """
         tokenizer = self.model.tokenizer
         raw_model = self.model._model if hasattr(self.model, "_model") else self.model
@@ -158,57 +108,12 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
             activation_dataset, intervene_location, batch_size, device, coeff
         )
         
-        # Debug: Check intervention activation shape and magnitude
-        # print(f"DEBUG: Intervention activation shape: {intervention_activation.shape}")
-        # print(f"DEBUG: Intervention activation norm: {intervention_activation.norm().item():.4f}")
-        
         # Set up hooks for intervention
         handles = []
         layers = raw_model.transformer.h
         
-        
-        def create_hook(intervention_act, token_pos):
-            """Create a hook function that applies intervention at each forward pass."""
-            def hook_fn(module, args, output):
-                output_tensor = (output[0] if isinstance(output, tuple) else output).clone()
-                seq_len = output_tensor.shape[1]
-                
-                # Normalize intervention activation shape to [batch, seq, hidden]
-                act = intervention_act
-                while act.ndim > 3:
-                    act = act.squeeze(0)
-                
-                if act.ndim == 2:
-                    # [batch, hidden] -> broadcast over sequence
-                    act_full = act.unsqueeze(1).expand(-1, seq_len, -1)
-                elif act.ndim == 3:
-                    # [batch, seq, hidden]
-                    if act.shape[1] == seq_len:
-                        act_full = act
-                    elif act.shape[1] == 1:
-                        act_full = act.expand(-1, seq_len, -1)
-                    else:
-                        # Fallback: use first position and broadcast
-                        act_full = act[:, :1, :].expand(-1, seq_len, -1)
-                else:
-                    raise ValueError(f"Unexpected intervention activation shape: {intervention_act.shape}")
-                
-                # Apply intervention - ADD steering vector to original activation (not replace)
-                # Apply at the last token position (where steering vector was extracted from)
-                # This ensures the intervention affects the generation of new tokens
-                if token_pos and len(token_pos) > 0 and token_pos[0] is not None:
-                    pos = token_pos[0] if token_pos[0] >= 0 else seq_len + token_pos[0]
-                    pos = max(0, min(pos, seq_len - 1))
-                    # Apply steering vector at the last token position
-                    output_tensor[:, pos, :] = output_tensor[:, pos, :] + act_full[:, pos, :]
-                else:
-                    # If no token_pos specified, apply to all positions
-                    output_tensor[:] = output_tensor[:] + act_full
-                return (output_tensor,) + output[1:] if isinstance(output, tuple) else output_tensor
-            return hook_fn
-        
-        # Register hooks for specified layers and modules
-        hook_fn = create_hook(intervention_activation, intervene_location.token_pos)
+        # Create hook function using utility
+        hook_fn = create_intervention_hook(intervention_activation, intervene_location)
         for layer_idx in intervene_location.layers:
             for module_name in intervene_location.modules:
                 if hasattr(layers[layer_idx], module_name):
@@ -253,26 +158,10 @@ def extract_steering_vector(
     **kwargs,
 ) -> dict:
     """
-    Extract a steering vector from positive and negative datasets.
+    Compute steering vector as mean(positive_activations) - mean(negative_activations) at location.
     
-    The steering vector is computed as the difference between the mean activations 
-    of the positive dataset and the mean activations of the negative dataset at 
-    the specified `location`.
-    
-    Args:
-        model: The `BatchedMuranoModel` instance to use for recording.
-        positive_dataset: A `Dataset` of examples representing the target behavior.
-        negative_dataset: A `Dataset` of examples representing the opposing behavior.
-        location: The `Location` (layer, module, token) where the steering vector 
-            should be computed.
-        **kwargs: Additional arguments passed to `run_task` (e.g., `batch_size`).
-    
-    Returns:
-        dict: A dictionary containing:
-            - "steering_vector": The computed steering vector (torch.Tensor).
-            - "positive_activations": `ActivationDataset` for the positive examples.
-            - "negative_activations": `ActivationDataset` for the negative examples.
-            - "location": The `Location` where the steering vector was extracted.
+    Returns: {"steering_vector": tensor, "positive_activations": ActivationDataset, 
+             "negative_activations": ActivationDataset, "location": Location}
     """
     kwargs.setdefault("batch_size", 1)
     
@@ -290,11 +179,10 @@ def extract_steering_vector(
             global_metadata=artifact.get("global_metadata", {}),
             dataset=artifact.get("dataset"),
         )
-    
+
     pos_acts = to_activation_dataset(pos_artifact, location)
     neg_acts = to_activation_dataset(neg_artifact, location)
     
-    # Compute steering vector as difference of means
     pos_mean = torch.tensor(pos_acts.activations).mean(0)
     neg_mean = torch.tensor(neg_acts.activations).mean(0)
     steering_vector = pos_mean - neg_mean
@@ -316,16 +204,12 @@ def apply_steering_vector(
     **kwargs,
 ) -> dict:
     """
-    Apply a steering vector to generate text (generation-only helper).
-
-    Use this for generation; for recording with a steering vector call
-    `record_with_steering_vector` (or `record_intervene` directly with
-    `intervention_mode="add"`).
+    Apply steering vector for text generation (calls generate_intervene).
+    
+    For recording, use record_intervene pattern but add steering vector instead of replace.
     """
-    # Convert steering vector to ActivationDataset
     sv_dataset = steering_vector_to_activation_dataset(steering_vector, intervene_location)
     
-    # Handle Dataset input by mapping over examples
     if isinstance(input, Dataset):
         return [
             apply_steering_vector(
@@ -339,12 +223,10 @@ def apply_steering_vector(
             for ex in input
         ]
     
-    # Prepare input_ids for single input
     tokenizer = model.model.tokenizer
     device = next(model.model.parameters()).device
     input_ids, attention_mask = prepare_input_ids(input, tokenizer, device)
     
-    # Prepare input dict with attention_mask if available
     input_dict = {"input_ids": input_ids}
     if attention_mask is not None:
         input_dict["attention_mask"] = attention_mask
@@ -358,70 +240,22 @@ def apply_steering_vector(
     )
 
 
-def record_with_steering_vector(
-    model: BatchedMuranoModel,
-    input: Union[str, torch.Tensor, dict],
-    steering_vector: torch.Tensor,
-    intervene_location: Location,
-    record_location: Location,
-    coeff: float = 1.0,
-    **kwargs,
-) -> dict:
-    """
-    Record activations while applying a steering vector (single forward pass).
-
-    This is a thin helper around `record_intervene` with `intervention_mode="add"`.
-    """
-    sv_dataset = steering_vector_to_activation_dataset(steering_vector, intervene_location)
-    input_ids, _ = prepare_input_ids(input, model.model.tokenizer, next(model.model.parameters()).device)
-    return model.record_intervene(
-        input=input_ids,
-        intervene_location=intervene_location,
-        record_location=record_location,
-        activation_dataset=sv_dataset,
-        intervention_mode="add",
-        **kwargs,
-    )
-
-
 def compute_steering_vector(
     model: BatchedMuranoModel,
     positive_dataset: Dataset,
     negative_dataset: Dataset,
     location: Location,
     test_dataset: Dataset = None,
+    intervene_location: Location = None,
     coeff: float = 1.0,
     **kwargs,
 ) -> dict:
     """
-    Compute a steering vector and optionally apply it to a test dataset.
+    Convenience function: extract steering vector and optionally apply to test_dataset.
     
-    This is a convenience function that calls `extract_steering_vector` and optionally
-    `apply_steering_vector`. For more control, use those functions directly.
-    
-    Args:
-        model: The `BatchedMuranoModel` instance to use.
-        positive_dataset: A `Dataset` of examples representing the target behavior.
-        negative_dataset: A `Dataset` of examples representing the opposing behavior.
-        location: The `Location` where the steering vector should be computed.
-        test_dataset: (Optional) A `Dataset` to test the computed steering vector on. 
-            If provided, generation is performed with and without steering.
-        intervene_location: (Optional) The `Location` to inject the steering vector. 
-            Defaults to `location`.
-        record_location: (Optional) The `Location` to record activations after 
-            intervention. Defaults to `location`.
-        coeff: (Optional) Multiplier for the steering vector strength. Defaults to 1.0.
-        **kwargs: Additional arguments passed to underlying functions.
-    
-    Returns:
-        dict: A dictionary containing:
-            - "steering_vector": The computed steering vector (torch.Tensor).
-            - "positive_activations": `ActivationDataset` for the positive examples.
-            - "negative_activations": `ActivationDataset` for the negative examples.
-            - "baseline_output_ids/text": (If test_dataset provided) Baseline generation results.
-            - "steered_output_ids/text": (If test_dataset provided) Steered generation results.
+    Calls extract_steering_vector and optionally apply_steering_vector.
+    Returns steering vector + baseline/steered outputs if test_dataset provided.
     """
-    # Extract steering vector
     sv_result = extract_steering_vector(
         model=model,
         positive_dataset=positive_dataset,
@@ -436,9 +270,9 @@ def compute_steering_vector(
         "negative_activations": sv_result["negative_activations"],
     }
     
-    # Apply to test dataset if provided
     if test_dataset:
-        intervene_location = location
+        if intervene_location is None:
+            intervene_location = location
         
         # Get baseline generation (without intervention)
         tokenizer = model.model.tokenizer
@@ -454,9 +288,9 @@ def compute_steering_vector(
         
         with torch.no_grad():
             baseline_ids = raw_model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_new_tokens=max_new,
+                input_ids=input_ids, 
+                attention_mask=attention_mask, 
+                max_new_tokens=max_new, 
                 pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
             )
         baseline_text = tokenizer.batch_decode(baseline_ids, skip_special_tokens=True)
@@ -473,8 +307,8 @@ def compute_steering_vector(
             steering_vector=sv_result["steering_vector"],
             intervene_location=intervene_location,
             coeff=coeff,
-            max_new_tokens=max_new,
-        )
+                    max_new_tokens=max_new, 
+                )
         
         result["baseline_output_ids"] = baseline_ids
         result["baseline_output_text"] = baseline_text
@@ -486,28 +320,16 @@ def compute_steering_vector(
             print(f"\nPrompt: \"{prompt}\"")
             print(f"  Baseline: \"{baseline_text[i]}\"")
             print(f"  Steered:  \"{steered_result['output_text'][i]}\"")
-    
+        
     return result
 
 
 def test_all():
     model = BatchedMuranoModel.from_pretrained("gpt2")
     
-    pos_data = [
-        "I absolutely love this!", "You are the best friend ever.", "This is wonderful and amazing.",
-        "I am so happy to see you.", "What a beautiful day it is.", "I really admire your work.",
-        "You are a fantastic person.", "I love you so much.", "This is the best thing ever.",
-        "I am grateful for your kindness."
-    ]
+    pos_data = POSITIVE_SAMPLES
+    neg_data = NEGATIVE_SAMPLES
     
-    neg_data = [
-        "I absolutely hate this!", "You are the worst person ever.", "This is terrible and awful.",
-        "I am so angry to see you.", "What a horrible day it is.", "I really despise your work.",
-        "You are a terrible person.", "I hate you so much.", "This is the worst thing ever.",
-        "I am disgusted by your behavior."
-    ]
-    
-    # Test prompts: Negative starts to see if steering makes them more positive
     test_data = [
         "I think that the food was",
         "The food was",
@@ -515,21 +337,34 @@ def test_all():
     ]
     
     # Compute steering vector at layer 8 MLP (not 6 because 8 is a deeper layer for abstract sentiment)
-    # Extract and apply at same layer to avoid shape issues
-    loc = Location(layers=[8], modules=["mlp"], token_pos=[-1])
-    rec_loc = Location(layers=[10], modules=["mlp"], token_pos=[-1])
+    # Test case 1: Apply to last token only
+    loc_extract = Location(layers=[8], modules=["mlp"], token_pos=[-1])  # Extract at last token
+    loc_intervene = Location(layers=[8], modules=["mlp"], token_pos=[-1])  # Apply at last token
     
-    print("Computing Love - Hate steering vector...")
+    print("=== Test 1: Steering vector applied to last token only ===")
     compute_steering_vector(
         model=model,
         positive_dataset=Dataset.from_list([{"text": t} for t in pos_data]),
         negative_dataset=Dataset.from_list([{"text": t} for t in neg_data]),
-        location=loc,
+        location=loc_extract,  # Extract requires concrete token_pos
         test_dataset=Dataset.from_list([{"text": t} for t in test_data]),
-        intervene_location=loc,  # Apply at same layer where extracted
-        record_location=rec_loc,
-        max_new_tokens=20,
-        coeff=6.0  # Slightly increased - activation changes of 37-52 are good, but can try stronger
+        intervene_location=loc_intervene,  # Apply at last token
+        max_new_tokens=15,
+        coeff=6.0
+    )
+
+    loc_all = Location(layers=[8], modules=["mlp"], token_pos=None)
+    
+    print("\n=== Test 2: Steering vector applied to ALL tokens ===")
+    compute_steering_vector(
+        model=model,
+        positive_dataset=Dataset.from_list([{"text": t} for t in pos_data]),
+        negative_dataset=Dataset.from_list([{"text": t} for t in neg_data]),
+        location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),  # Extract at last token
+        test_dataset=Dataset.from_list([{"text": t} for t in test_data]),
+        intervene_location=loc_all,  # Apply to all tokens during generation
+        max_new_tokens=15,
+        coeff=6.0
     )
 
 if __name__ == "__main__":

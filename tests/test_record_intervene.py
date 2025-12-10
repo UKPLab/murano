@@ -19,7 +19,6 @@ from record_intervene import (
     compute_steering_vector,
     extract_steering_vector,
     apply_steering_vector,
-    record_with_steering_vector,
 )
 from federico_visualization import Location, ActivationDataset
 
@@ -415,26 +414,6 @@ class TestApplySteeringVector:
         for key in ["output_ids", "output_text", "input_ids"]:
             assert key in result
 
-    def test_record_with_steering_vector(self, mock_model):
-        """record_with_steering_vector records activations with add mode."""
-        instance, model = mock_model
-        setup_layer_outputs(model, 8, 10)
-        instance.model = model.model
-        steering_vector = torch.randn(1, 1, 1, 768)
-        intervene_location = Location(layers=[8], modules=["mlp"], token_pos=[-1])
-        record_location = Location(layers=[10], modules=["mlp"], token_pos=[-1])
-        
-        result = record_with_steering_vector(
-            model=instance,
-            input=torch.tensor([[1, 2, 3]]),
-            steering_vector=steering_vector,
-            intervene_location=intervene_location,
-            record_location=record_location,
-        )
-        
-        assert isinstance(result, dict)
-        for key in ["activations", "input_ids"]:
-            assert key in result
 
     def test_with_dataset_input(self, mock_model):
         """Test apply_steering_vector processes Dataset input."""

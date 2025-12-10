@@ -11,7 +11,7 @@ def prepare_input_ids(
     tokenizer,
     device,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Prepare input_ids and attention_mask from string, tensor, or dict inputs."""
+    """Convert string/tensor/dict to (input_ids, attention_mask) tensors on device."""
     if isinstance(input, str):
         inputs = tokenizer(input, return_tensors="pt", padding=True, truncation=True)
         input_ids = inputs["input_ids"].to(device)
@@ -37,7 +37,7 @@ def prepare_intervention_activation(
     device,
     coeff: float = 1.0,
 ) -> torch.Tensor:
-    """Prepare the intervention activation tensor with correct shape and device."""
+    """Extract activation from dataset, broadcast to batch_size, apply coeff, move to device."""
     intervention_activation = torch.tensor(activation_dataset[intervene_location])
 
     while intervention_activation.ndim < 2:
@@ -56,7 +56,7 @@ def prepare_intervention_activation(
 def steering_vector_to_activation_dataset(
     steering_vector: torch.Tensor, location: Location
 ) -> ActivationDataset:
-    """Convert a steering vector tensor to an ActivationDataset."""
+    """Convert steering vector tensor to ActivationDataset with proper shape expansion."""
     sv_array = steering_vector.detach().cpu().numpy()
 
     # Expand to [1, num_layers, num_modules, num_token_pos, hidden_dim]
@@ -81,4 +81,64 @@ def steering_vector_to_activation_dataset(
         global_metadata={"type": "steering_vector"},
         dataset=None,
     )
+
+
+def create_intervention_hook(intervention_activation: torch.Tensor, location: Location):
+    """
+    Create forward hook that adds intervention_activation based on location.token_pos.
+    
+    token_pos=None/[None] → all tokens, [-1] → last token, [0] → first token, etc.
+    Returns hook function for register_forward_hook().
+    """
+    def hook_fn(module, args, output):
+        output_tensor = (output[0] if isinstance(output, tuple) else output).clone()
+        seq_len = output_tensor.shape[1]
+        
+        # Normalize intervention activation shape to [batch, seq, hidden]
+        act = intervention_activation
+        while act.ndim > 3:
+            act = act.squeeze(0)
+        
+        if act.ndim == 2:
+            # [batch, hidden] -> broadcast over sequence
+            act_full = act.unsqueeze(1).expand(-1, seq_len, -1)
+        elif act.ndim == 3:
+            # [batch, seq, hidden]
+            if act.shape[1] == seq_len:
+                act_full = act
+            elif act.shape[1] == 1:
+                act_full = act.expand(-1, seq_len, -1)
+            else:
+                # Fallback: use first position and broadcast
+                act_full = act[:, :1, :].expand(-1, seq_len, -1)
+        else:
+            raise ValueError(f"Unexpected intervention activation shape: {intervention_activation.shape}")
+        
+        # Apply intervention based on Location.token_pos
+        # Location class converts token_pos to list, so None becomes [None]
+        token_pos = location.token_pos
+        
+        # Check if applying to all tokens
+        if token_pos is None or (isinstance(token_pos, list) and len(token_pos) == 1 and token_pos[0] is None):
+            # Apply to all tokens in current sequence
+            # When token_pos=None, we broadcast the activation to all positions
+            # This means the same steering vector (extracted from one position) is added to every token
+            output_tensor[:] = output_tensor[:] + act_full
+        elif isinstance(token_pos, (list, tuple)) and len(token_pos) > 0:
+            # Apply to specified token positions (relative to current sequence)
+            # Note: act_full is broadcast to full sequence length, but we only apply at specific positions
+            for pos in token_pos:
+                if pos is not None:
+                    # Convert relative index: -1 means last token, 0 means first
+                    pos_idx = pos if pos >= 0 else seq_len + pos
+                    pos_idx = max(0, min(pos_idx, seq_len - 1))
+                    # Apply intervention at this position
+                    # For token_pos=[-1], we apply the steering vector only at the last token
+                    # The act_full[:, pos_idx, :] uses the value from the extracted position
+                    output_tensor[:, pos_idx, :] = output_tensor[:, pos_idx, :] + act_full[:, pos_idx, :]
+        else:
+            raise ValueError(f"Invalid token_pos in Location: {token_pos}. Must be None, [None], or a list of integers.")
+        
+        return (output_tensor,) + output[1:] if isinstance(output, tuple) else output_tensor
+    return hook_fn
 
