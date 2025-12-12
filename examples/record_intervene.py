@@ -22,12 +22,15 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         intervene_location: Location,
         record_location: Location,
         activation_dataset: ActivationDataset,
+        mode: str = "replacement",
     ) -> dict:
         """
-        Replace activations at intervene_location with activation_dataset, then record at record_location.
+        Replace or add activations at intervene_location with activation_dataset, then record at record_location.
+        
+        Args:
+            mode: "replacement" (default) to replace activations, "addition" to add activations.
         
         Returns: {"activations": [...], "input_ids": tensor}
-        For steering vectors (additive), use same pattern but add instead of replace.
         """
         input_ids, _ = prepare_input_ids(input, self.model.tokenizer, next(self.model.parameters()).device)
         batch_size = input_ids.shape[0]
@@ -54,11 +57,21 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
                             if pos < 0:
                                 pos = target.shape[1] + pos
                             pos = max(0, min(pos, target.shape[1] - 1))
-                            # REPLACE activation with intervention (atomic intervention)
-                            target[:, pos, :] = intervention_activation
+                            # Apply intervention based on mode
+                            if mode == "replacement":
+                                target[:, pos, :] = intervention_activation
+                            elif mode == "addition":
+                                target[:, pos, :] = target[:, pos, :] + intervention_activation
+                            else:
+                                raise ValueError(f"Invalid mode: {mode}. Must be 'replacement' or 'addition'.")
                         else:
-                            # Apply to all positions - REPLACE all positions with intervention
-                            target[:] = intervention_activation
+                            # Apply to all positions based on mode
+                            if mode == "replacement":
+                                target[:] = intervention_activation
+                            elif mode == "addition":
+                                target[:] = target[:] + intervention_activation
+                            else:
+                                raise ValueError(f"Invalid mode: {mode}. Must be 'replacement' or 'addition'.")
 
                 # Record
                 for layer in record_location.layers:
@@ -89,14 +102,13 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         intervene_location: Location,
         activation_dataset: ActivationDataset,
         max_new_tokens: int = 20,
-        coeff: float = 1.0,
         **generation_kwargs,
     ) -> dict:
         """
         Generate text with intervention applied via hooks at each forward pass.
         
         Uses HF's generate() with hooks that add activation_dataset at intervene_location.
-        Returns: {"output_ids": tensor, "output_text": list, "input_ids": tensor}
+        Returns: {"output_ids": tensor, "input_ids": tensor}
         """
         tokenizer = self.model.tokenizer
         raw_model = self.model._model if hasattr(self.model, "_model") else self.model
@@ -105,7 +117,7 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
         input_ids, attention_mask = prepare_input_ids(input, tokenizer, device)
         batch_size = input_ids.shape[0]
         intervention_activation = prepare_intervention_activation(
-            activation_dataset, intervene_location, batch_size, device, coeff
+            activation_dataset, intervene_location, batch_size, device, coeff=1.0
         )
         
         # Set up hooks for intervention
@@ -135,17 +147,15 @@ class BatchedMuranoModel(BaseBatchedMuranoModel):
                 
                 # Call HF's generate() - hooks will apply intervention at each step
                 output_ids = raw_model.generate(input_ids, **gen_kwargs)
+        except Exception as e:
+            raise e
         finally:
             # Remove all hooks
             for handle in handles:
                 handle.remove()
         
-        # Decode generated text
-        output_text = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
-        
         return {
             "output_ids": output_ids,
-            "output_text": output_text,
             "input_ids": input_ids,
         }
 
@@ -211,7 +221,9 @@ def apply_steering_vector(
     
     For recording, use record_intervene pattern but add steering vector instead of replace.
     """
-    sv_dataset = steering_vector_to_activation_dataset(steering_vector, intervene_location)
+    # Apply coeff to steering vector before converting to activation dataset
+    scaled_steering_vector = steering_vector * coeff
+    sv_dataset = steering_vector_to_activation_dataset(scaled_steering_vector, intervene_location)
     
     if isinstance(input, Dataset):
         return [
@@ -238,7 +250,6 @@ def apply_steering_vector(
         input=input_dict,
         intervene_location=intervene_location,
         activation_dataset=sv_dataset,
-        coeff=coeff,
         **{k: v for k, v in kwargs.items() if k not in ["batch_size", "max_length", "attention_mask"]},
     )
 
@@ -310,19 +321,22 @@ def compute_steering_vector(
             steering_vector=sv_result["steering_vector"],
             intervene_location=intervene_location,
             coeff=coeff,
-                    max_new_tokens=max_new, 
-                )
+            max_new_tokens=max_new, 
+        )
+        
+        # Decode steered output text
+        steered_output_text = tokenizer.batch_decode(steered_result["output_ids"], skip_special_tokens=True)
         
         result["baseline_output_ids"] = baseline_ids
         result["baseline_output_text"] = baseline_text
         result["steered_output_ids"] = steered_result["output_ids"]
-        result["steered_output_text"] = steered_result["output_text"]
+        result["steered_output_text"] = steered_output_text
         
         print("\n=== Generation Comparison ===")
         for i, prompt in enumerate(test_texts):
             print(f"\nPrompt: \"{prompt}\"")
             print(f"  Baseline: \"{baseline_text[i]}\"")
-            print(f"  Steered:  \"{steered_result['output_text'][i]}\"")
+            print(f"  Steered:  \"{steered_output_text[i]}\"")
         
     return result
 
@@ -355,8 +369,6 @@ def test_all():
         max_new_tokens=15,
         coeff=6.0
     )
-
-    loc_all = Location(layers=[8], modules=["mlp"], token_pos=None)
     
     print("\n=== Test 2: Steering vector applied to ALL tokens ===")
     compute_steering_vector(
@@ -365,7 +377,7 @@ def test_all():
         negative_dataset=Dataset.from_list([{"text": t} for t in neg_data]),
         extract_location=Location(layers=[8], modules=["mlp"], token_pos=[-1]),  # Extract at last token
         test_dataset=Dataset.from_list([{"text": t} for t in test_data]),
-        intervene_location=loc_all,  # Apply to all tokens during generation
+        intervene_location=Location(layers=[8], modules=["mlp"], token_pos=None),  # Apply to all tokens during generation
         max_new_tokens=15,
         coeff=6.0
     )
