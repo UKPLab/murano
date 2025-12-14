@@ -9,18 +9,13 @@ from .lenses.base_lens import BaseLens
 from .utils import LayerLocation
 
 # Optional imports for extended functionality
-# These imports work when running from examples directory or when examples is in path
+# Check if examples utilities are available (used to determine if Location format is supported)
 _HAS_INTERVENTION_UTILS = False
 try:
     # Try importing from examples directory (works when running from examples/)
     try:
-        from federico_visualization import ActivationDataset, Location
-        from utils import (
-            prepare_input_ids,
-            prepare_intervention_activation,
-            steering_vector_to_activation_dataset,
-            create_intervention_hook,
-        )
+        import federico_visualization
+        import utils
         _HAS_INTERVENTION_UTILS = True
     except ImportError:
         # Try importing with examples prefix (if examples is a package)
@@ -29,18 +24,14 @@ try:
         examples_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'examples')
         if examples_path not in sys.path:
             sys.path.insert(0, examples_path)
-        from federico_visualization import ActivationDataset, Location
-        from utils import (
-            prepare_input_ids,
-            prepare_intervention_activation,
-            steering_vector_to_activation_dataset,
-            create_intervention_hook,
-        )
-        _HAS_INTERVENTION_UTILS = True
+        try:
+            import federico_visualization
+            import utils
+            _HAS_INTERVENTION_UTILS = True
+        except ImportError:
+            pass
 except ImportError:
-    # Define dummy types for type hints when imports fail
-    Location = type('Location', (), {})
-    ActivationDataset = type('ActivationDataset', (), {})
+    pass
 
 
 class MuranoModel:
