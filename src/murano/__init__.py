@@ -1,10 +1,10 @@
 from .lenses import LogitLens
 from .model import MuranoModel
-from .utils import LayerLocation, Location
+from .utils import Location, LayerLocation
 
 __all__ = [
     "MuranoModel",
     "LogitLens",
-    "LayerLocation",
     "Location",
+    "LayerLocation",  # Backward compatibility
 ]

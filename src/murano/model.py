@@ -1,4 +1,6 @@
 from typing import List, Union, Optional
+import sys
+import os
 import torch
 from torch.utils.data import DataLoader
 from datasets import Dataset
@@ -6,32 +8,12 @@ from datasets import Dataset
 from nnsight import LanguageModel
 
 from .lenses.base_lens import BaseLens
-from .utils import LayerLocation
+from .utils import Location
 
-# Optional imports for extended functionality
-# Check if examples utilities are available (used to determine if Location format is supported)
-_HAS_INTERVENTION_UTILS = False
-try:
-    # Try importing from examples directory (works when running from examples/)
-    try:
-        import federico_visualization
-        import utils
-        _HAS_INTERVENTION_UTILS = True
-    except ImportError:
-        # Try importing with examples prefix (if examples is a package)
-        import sys
-        import os
-        examples_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'examples')
-        if examples_path not in sys.path:
-            sys.path.insert(0, examples_path)
-        try:
-            import federico_visualization
-            import utils
-            _HAS_INTERVENTION_UTILS = True
-        except ImportError:
-            pass
-except ImportError:
-    pass
+# Add examples directory to path if available for intervention utilities
+_EXAMPLES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'examples')
+if os.path.exists(_EXAMPLES_PATH) and _EXAMPLES_PATH not in sys.path:
+    sys.path.insert(0, _EXAMPLES_PATH)
 
 
 class MuranoModel:
@@ -44,7 +26,7 @@ class MuranoModel:
         return cls(model_name)
 
     def run_with_lens(
-        self, prompt: str, lens: BaseLens, locations: List[LayerLocation]
+        self, prompt: str, lens: BaseLens, locations: List[Location]
     ) -> dict:
         activations = []
         layer_indices = []
@@ -97,14 +79,17 @@ class MuranoModel:
     def run_recording(
         self, 
         input: Union[str, torch.Tensor, dict], 
-        location: Union["Location", List[LayerLocation]], 
+        location: Union[Location, List[Location]], 
         **kwargs
     ) -> dict:
         """
         Run the model with tracing enabled to record activations at specified locations.
         Computes a single forward pass for a batch of inputs.
         
-        Supports both Location (from examples) and List[LayerLocation] (from src) formats.
+        Args:
+            input: Input tensor, dict with input_ids, or string
+            location: Location or list of Location objects specifying where to record
+            **kwargs: Additional arguments passed to tracer.invoke
         """
         activations = []
         
@@ -120,10 +105,8 @@ class MuranoModel:
             with tracer.invoke(input_ids, max_length=10, **kwargs):
                 layers_list = list(self.model.transformer.h)
 
-                # Handle Location format (from examples)
-                # Check by class name to handle import failures gracefully
-                location_type_name = type(location).__name__
-                if location_type_name == "Location" and _HAS_INTERVENTION_UTILS:
+                # Handle single Location object
+                if isinstance(location, Location) and not isinstance(location, list):
                     for layer in location.layers:
                         layer_activation = []
                         for module in location.modules:
@@ -145,8 +128,8 @@ class MuranoModel:
                             layer_activation.append(module_activation)
                         activations.append(layer_activation)
                 
-                # Handle List[LayerLocation] format (from src)
-                elif isinstance(location, list) and all(isinstance(loc, LayerLocation) for loc in location):
+                # Handle List[Location] format
+                elif isinstance(location, list) and all(isinstance(loc, Location) for loc in location):
                     layer_indices = []
                     for loc in location:
                         if isinstance(loc.layers, slice):
@@ -185,18 +168,19 @@ class MuranoModel:
 
         return artifact
 
-    def _stack_activations(self, obj, location: Optional[Union["Location", List[LayerLocation]]] = None) -> torch.Tensor:
+    def _stack_activations(self, obj, location: Optional[Union[Location, List[Location]]] = None) -> torch.Tensor:
         """
         Utility function that reshapes activations to appropriate format.
         Necessary because activations are returned in heterogeneous nested structures.
         
-        If location is provided (Location type), uses the federico_visualization.py version.
-        Otherwise, uses the federico_dataset_batching.py version.
+        If location is provided (single Location with modules), uses 5D format.
+        Otherwise, uses 4D format.
         """
         obj = self._stack_activations_recursive(obj)
         
-        location_type_name = type(location).__name__ if location else None
-        if location is not None and _HAS_INTERVENTION_UTILS and location_type_name == "Location":
+        # Check if location has modules attribute (single Location vs list)
+        has_modules = location is not None and hasattr(location, 'modules') and not isinstance(location, list)
+        if has_modules:
             # Version from federico_visualization.py
             obj = obj.permute(0, 3, 1, 2, 4, 5)
             obj = obj.reshape(obj.shape[0] * obj.shape[1], obj.shape[2], obj.shape[3], obj.shape[4], obj.shape[5])
@@ -259,7 +243,7 @@ class MuranoModel:
     def run_task(
         self, 
         dataset: Dataset, 
-        location: Union["Location", List[LayerLocation]], 
+        location: Union[Location, List[Location]], 
         **kwargs
     ) -> dict:
         """
@@ -267,7 +251,10 @@ class MuranoModel:
         at specified location.
         Processes the dataset in batches by calling run_recording for each batch.
         
-        Supports both Location (from examples) and List[LayerLocation] (from src) formats.
+        Args:
+            dataset: HuggingFace Dataset with 'text' field
+            location: Location or list of Location objects specifying where to record
+            **kwargs: batch_size and other arguments passed to run_recording
         """
         # Utility function to tokenize used in map dataset
         def process_dataset(example, tokenizer, max_length=10):
@@ -294,20 +281,30 @@ class MuranoModel:
             activations.append(activation)
         
         # Stack activations
-        location_type_name = type(location).__name__ if location else None
-        activations = self._stack_activations(activations, location if _HAS_INTERVENTION_UTILS and location_type_name == "Location" else None)
+        has_modules = hasattr(location, 'modules') and not isinstance(location, list)
+        activations = self._stack_activations(activations, location if has_modules else None)
         
-        # Return format depends on location type
-        if _HAS_INTERVENTION_UTILS and location_type_name == "Location":
-            # Return ActivationDataset (from federico_visualization.py)
-            artifact = ActivationDataset(
-                activations=activations,
-                location=location,
-                global_metadata=global_metadata,
-                dataset=dataset
-            )
+        # Try to return ActivationDataset if available, otherwise return dict
+        has_modules_single_location = isinstance(location, Location) and not isinstance(location, list)
+        if has_modules_single_location:
+            try:
+                from federico_visualization import ActivationDataset
+                artifact = ActivationDataset(
+                    activations=activations,
+                    location=location,
+                    global_metadata=global_metadata,
+                    dataset=dataset
+                )
+            except ImportError:
+                # Fallback to dict if ActivationDataset not available
+                artifact = {
+                    "activations": activations,
+                    "global_metadata": global_metadata,
+                    "dataset": dataset,
+                    "location": location,
+                }
         else:
-            # Return dict (from federico_location.py and federico_dataset_batching.py)
+            # Return dict for list of locations
             artifact = {
                 "activations": activations,
                 "global_metadata": global_metadata,
@@ -323,9 +320,9 @@ class MuranoModel:
     def record_intervene(
         self,
         input: Union[str, torch.Tensor, dict],
-        intervene_location: "Location",
-        record_location: "Location",
-        activation_dataset: "ActivationDataset",
+        intervene_location: Location,
+        record_location: Location,
+        activation_dataset,  # ActivationDataset from federico_visualization
         mode: str = "replacement",
     ) -> dict:
         """
@@ -419,8 +416,8 @@ class MuranoModel:
     def generate_intervene(
         self,
         input: Union[str, torch.Tensor, dict],
-        intervene_location: "Location",
-        activation_dataset: "ActivationDataset",
+        intervene_location: Location,
+        activation_dataset,  # ActivationDataset from federico_visualization
         max_new_tokens: int = 20,
         **generation_kwargs,
     ) -> dict:
