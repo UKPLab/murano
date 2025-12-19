@@ -10,7 +10,7 @@ from nnsight import LanguageModel
 from .lenses.base_lens import BaseLens
 from .utils import Location
 
-# Add examples directory to path if available for intervention utilities
+# Add examples directory to path if available (for ActivationDataset from federico_visualization)
 _EXAMPLES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'examples')
 if os.path.exists(_EXAMPLES_PATH) and _EXAMPLES_PATH not in sys.path:
     sys.path.insert(0, _EXAMPLES_PATH)
@@ -333,21 +333,9 @@ class MuranoModel:
         
         Returns: {"activations": [...], "input_ids": tensor}
         
-        Requires: examples/utils.py and examples/federico_visualization.py to be available.
+        Requires: ActivationDataset from examples/federico_visualization.py to be available.
         """
-        # Import utilities when needed
-        try:
-            from utils import prepare_input_ids, prepare_intervention_activation
-        except ImportError:
-            import sys
-            import os
-            examples_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'examples')
-            if examples_path not in sys.path:
-                sys.path.insert(0, examples_path)
-            try:
-                from utils import prepare_input_ids, prepare_intervention_activation
-            except ImportError:
-                raise ImportError("record_intervene requires examples/utils.py to be available. Make sure you're running from the examples directory or examples is in your Python path.")
+        from .utils import prepare_input_ids, prepare_intervention_activation
         
         input_ids, _ = prepare_input_ids(input, self.model.tokenizer, next(self.model.parameters()).device)
         batch_size = input_ids.shape[0]
@@ -427,29 +415,13 @@ class MuranoModel:
         Uses HF's generate() with hooks that add activation_dataset at intervene_location.
         Returns: {"output_ids": tensor, "input_ids": tensor}
         
-        Requires: examples/utils.py and examples/federico_visualization.py to be available.
+        Requires: ActivationDataset from examples/federico_visualization.py to be available.
         """
-        # Import utilities when needed
-        try:
-            from utils import (
-                prepare_input_ids,
-                prepare_intervention_activation,
-                create_intervention_hook,
-            )
-        except ImportError:
-            import sys
-            import os
-            examples_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'examples')
-            if examples_path not in sys.path:
-                sys.path.insert(0, examples_path)
-            try:
-                from utils import (
-                    prepare_input_ids,
-                    prepare_intervention_activation,
-                    create_intervention_hook,
-                )
-            except ImportError:
-                raise ImportError("generate_intervene requires examples/utils.py to be available. Make sure you're running from the examples directory or examples is in your Python path.")
+        from .utils import (
+            prepare_input_ids,
+            prepare_intervention_activation,
+            create_intervention_hook,
+        )
         
         tokenizer = self.model.tokenizer
         raw_model = self.model._model if hasattr(self.model, "_model") else self.model

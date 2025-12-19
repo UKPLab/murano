@@ -4,8 +4,9 @@ import numpy as np
 from datasets import Dataset
 
 from federico_location import BatchedMuranoModel as BaseBatchedMuranoModel
-from federico_visualization import ActivationDataset, Location
-from utils import (
+from federico_visualization import ActivationDataset
+from murano import Location
+from murano.utils import (
     prepare_input_ids,
     prepare_intervention_activation,
     steering_vector_to_activation_dataset,
