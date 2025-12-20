@@ -1,41 +1,109 @@
 from typing import List, Union, Tuple
 import numpy as np
 import torch
+from datasets import Dataset
 
-
+## The Location I is copied from federico_visualization.py
 class Location:
     """
-    Location specifies where to extract or intervene in model activations.
-    
-    Args:
-        layers: Layer index/indices (int, list of ints, or slice)
-        modules: Module name(s) within layers (e.g., "mlp", "attn", "output")
-        token_pos: Token position(s) to extract (int, list of ints, or None for all tokens)
+    Location specifies a slice of model activations to extract or analyze.
     """
-    def __init__(
-        self, 
-        layers: Union[int, List[int], slice], 
-        modules: Union[str, List[str]] = "mlp",
-        token_pos: Union[int, List[int], None] = None
-    ):
-        # Normalize layers to list (or keep as slice)
-        if isinstance(layers, slice):
-            self.layers = layers
-        else:
-            self.layers = layers if isinstance(layers, list) else [layers]
-        
-        # Normalize modules to list
+    def __init__(self, layers: Union[int, List[int]], modules: Union[str, List[str]] = "mlp",
+                 token_pos: Union[int, List[int]] = None):
+        self.layers = layers if isinstance(layers, list) else [layers]
         self.modules = modules if isinstance(modules, list) else [modules]
-        
-        # Keep token_pos as is (can be int, list, or None)
-        self.token_pos = token_pos
+        self.token_pos = token_pos if isinstance(token_pos, list) else [token_pos]
+        # TODO: implement keyword based indexing for token_pos
 
     def __repr__(self):
-        return f"Location(layers={self.layers}, modules={self.modules}, token_pos={self.token_pos})"
+        return f"(layers={self.layers}, modules={self.modules}, token_pos={self.token_pos})"
+    
+    def get_slice_idx(self, _slice):
+        """
+        Convert a subset of a Location (slice) into indices for numpy array slicing.
+        """
+        if not self.is_valid_slice(_slice):
+            raise ValueError(f"Slice {_slice} is not included within location {self}.")
+
+        # Get indices for slicing activations based on slice Location
+        layer_idx = [self.layers.index(l) for l in _slice.layers]
+        module_idx = [self.modules.index(m) for m in _slice.modules]
+        token_idx = [self.token_pos.index(p) for p in _slice.token_pos]
+        return (slice(None), layer_idx, module_idx, token_idx, slice(None))
+
+    def is_valid_slice(self, slice) -> bool:
+        """
+        Check if the slice is contained within this location.
+        """
+        return (all(l in self.layers for l in slice.layers) and
+                all(m in self.modules for m in slice.modules) and
+                all(p in self.token_pos for p in slice.token_pos))
 
 
 # Backward compatibility alias
 LayerLocation = Location
+
+
+class ActivationDataset:
+    """
+    ActivationDataset stores model activations and associated metadata.
+    Internally uses NumPy for storage.
+    """
+    def __init__(self, activations: Union[np.ndarray, torch.Tensor],
+                 location: Location,
+                 global_metadata: dict, 
+                 dataset: Dataset):
+        """
+        Initializes the ActivationDataset with activations and metadata.
+        Accepts activations as either numpy arrays or torch tensors (auto-converted to numpy).
+        """
+        self.activations = self._to_numpy(activations)
+        self.location = location
+        self.global_metadata = global_metadata
+        self.dataset = dataset
+        
+        # Infer key activation dimensions
+        ref_activation = self.activations.shape
+        self.num_examples = ref_activation[0]
+        self.num_layers = ref_activation[1]
+        self.num_modules = ref_activation[2]
+        self.seq_len = ref_activation[3]
+        self.hidden_dim = ref_activation[4]
+
+    def iloc(self, *idx):
+        return self.activations[idx]
+
+    def __getitem__(self, key):
+        """
+        Supports both Location-based slicing and dictionary-style string access.
+        
+        Expected indexing order for Location: 
+            [examples, layers, modules, tokens, hidden_dim]
+        """
+        if isinstance(key, str):
+            # Dictionary-style access for attributes
+            if key == "activations":
+                return self.activations
+            elif key == "location":
+                return self.location
+            elif key == "global_metadata":
+                return self.global_metadata
+            elif key == "dataset":
+                return self.dataset
+            else:
+                raise KeyError(f"Key '{key}' not found")
+        else:
+            # Location-based slicing
+            idx = self.location.get_slice_idx(key)
+            return self.activations[idx].squeeze()
+    
+    def _to_numpy(self, activations: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
+        if isinstance(activations, torch.Tensor):
+            return activations.detach().cpu().numpy()
+        elif isinstance(activations, np.ndarray):
+            return activations
+        else:
+            raise TypeError(f"Activations must be a numpy array or torch tensor, got {type(activations)}.")
 
 
 # Intervention utility functions
@@ -65,7 +133,7 @@ def prepare_input_ids(
 
 
 def prepare_intervention_activation(
-    activation_dataset,  # ActivationDataset from federico_visualization
+    activation_dataset,  # ActivationDataset
     intervene_location: Location,
     batch_size: int,
     device,
@@ -91,17 +159,6 @@ def steering_vector_to_activation_dataset(
     steering_vector: torch.Tensor, location: Location
 ):
     """Convert a steering vector tensor to an ActivationDataset."""
-    # Import ActivationDataset when needed
-    try:
-        from federico_visualization import ActivationDataset
-    except ImportError:
-        import sys
-        import os
-        examples_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'examples')
-        if examples_path not in sys.path:
-            sys.path.insert(0, examples_path)
-        from federico_visualization import ActivationDataset
-    
     sv_array = steering_vector.detach().cpu().numpy()
 
     # Expand to [1, num_layers, num_modules, num_token_pos, hidden_dim]

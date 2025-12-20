@@ -7,13 +7,21 @@ from datasets import Dataset
 
 from nnsight import LanguageModel
 
-from .lenses.base_lens import BaseLens
-from .utils import Location
+# Add src directory to path so we can import from murano package
+_src_path = os.path.dirname(os.path.dirname(__file__))
+if _src_path not in sys.path:
+    sys.path.insert(0, _src_path)
 
-# Add examples directory to path if available (for ActivationDataset from federico_visualization)
-_EXAMPLES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'examples')
-if os.path.exists(_EXAMPLES_PATH) and _EXAMPLES_PATH not in sys.path:
-    sys.path.insert(0, _EXAMPLES_PATH)
+# Simple imports
+from murano.lenses.base_lens import BaseLens
+from murano.utils import (
+    Location,
+    ActivationDataset,
+    prepare_input_ids,
+    prepare_intervention_activation,
+    steering_vector_to_activation_dataset,
+    create_intervention_hook,
+)
 
 
 class MuranoModel:
@@ -284,25 +292,15 @@ class MuranoModel:
         has_modules = hasattr(location, 'modules') and not isinstance(location, list)
         activations = self._stack_activations(activations, location if has_modules else None)
         
-        # Try to return ActivationDataset if available, otherwise return dict
+        # Return ActivationDataset for single Location, dict for list of locations
         has_modules_single_location = isinstance(location, Location) and not isinstance(location, list)
         if has_modules_single_location:
-            try:
-                from federico_visualization import ActivationDataset
-                artifact = ActivationDataset(
-                    activations=activations,
-                    location=location,
-                    global_metadata=global_metadata,
-                    dataset=dataset
-                )
-            except ImportError:
-                # Fallback to dict if ActivationDataset not available
-                artifact = {
-                    "activations": activations,
-                    "global_metadata": global_metadata,
-                    "dataset": dataset,
-                    "location": location,
-                }
+            artifact = ActivationDataset(
+                activations=activations,
+                location=location,
+                global_metadata=global_metadata,
+                dataset=dataset
+            )
         else:
             # Return dict for list of locations
             artifact = {
@@ -335,7 +333,7 @@ class MuranoModel:
         
         Requires: ActivationDataset from examples/federico_visualization.py to be available.
         """
-        from .utils import prepare_input_ids, prepare_intervention_activation
+        # Utilities already imported at top
         
         input_ids, _ = prepare_input_ids(input, self.model.tokenizer, next(self.model.parameters()).device)
         batch_size = input_ids.shape[0]
@@ -417,11 +415,7 @@ class MuranoModel:
         
         Requires: ActivationDataset from examples/federico_visualization.py to be available.
         """
-        from .utils import (
-            prepare_input_ids,
-            prepare_intervention_activation,
-            create_intervention_hook,
-        )
+        # Utilities already imported at top
         
         tokenizer = self.model.tokenizer
         raw_model = self.model._model if hasattr(self.model, "_model") else self.model
@@ -471,3 +465,133 @@ class MuranoModel:
             "output_ids": output_ids,
             "input_ids": input_ids,
         }
+
+
+def test_all():
+    """Test the complete flow: extract steering vector and apply it during generation."""
+    # Add examples directory to path for sentiment_data
+    _examples_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'examples')
+    if _examples_path not in sys.path:
+        sys.path.insert(0, _examples_path)
+    
+    from sentiment_data import POSITIVE_SAMPLES, NEGATIVE_SAMPLES
+    
+    model = MuranoModel.from_pretrained("gpt2")
+    
+    test_data = [
+        "I think that the food was",
+        "The food was",
+        "My friend is a"
+    ]
+    
+    # Test case 1: Extract steering vector and apply to last token only
+    loc_extract = Location(layers=[8], modules=["mlp"], token_pos=[-1])
+    loc_intervene = Location(layers=[8], modules=["mlp"], token_pos=[-1])
+    
+    print("=== Test 1: Steering vector applied to last token only ===")
+    
+    # Extract steering vector
+    pos_dataset = Dataset.from_list([{"text": t} for t in POSITIVE_SAMPLES])
+    neg_dataset = Dataset.from_list([{"text": t} for t in NEGATIVE_SAMPLES])
+    
+    pos_artifact = model.run_task(pos_dataset, loc_extract, batch_size=1)
+    neg_artifact = model.run_task(neg_dataset, loc_extract, batch_size=1)
+    
+    # Convert to ActivationDataset if needed
+    # ActivationDataset is already imported at top level
+    
+    # Check if already ActivationDataset by checking for attributes
+    if hasattr(pos_artifact, 'activations') and hasattr(pos_artifact, 'location'):
+        pos_acts = pos_artifact
+    else:
+        # pos_artifact is a dict
+        pos_acts = ActivationDataset(
+            activations=pos_artifact["activations"],
+            location=loc_extract,
+            global_metadata=pos_artifact.get("global_metadata", {}),
+            dataset=pos_artifact.get("dataset"),
+        )
+    
+    if hasattr(neg_artifact, 'activations') and hasattr(neg_artifact, 'location'):
+        neg_acts = neg_artifact
+    else:
+        # neg_artifact is a dict
+        neg_acts = ActivationDataset(
+            activations=neg_artifact["activations"],
+            location=loc_extract,
+            global_metadata=neg_artifact.get("global_metadata", {}),
+            dataset=neg_artifact.get("dataset"),
+        )
+    
+    pos_mean = torch.tensor(pos_acts.activations).mean(0)
+    neg_mean = torch.tensor(neg_acts.activations).mean(0)
+    steering_vector = pos_mean - neg_mean
+    
+    # Utilities already imported at top
+    scaled_sv = steering_vector * 6.0
+    sv_dataset = steering_vector_to_activation_dataset(scaled_sv, loc_intervene)
+    
+    # Generate with intervention
+    test_dataset = Dataset.from_list([{"text": t} for t in test_data])
+    tokenizer = model.model.tokenizer
+    raw_model = model.model._model if hasattr(model.model, "_model") else model.model
+    test_texts = [ex["text"] for ex in test_dataset]
+    inputs = tokenizer(test_texts, return_tensors="pt", padding=True, truncation=True)
+    input_ids = inputs["input_ids"].to(raw_model.device)
+    attention_mask = inputs.get("attention_mask")
+    if attention_mask is not None:
+        attention_mask = attention_mask.to(raw_model.device)
+    
+    # Baseline generation
+    with torch.no_grad():
+        baseline_ids = raw_model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_new_tokens=15,
+            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+        )
+    baseline_text = tokenizer.batch_decode(baseline_ids, skip_special_tokens=True)
+    
+    # Steered generation
+    input_dict = {"input_ids": input_ids}
+    if attention_mask is not None:
+        input_dict["attention_mask"] = attention_mask
+    
+    steered_result = model.generate_intervene(
+        input=input_dict,
+        intervene_location=loc_intervene,
+        activation_dataset=sv_dataset,
+        max_new_tokens=15,
+    )
+    
+    steered_output_text = tokenizer.batch_decode(steered_result["output_ids"], skip_special_tokens=True)
+    
+    print("\n=== Generation Comparison ===")
+    for i, prompt in enumerate(test_texts):
+        print(f"\nPrompt: \"{prompt}\"")
+        print(f"  Baseline: \"{baseline_text[i]}\"")
+        print(f"  Steered:  \"{steered_output_text[i]}\"")
+    
+    # Test case 2: Apply to all tokens
+    print("\n=== Test 2: Steering vector applied to ALL tokens ===")
+    loc_intervene_all = Location(layers=[8], modules=["mlp"], token_pos=None)
+    sv_dataset_all = steering_vector_to_activation_dataset(scaled_sv, loc_intervene_all)
+    
+    steered_result_all = model.generate_intervene(
+        input=input_dict,
+        intervene_location=loc_intervene_all,
+        activation_dataset=sv_dataset_all,
+        max_new_tokens=15,
+    )
+    
+    steered_output_text_all = tokenizer.batch_decode(steered_result_all["output_ids"], skip_special_tokens=True)
+    
+    print("\n=== Generation Comparison (All Tokens) ===")
+    for i, prompt in enumerate(test_texts):
+        print(f"\nPrompt: \"{prompt}\"")
+        print(f"  Baseline: \"{baseline_text[i]}\"")
+        print(f"  Steered:  \"{steered_output_text_all[i]}\"")
+
+
+if __name__ == "__main__":
+    test_all()
