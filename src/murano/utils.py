@@ -12,7 +12,10 @@ class Location:
                  token_pos: Union[int, List[int]] = None):
         self.layers = layers if isinstance(layers, list) else [layers]
         self.modules = modules if isinstance(modules, list) else [modules]
-        self.token_pos = token_pos if isinstance(token_pos, list) else [token_pos]
+        if isinstance(token_pos, list) or token_pos is None:
+            self.token_pos = token_pos
+        else:
+            self.token_pos = [token_pos]
         # TODO: implement keyword based indexing for token_pos
 
     def __repr__(self):
