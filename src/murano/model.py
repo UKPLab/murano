@@ -343,8 +343,19 @@ class MuranoModel:
             raise ValueError(f"Shape mismatch: expected (n layers, n modules, n tokens) = {expected_shape}, \
                               found {intrv_shape}")
 
+        if intervene_location.token_pos and len(intervene_location.token_pos) > 0:
+            intrv_pos = intervene_location.token_pos
+        else:
+            # acts like : in indexing
+            intrv_pos = slice(None)
+
+        if record_location.token_pos and len(record_location.token_pos) > 0:
+            record_pos = record_location.token_pos
+        else:
+            # Keeps 
+            record_pos = slice(None)
+
         activations = []
-        
         with self.model.trace() as tracer:
             with tracer.invoke(input_ids, max_length=10):
                 layers_list = list(self.model.transformer.h)
@@ -355,30 +366,15 @@ class MuranoModel:
                         layer_module = getattr(layers_list[layer], module)
                         output = layer_module.output
                         target = output[0] if isinstance(output, tuple) else output
-                        
-                        # TODO: handle undefined token_pos as applied to all tokens
-                        if intervene_location.token_pos and len(intervene_location.token_pos) > 0 and intervene_location.token_pos[0] is not None:
-                            pos = intervene_location.token_pos[0]
-                            if pos < 0:
-                                pos = target.shape[1] + pos
-                            pos = max(0, min(pos, target.shape[1] - 1))
 
-                            # TODO: implement passing function here
-                            # Apply intervention based on mode
-                            if mode == "replacement":
-                                target[:, pos, :] = intervention_activation
-                            elif mode == "addition":
-                                target[:, pos, :] = target[:, pos, :] + intervention_activation
-                            else:
-                                raise ValueError(f"Invalid mode: {mode}. Must be 'replacement' or 'addition'.")
+                        # TODO: implement passing function here
+                        # Apply intervention based on mode
+                        if mode == "replacement":
+                            target[:, intrv_pos, :] = intervention_activation
+                        elif mode == "addition":
+                            target[:, intrv_pos, :] = target[:, intrv_pos, :] + intervention_activation
                         else:
-                            # Apply to all positions based on mode
-                            if mode == "replacement":
-                                target[:] = intervention_activation
-                            elif mode == "addition":
-                                target[:] = target[:] + intervention_activation
-                            else:
-                                raise ValueError(f"Invalid mode: {mode}. Must be 'replacement' or 'addition'.")
+                            raise ValueError(f"Invalid mode: {mode}. Must be 'replacement' or 'addition'.")                        
 
                 # Record
                 for layer in record_location.layers:
@@ -387,20 +383,13 @@ class MuranoModel:
                         layer_module = getattr(layers_list[layer], module)
                         output = layer_module.output
                         source = output[0] if isinstance(output, tuple) else output
-                        
-                        if record_location.token_pos and len(record_location.token_pos) > 0 and record_location.token_pos[0] is not None:
-                            pos = record_location.token_pos[0]
-                            if pos < 0:
-                                pos = source.shape[1] + pos
-                            pos = max(0, min(pos, source.shape[1] - 1))
-                            # Preserve dimension: [batch, hidden] -> [batch, 1, hidden]
-                            hidden_states = source[:, pos, :].unsqueeze(1)
-                        else:
-                            hidden_states = source
+
+                        hidden_states = source[:, record_pos, :]
                             
                         layer_activation.append(hidden_states.save())
                     activations.append(layer_activation)
 
+        # TODO: return some class from HuggingFace
         return {"activations": activations, "input_ids": input_ids}
 
     def generate_intervene(
