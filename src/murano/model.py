@@ -100,6 +100,7 @@ class MuranoModel:
             raise ValueError("Input must be a string, tensor, or dictionary with 'input_ids'.")
 
         with self.model.trace() as tracer:
+            # TODO: remove fixed max_length
             with tracer.invoke(input_ids, max_length=10, **kwargs):
                 layers_list = list(self.model.transformer.h)
 
@@ -139,6 +140,7 @@ class MuranoModel:
 
                         for layer_idx in selected_layers:
                             layer = layers_list[layer_idx]
+                            # TODO: don't default, handle all cases
                             output = layer.mlp.output  # Default to mlp
                             if isinstance(output, tuple):
                                 hidden_states = output[0]
@@ -297,12 +299,15 @@ class MuranoModel:
         
         return artifact
 
+
+    # TODO: write a utility function to verify intervention activations given a location
+    # TODO: intervention input batch size should be same as input_ids or 1 
     def record_intervene(
         self,
         input: Union[str, torch.Tensor, dict],
         intervene_location: Location,
         record_location: Location,
-        activation_dataset,
+        intervention_activation: torch.Tensor,
         mode: str = "replacement",
     ) -> dict:
         """
@@ -315,12 +320,28 @@ class MuranoModel:
         
         Requires: ActivationDataset from examples/federico_visualization.py to be available.
         """        
-        input_ids, _ = prepare_input_ids(input, self.model.tokenizer, next(self.model.parameters()).device)
+        # Handle input format
+        if isinstance(input, torch.Tensor):
+            input_ids = input
+        elif isinstance(input, dict):
+            input_ids = input["input_ids"]
+        else:
+            raise ValueError("Input must be a string, tensor, or dictionary with 'input_ids'.")
+        
         batch_size = input_ids.shape[0]
-        intervention_activation = prepare_intervention_activation(
-            activation_dataset, intervene_location, batch_size, 
-            next(self.model.parameters()).device, coeff=1.0
-        )
+        intrv_batch_size = intervention_activation.shape[0]
+        # TODO: add check on hidden dim from model
+        intrv_shape = tuple(intervention_activation.shape[1:, -1])
+        expected_shape = (len(intervene_location.layers), len(intervene_location.modules), len(intervene_location.token_pos))
+
+        # Check intervention activations size
+        # Expected shape: (n examples, n layers, n modules, n tokens, hidden_dim)
+        if intrv_batch_size != batch_size and intrv_batch_size != 1:
+            raise ValueError(f"Intervention activation must have batch size 1 or {batch_size}. \
+                             Found: {intrv_batch_size} ")
+        if intrv_shape != expected_shape:
+            raise ValueError(f"Shape mismatch: expected (n layers, n modules, n tokens) = {expected_shape}, \
+                              found {intrv_shape}")
 
         activations = []
         
@@ -335,11 +356,14 @@ class MuranoModel:
                         output = layer_module.output
                         target = output[0] if isinstance(output, tuple) else output
                         
+                        # TODO: handle undefined token_pos as applied to all tokens
                         if intervene_location.token_pos and len(intervene_location.token_pos) > 0 and intervene_location.token_pos[0] is not None:
                             pos = intervene_location.token_pos[0]
                             if pos < 0:
                                 pos = target.shape[1] + pos
                             pos = max(0, min(pos, target.shape[1] - 1))
+
+                            # TODO: implement passing function here
                             # Apply intervention based on mode
                             if mode == "replacement":
                                 target[:, pos, :] = intervention_activation
