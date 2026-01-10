@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from datasets import Dataset
 
-## The Location I is copied from federico_visualization.py
+
 class Location:
     """
     Location specifies a slice of model activations to extract or analyze.
@@ -133,7 +133,7 @@ def prepare_input_ids(
 
 
 def prepare_intervention_activation(
-    activation_dataset,  # ActivationDataset
+    activation_dataset,
     intervene_location: Location,
     batch_size: int,
     device,

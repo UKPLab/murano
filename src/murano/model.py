@@ -7,7 +7,6 @@ from datasets import Dataset
 
 from nnsight import LanguageModel
 
-# Relative imports (module will only be imported, not run directly)
 from .lenses.base_lens import BaseLens
 from .utils import (
     Location,
@@ -74,10 +73,6 @@ class MuranoModel:
         }
 
         return lens.process(artifact)
-
-    # ============================================================================
-    # Recording methods (from federico_location.py, federico_dataset_batching.py, federico_visualization.py)
-    # ============================================================================
 
     def run_recording(
         self, 
@@ -306,16 +301,12 @@ class MuranoModel:
         
         return artifact
 
-    # ============================================================================
-    # Intervention methods (from record_intervene.py)
-    # ============================================================================
-
     def record_intervene(
         self,
         input: Union[str, torch.Tensor, dict],
         intervene_location: Location,
         record_location: Location,
-        activation_dataset,  # ActivationDataset from federico_visualization
+        activation_dataset,
         mode: str = "replacement",
     ) -> dict:
         """
@@ -327,9 +318,7 @@ class MuranoModel:
         Returns: {"activations": [...], "input_ids": tensor}
         
         Requires: ActivationDataset from examples/federico_visualization.py to be available.
-        """
-        # Utilities already imported at top
-        
+        """        
         input_ids, _ = prepare_input_ids(input, self.model.tokenizer, next(self.model.parameters()).device)
         batch_size = input_ids.shape[0]
         intervention_activation = prepare_intervention_activation(
@@ -398,7 +387,7 @@ class MuranoModel:
         self,
         input: Union[str, torch.Tensor, dict],
         intervene_location: Location,
-        activation_dataset,  # ActivationDataset from federico_visualization
+        activation_dataset,
         max_new_tokens: int = 20,
         **generation_kwargs,
     ) -> dict:
