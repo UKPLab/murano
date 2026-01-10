@@ -67,7 +67,7 @@ class MuranoModel:
             "prompt": prompt,
             "activations": [act.value for act in activations],
             "layer_indices": layer_indices,
-            "input_ids": input_ids[0],  # type: ignore
+            "input_ids": input_ids[0],
             "model": self.model,
             "tokenizer": self.model.tokenizer,
         }
@@ -108,13 +108,11 @@ class MuranoModel:
                     for layer in location.layers:
                         layer_activation = []
                         for module in location.modules:
-                            # Special handling for "output" module (from federico_visualization.py line 226-228)
+                            # Special handling for "output" module
                             if module == "output":
                                 layer_module = layers_list[layer]
-                                # Original code exactly: layer_module.output[0][ :, location.token_pos, :] if location.token_pos is not None else layer_module.output[0]
                                 hidden_states = layer_module.output[0][:, location.token_pos, :] if location.token_pos is not None else layer_module.output[0]
                             else:
-                                # Original code exactly from federico_location.py line 66-71
                                 layer_module = getattr(layers_list[layer], module)
                                 output = layer_module.output
                                 if isinstance(output, tuple):
@@ -141,7 +139,7 @@ class MuranoModel:
 
                         for layer_idx in selected_layers:
                             layer = layers_list[layer_idx]
-                            output = layer.mlp.output  # Default to mlp (from federico_dataset_batching.py)
+                            output = layer.mlp.output  # Default to mlp
                             if isinstance(output, tuple):
                                 hidden_states = output[0]
                             else:
@@ -151,7 +149,7 @@ class MuranoModel:
                             activations.append(saved_output)
                             layer_indices.append(layer_idx)
                     
-                    # Handle tuple outputs (from federico_dataset_batching.py)
+                    # Handle tuple outputs
                     if activations and isinstance(activations[0].value, tuple):
                         activations = [act.value[0] for act in activations]
                     else:
@@ -179,7 +177,6 @@ class MuranoModel:
         # Check if location has modules attribute (single Location vs list)
         has_modules = location is not None and hasattr(location, 'modules') and not isinstance(location, list)
         if has_modules:
-            # Version from federico_visualization.py
             obj = obj.permute(0, 3, 1, 2, 4, 5)
             obj = obj.reshape(obj.shape[0] * obj.shape[1], obj.shape[2], obj.shape[3], obj.shape[4], obj.shape[5])
             # (num_examples, num_layers, num_modules, seq_len, hidden_dim)
@@ -187,7 +184,6 @@ class MuranoModel:
                 assert obj.shape[4] == self.model.config.hidden_size, f"Expected {self.model.config.hidden_size} hidden size, got {obj.shape[4]}"
             assert obj.dim() == 5, f"Expected 5 dimensions, got {obj.dim()}"
         else:
-            # Version from federico_dataset_batching.py
             obj = obj.permute(0, 2, 1, 3, 4)
             obj = obj.reshape(obj.shape[0] * obj.shape[1], obj.shape[2], obj.shape[3], obj.shape[4])
         
@@ -398,9 +394,7 @@ class MuranoModel:
         Returns: {"output_ids": tensor, "input_ids": tensor}
         
         Requires: ActivationDataset from examples/federico_visualization.py to be available.
-        """
-        # Utilities already imported at top
-        
+        """        
         tokenizer = self.model.tokenizer
         raw_model = self.model._model if hasattr(self.model, "_model") else self.model
         device = raw_model.device
