@@ -300,8 +300,6 @@ class MuranoModel:
         return artifact
 
 
-    # TODO: write a utility function to verify intervention activations given a location
-    # TODO: intervention input batch size should be same as input_ids or 1 
     def record_intervene(
         self,
         input: Union[str, torch.Tensor, dict],
@@ -346,13 +344,12 @@ class MuranoModel:
         if intervene_location.token_pos and len(intervene_location.token_pos) > 0:
             intrv_pos = intervene_location.token_pos
         else:
-            # acts like : in indexing
+            # Acts like : in indexing
             intrv_pos = slice(None)
 
         if record_location.token_pos and len(record_location.token_pos) > 0:
             record_pos = record_location.token_pos
         else:
-            # Keeps 
             record_pos = slice(None)
 
         activations = []
@@ -374,7 +371,8 @@ class MuranoModel:
                         elif mode == "addition":
                             target[:, intrv_pos, :] = target[:, intrv_pos, :] + intervention_activation
                         else:
-                            raise ValueError(f"Invalid mode: {mode}. Must be 'replacement' or 'addition'.")                        
+                            raise ValueError(f"Invalid mode: {mode}. \
+                                             Must be 'replacement' or 'addition'.")                        
 
                 # Record
                 for layer in record_location.layers:
@@ -389,9 +387,11 @@ class MuranoModel:
                         layer_activation.append(hidden_states.save())
                     activations.append(layer_activation)
 
-        # TODO: return some class from HuggingFace
+        # TODO: return some class from HuggingFace (possibly CausalLMOutputWithPast, shared by Llama, Qwen, Gemma)
         return {"activations": activations, "input_ids": input_ids}
 
+    # TODO: merge functionality with record_intervene and pick function based on args
+    # TODO: make this nnsight-based
     def generate_intervene(
         self,
         input: Union[str, torch.Tensor, dict],
