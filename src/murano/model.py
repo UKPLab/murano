@@ -20,6 +20,7 @@ from .utils import (
 
 class MuranoModel:
     def __init__(self, model_name: str):
+        # TODO: uniform module names using nnterp
         self.model = LanguageModel(model_name, device_map="auto", dispatch=True)
         self.model_name = model_name
 
@@ -27,6 +28,7 @@ class MuranoModel:
     def from_pretrained(cls, model_name: str):
         return cls(model_name)
 
+    # TODO: integrate with record_intervene
     def run_recording(
         self, 
         input: Union[str, torch.Tensor, dict], 
@@ -35,7 +37,7 @@ class MuranoModel:
     ) -> dict:
         """
         Run the model with tracing enabled to record activations at specified locations.
-        Computes a single forward pass for a batch of inputs.
+        Computes a single forward pass for a batch of inputs without generation.
         
         Args:
             input: Input tensor, dict with input_ids, or string
@@ -53,9 +55,9 @@ class MuranoModel:
             raise ValueError("Input must be a string, tensor, or dictionary with 'input_ids'.")
 
         with self.model.trace() as tracer:
-            # TODO: remove fixed max_length
-            with tracer.invoke(input_ids, max_length=10, **kwargs):
-                layers_list = list(self.model.transformer.h)
+            with tracer.invoke(input_ids, max_new_tokens=1, **kwargs):
+                # TODO: make this universal (model.transformer.h is only for GPT2)
+                layers_list = list(self.model.model.layers)
 
                 # Handle single Location object
                 if isinstance(location, Location) and not isinstance(location, list):
@@ -65,7 +67,9 @@ class MuranoModel:
                             # Special handling for "output" module
                             if module == "output":
                                 layer_module = layers_list[layer]
-                                hidden_states = layer_module.output[0][:, location.token_pos, :] if location.token_pos is not None else layer_module.output[0]
+                                # hidden_states = layer_module.output[0][:, location.token_pos, :] if location.token_pos is not None else layer_module.output[0]
+                                hidden_states = layer_module.output[:, location.token_pos, :] if location.token_pos is not None else layer_module.output
+
                             else:
                                 layer_module = getattr(layers_list[layer], module)
                                 output = layer_module.output
@@ -128,12 +132,12 @@ class MuranoModel:
         Otherwise, uses 4D format.
         """
         obj = self._stack_activations_recursive(obj)
-        
+        # (n_batches, n_layers, n_modules, batch_size, seq_len, hidden_dim)
         # Check if location has modules attribute (single Location vs list)
         has_modules = location is not None and hasattr(location, 'modules') and not isinstance(location, list)
         if has_modules:
             obj = obj.permute(0, 3, 1, 2, 4, 5)
-            obj = obj.reshape(obj.shape[0] * obj.shape[1], obj.shape[2], obj.shape[3], obj.shape[4], obj.shape[5])
+            obj = obj.reshape(-1, obj.shape[2], obj.shape[3], obj.shape[4], obj.shape[5])
             # (num_examples, num_layers, num_modules, seq_len, hidden_dim)
             if hasattr(self.model, 'config') and hasattr(self.model.config, 'hidden_size'):
                 assert obj.shape[4] == self.model.config.hidden_size, f"Expected {self.model.config.hidden_size} hidden size, got {obj.shape[4]}"
@@ -166,28 +170,6 @@ class MuranoModel:
         
         else:
             raise TypeError(f"Unsupported type in structure: {type(obj)}")
-
-    def _get_dataloader(self, dataset: Dataset, batch_size: int = 4) -> DataLoader:
-        """
-        Create a DataLoader for the given dataset.
-        """
-        # Custom collate function stitches separate inputs coming from dataset
-        def collate_fn(batch):
-            collated = {}
-            for key in batch[0]:
-                values = [example[key] for example in batch]
-                if key in ["input_ids", "attention_mask"]:  # tensorize only these
-                    collated[key] = torch.stack([torch.tensor(v) if not isinstance(v, torch.Tensor) else v for v in values])
-                else:
-                    collated[key] = values  # keep as list
-            return collated
-        
-        return DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            collate_fn=collate_fn,
-        )
 
     def record_intervene(
         self,
