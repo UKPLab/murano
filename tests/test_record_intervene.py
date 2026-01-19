@@ -167,8 +167,8 @@ class TestMuranoModelRecordIntervene:
         
         result = instance.record_intervene(
             input=torch.tensor([[1, 2, 3, 4]]),
-            intervene_location=Location(layers=[5], modules=["mlp"], token_pos=[-1]),
-            record_location=Location(layers=[6], modules=["mlp"], token_pos=[-1]),
+            location_intervention=Location(layers=[5], modules=["mlp"], token_pos=[-1]),
+            location_recording=Location(layers=[6], modules=["mlp"], token_pos=[-1]),
             activation_dataset=create_activation_dataset()
         )
         
@@ -182,8 +182,8 @@ class TestMuranoModelRecordIntervene:
         
         result = instance.record_intervene(
             input={"input_ids": torch.tensor([[1, 2, 3]])},
-            intervene_location=Location(layers=[5], modules=["mlp"], token_pos=[-1]),
-            record_location=Location(layers=[6], modules=["mlp"], token_pos=[-1]),
+            location_intervention=Location(layers=[5], modules=["mlp"], token_pos=[-1]),
+            location_recording=Location(layers=[6], modules=["mlp"], token_pos=[-1]),
             activation_dataset=create_activation_dataset()
         )
         
@@ -197,8 +197,8 @@ class TestMuranoModelRecordIntervene:
         
         result = instance.record_intervene(
             input=torch.tensor([[1, 2, 3], [4, 5, 6]]),
-            intervene_location=Location(layers=[5], modules=["mlp"], token_pos=[-1]),
-            record_location=Location(layers=[6], modules=["mlp"], token_pos=[-1]),
+            location_intervention=Location(layers=[5], modules=["mlp"], token_pos=[-1]),
+            location_recording=Location(layers=[6], modules=["mlp"], token_pos=[-1]),
             activation_dataset=create_activation_dataset(num_examples=1)
         )
         
@@ -212,8 +212,8 @@ class TestMuranoModelRecordIntervene:
         with pytest.raises(ValueError, match="Batch size mismatch"):
             instance.record_intervene(
                 input=torch.tensor([[1, 2, 3]]),
-                intervene_location=Location(layers=[5], modules=["mlp"], token_pos=[-1]),
-                record_location=Location(layers=[6], modules=["mlp"], token_pos=[-1]),
+                location_intervention=Location(layers=[5], modules=["mlp"], token_pos=[-1]),
+                location_recording=Location(layers=[6], modules=["mlp"], token_pos=[-1]),
                 activation_dataset=create_activation_dataset(num_examples=2)
             )
 

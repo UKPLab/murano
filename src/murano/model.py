@@ -174,8 +174,8 @@ class MuranoModel:
     def record_intervene(
         self,
         input: Union[str, torch.Tensor, dict],
-        intervene_location: Location,
-        record_location: Location,
+        location_intervention: Location,
+        location_recording: Location,
         intervention_activation: torch.Tensor,
         mode: str = "replacement",
     ) -> dict:
@@ -200,8 +200,8 @@ class MuranoModel:
         batch_size = input_ids.shape[0]
         intrv_batch_size = intervention_activation.shape[0]
         # TODO: add check on hidden dim from model
-        intrv_shape = tuple(intervention_activation.shape[1:, -1])
-        expected_shape = (len(intervene_location.layers), len(intervene_location.modules), len(intervene_location.token_pos))
+        intrv_shape = tuple(intervention_activation.shape[1:])
+        expected_shape = (len(location_intervention.layers), len(location_intervention.modules), len(location_intervention.token_pos))
 
         # Check intervention activations size
         # Expected shape: (n examples, n layers, n modules, n tokens, hidden_dim)
@@ -212,27 +212,28 @@ class MuranoModel:
             raise ValueError(f"Shape mismatch: expected (n layers, n modules, n tokens) = {expected_shape}, \
                               found {intrv_shape}")
 
-        if intervene_location.token_pos and len(intervene_location.token_pos) > 0:
-            intrv_pos = intervene_location.token_pos
+        if location_intervention.token_pos and len(location_intervention.token_pos) > 0:
+            intrv_pos = location_intervention.token_pos
         else:
             # Acts like : in indexing
             intrv_pos = slice(None)
 
-        if record_location.token_pos and len(record_location.token_pos) > 0:
-            record_pos = record_location.token_pos
+        if location_recording.token_pos and len(location_recording.token_pos) > 0:
+            record_pos = location_recording.token_pos
         else:
             record_pos = slice(None)
 
         activations = []
         with self.model.trace() as tracer:
             with tracer.invoke(input_ids, max_length=10):
-                layers_list = list(self.model.transformer.h)
+                # layers_list = list(self.model.transformer.h)
+                layers_list = list(self.model.model.layers)
 
                 # Intervene
-                for layer in intervene_location.layers:
-                    for module in intervene_location.modules:
+                for layer in location_intervention.layers:
+                    for module in location_intervention.modules:
                         layer_module = getattr(layers_list[layer], module)
-                        output = layer_module.output
+                        output = layer_module
                         target = output[0] if isinstance(output, tuple) else output
 
                         # TODO: implement passing function here
@@ -246,11 +247,11 @@ class MuranoModel:
                                              Must be 'replacement' or 'addition'.")                        
 
                 # Record
-                for layer in record_location.layers:
+                for layer in location_recording.layers:
                     layer_activation = []
-                    for module in record_location.modules:
+                    for module in location_recording.modules:
                         layer_module = getattr(layers_list[layer], module)
-                        output = layer_module.output
+                        output = layer_module
                         source = output[0] if isinstance(output, tuple) else output
 
                         hidden_states = source[:, record_pos, :]
