@@ -263,70 +263,67 @@ class MuranoModel:
         return {"activations": activations, "input_ids": input_ids}
 
     # TODO: merge functionality with record_intervene and pick function based on args
-    # TODO: make this nnsight-based
+    # TODO: change intervention input to tensor
     def generate_intervene(
-        self,
-        input: Union[str, torch.Tensor, dict],
-        intervene_location: Location,
-        activation_dataset,
-        max_new_tokens: int = 20,
-        **generation_kwargs,
-    ) -> dict:
-        """
-        Generate text with intervention applied via hooks at each forward pass.
-        
-        Uses HF's generate() with hooks that add activation_dataset at intervene_location.
-        Returns: {"output_ids": tensor, "input_ids": tensor}
-        
-        Requires: ActivationDataset from examples/federico_visualization.py to be available.
-        """        
-        tokenizer = self.model.tokenizer
-        raw_model = self.model._model if hasattr(self.model, "_model") else self.model
-        device = raw_model.device
-        
-        input_ids, attention_mask = prepare_input_ids(input, tokenizer, device)
-        batch_size = input_ids.shape[0]
-        intervention_activation = prepare_intervention_activation(
-            activation_dataset, intervene_location, batch_size, device, coeff=1.0
-        )
-        
-        # Set up hooks for intervention
-        handles = []
-        layers = raw_model.transformer.h
-        
-        # Create hook function using utility
-        hook_fn = create_intervention_hook(intervention_activation, intervene_location)
-        for layer_idx in intervene_location.layers:
-            for module_name in intervene_location.modules:
-                if hasattr(layers[layer_idx], module_name):
-                    module = getattr(layers[layer_idx], module_name)
-                    handles.append(module.register_forward_hook(hook_fn))
-        
-        # Generate with intervention
-        try:
-            with torch.no_grad():
-                # Prepare generation kwargs
-                gen_kwargs = {
-                    "max_new_tokens": max_new_tokens,
-                    "pad_token_id": tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-                    **generation_kwargs
-                }
-                
-                if attention_mask is not None:
-                    gen_kwargs["attention_mask"] = attention_mask
-                
-                # Call HF's generate() - hooks will apply intervention at each step
-                output_ids = raw_model.generate(input_ids, **gen_kwargs)
-        except Exception as e:
-            raise e
-        finally:
-            # Remove all hooks
-            for handle in handles:
-                handle.remove()
-        
-        return {
-            "output_ids": output_ids,
-            "input_ids": input_ids,
-        }
+            self,
+            input: Union[str, torch.Tensor, dict],
+            intervene_location: Location,
+            activation_dataset, # Assuming this is the source for intervention_activation
+            max_new_tokens: int = 20,
+            mode: str = "replacement",
+            **generation_kwargs,
+        ) -> dict:
+            """
+            Generate text with intervention applied via nnsight at each forward pass step.
+            """
+            if isinstance(input, torch.Tensor):
+                input_ids = input
+            elif isinstance(input, dict):
+                input_ids = input["input_ids"]
+            else:
+                input_ids = input 
 
+            batch_size = 1 # Default or extract from input_ids if tensor
+            if isinstance(input_ids, torch.Tensor):
+                batch_size = input_ids.shape[0]
+                
+            device = next(self.model.parameters()).device
+            intervention_activation = prepare_intervention_activation(
+                activation_dataset, intervene_location, batch_size, device, coeff=1.0
+            )
 
+            # Determine token positions
+            if intervene_location.token_pos and len(intervene_location.token_pos) > 0:
+                intrv_pos = intervene_location.token_pos
+            else:
+                intrv_pos = slice(None)
+
+            with self.model.generate(
+                input_ids, 
+                max_new_tokens=max_new_tokens, 
+                **generation_kwargs
+            ) as tracer:
+                # TODO: apply intervention only once per generation call
+                # nnsight generate context applies the following logic at every step
+                layers_list = list(self.model.model.layers)
+
+                for layer_idx in intervene_location.layers:
+                    for module_name in intervene_location.modules:
+                        # Access the module
+                        layer_module = getattr(layers_list[layer_idx], module_name)
+                        output = layer_module.output
+                        
+                        # Handle tuple vs tensor (consistent with your record_intervene)
+                        target = output[0] if isinstance(output, tuple) else output
+
+                        # Apply intervention (modification of the proxy)
+                        if mode == "replacement":
+                            target[:, intrv_pos, :] = intervention_activation
+                        elif mode == "addition":
+                            target[:, intrv_pos, :] = target[:, intrv_pos, :] + intervention_activation
+
+            # tracer.generator stores the output_ids
+            return {
+                "output_ids": tracer.generator.output,
+                "input_ids": input_ids,
+            }
