@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from datasets import Dataset
 
-
+# TODO: make Location sortable
 class Location:
     """
     Location specifies a slice of model activations to extract or analyze.
@@ -43,6 +43,7 @@ class Location:
                 all(p in self.token_pos for p in slice.token_pos))
 
 
+# TODO: remove
 # Backward compatibility alias
 LayerLocation = Location
 
