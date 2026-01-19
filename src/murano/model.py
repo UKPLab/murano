@@ -29,7 +29,7 @@ class MuranoModel:
         return cls(model_name)
 
     # TODO: integrate with record_intervene
-    def run_recording(
+    def record(
         self, 
         input: Union[str, torch.Tensor, dict], 
         location: Union[Location, List[Location]], 
