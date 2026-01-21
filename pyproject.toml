@@ -8,6 +8,8 @@ dependencies = [
     "nnsight>=0.4.8",
     "plotly>=6.2.0",
     "torch>=2.7.1",
+    "datasets>=4.0.0",
+    "scikit-learn>=1.3.0",
 ]
 
 [build-system]
@@ -23,6 +25,7 @@ packages = ["src/murano"]
 dev = [
     "pyright>=1.1.391",
     "pytest>=8.3.4",
+    "pytest-cov>=4.1.0",
     "ruff>=0.8.5",
 ]
 
@@ -33,4 +36,36 @@ source = "uv-dynamic-versioning"
 vcs = "git"
 style = "pep440"
 bump = true
+
+[tool.coverage.run]
+source = ["examples", "src"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/build/*",
+    "*/dist/*",
+    "setup.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+show_missing = true
+skip_covered = false
+precision = 2
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
 
