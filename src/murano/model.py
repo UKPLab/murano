@@ -381,28 +381,26 @@ class MuranoModel:
         with self.model.generate(
             input_ids, max_new_tokens=max_new_tokens, **generation_kwargs
         ) as tracer:
-            # TODO: apply intervention only once per generation call
-            # nnsight generate context applies the following logic at every step
+            with tracer.iter[0]:  # Intervene at the first generation step only
+                # Universal layer access
+                layers_list = self.model.layers
 
-            # Universal layer access
-            layers_list = self.model.layers
+                for layer_idx in intervene_location.layers:
+                    for module_name in intervene_location.modules:
+                        # Access the module
+                        layer_module = getattr(layers_list[layer_idx], module_name)
+                        output = layer_module.output
 
-            for layer_idx in intervene_location.layers:
-                for module_name in intervene_location.modules:
-                    # Access the module
-                    layer_module = getattr(layers_list[layer_idx], module_name)
-                    output = layer_module.output
+                        # Handle tuple vs tensor (consistent with your record_intervene)
+                        target = output[0] if isinstance(output, tuple) else output
 
-                    # Handle tuple vs tensor (consistent with your record_intervene)
-                    target = output[0] if isinstance(output, tuple) else output
-
-                    # Apply intervention (modification of the proxy)
-                    if mode == "replacement":
-                        target[:, intrv_pos, :] = intervention_activation
-                    elif mode == "addition":
-                        target[:, intrv_pos, :] = (
-                            target[:, intrv_pos, :] + intervention_activation
-                        )
+                        # Apply intervention (modification of the proxy)
+                        if mode == "replacement":
+                            target[:, intrv_pos, :] = intervention_activation
+                        elif mode == "addition":
+                            target[:, intrv_pos, :] = (
+                                target[:, intrv_pos, :] + intervention_activation
+                            )
 
         # tracer.generator stores the output_ids
         return {
