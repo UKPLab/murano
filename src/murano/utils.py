@@ -50,7 +50,7 @@ class Location:
         token_idx = [self.token_pos.index(p) for p in _slice.token_pos]
         return (slice(None), layer_idx, module_idx, token_idx, slice(None))
 
-    def is_valid_slice(self, slice) -> bool:
+    def is_valid_slice(self, _slice) -> bool:
         """
         Check if the slice is contained within this location.
         """
@@ -58,12 +58,12 @@ class Location:
             # If we have all layers, assume any subset request is valid
             layers_valid = True
         else:
-            layers_valid = all(l in self.layers for l in slice.layers)
+            layers_valid = all(l in self.layers for l in _slice.layers)
 
         return (
             layers_valid
-            and all(m in self.modules for m in slice.modules)
-            and all(p in self.token_pos for p in slice.token_pos)
+            and all(m in self.modules for m in _slice.modules)
+            and all(p in self.token_pos for p in _slice.token_pos)
         )
 
 
