@@ -1,201 +1,130 @@
 """
-Tests for scoped intervention in generate_intervene.
+Unit tests for MuranoModel.generate_intervene functionality using a real loaded model.
 """
 
 import pytest
 import torch
-from unittest.mock import Mock
+import numpy as np
+from datasets import Dataset
+import pdb
 import sys
 from pathlib import Path
 
-# Add src directory to path for imports
+
+# Add src directory to path
 _src_path = Path(__file__).parent.parent / "src"
 if str(_src_path) not in sys.path:
     sys.path.insert(0, str(_src_path))
 
-from murano.model import MuranoModel
 from murano.utils import Location, ActivationDataset
-from datasets import Dataset
-import numpy as np
 
-# --- Mock Helpers (Adapted from test_record_intervene.py) ---
-
-
-class TensorProxy:
-    """Mocks nnsight tensor output that supports item assignment."""
-
-    def __init__(self, tensor):
-        self._tensor = tensor
-
-    def __getitem__(self, key):
-        if isinstance(key, tuple) and len(key) == 1 and key[0] == 0:
-            return self._tensor
-        return self._tensor[key]
-
-    def __setitem__(self, key, value):
-        self._tensor[key] = value
-
-    def clone(self):
-        return TensorProxy(self._tensor.clone())
+# ============================================================================
+# Helpers
+# ============================================================================
 
 
-def create_mock_model():
-    """Create a simplified mock model with basic structure."""
-    model = Mock()
-    model.model_name = "gpt2"
-    model.model = Mock()
-    model.model.tokenizer = Mock()
-    model.model.tokenizer.pad_token_id = 0
-    model.model.tokenizer.eos_token_id = 1
-
-    mock_param = Mock()
-    mock_param.device = torch.device("cpu")
-
-    def parameters_generator():
-        while True:
-            yield mock_param
-
-    model.model.parameters = parameters_generator
-
-    layers = [Mock() for _ in range(12)]
-    for layer in layers:
-        layer.mlp = Mock()
-        layer.attn = Mock()
-
-    model.model.transformer = Mock()
-    model.model.transformer.h = layers
-    model.model.layers = layers
-
-    # Base nnsight mocking
-    mock_tracer = Mock()
-    mock_iter_ctx = Mock()
-
-    # Setup tracer context
-    mock_tracer.__enter__ = Mock(return_value=mock_tracer)
-    mock_tracer.__exit__ = Mock(return_value=None)
-
-    # Setup iter step context (what comes out of tracer.iter[0])
-    mock_iter_ctx.__enter__ = Mock(return_value=mock_iter_ctx)
-    mock_iter_ctx.__exit__ = Mock(return_value=None)
-
-    # Setup the 'iter' object itself
-    mock_iter_obj = Mock()
-    mock_iter_obj.__getitem__ = Mock(return_value=mock_iter_ctx)
-
-    model.model.trace = Mock(return_value=mock_tracer)
-    mock_tracer.iter = mock_iter_obj
-    model.model.generate = Mock(return_value=mock_tracer)
-
-    return model
-
-
-def create_model_instance(model):
-    """Create a MuranoModel instance from mock model."""
-    instance = MuranoModel.__new__(MuranoModel)
-    instance.model = model.model
-    instance.model_name = "gpt2"
-    return instance
-
-
-def create_activation_dataset(
-    num_examples=1, layers=[5], modules=["mlp"], token_pos=[-1]
+def create_dummy_activation_dataset(
+    model_name="gpt2", num_examples=1, shape=(1, 1, 1, 1, 768), layer_idx=0
 ):
-    """Helper to create an ActivationDataset for testing."""
-    activations = np.random.randn(
-        num_examples, len(layers), len(modules), len(token_pos), 768
-    ).astype(np.float32)
-    location = Location(layers=layers, modules=modules, token_pos=token_pos)
+    """Creates a valid ActivationDataset for testing."""
+    activations = np.random.randn(*shape).astype(np.float32)
+    # FIX: Use the layer_idx argument so the dataset matches the intervention request
     return ActivationDataset(
         activations=activations,
-        location=location,
-        global_metadata={"model_name": "gpt2"},
+        location=Location(layers=[layer_idx], modules=["mlp"], token_pos=[-1]),
+        global_metadata={"model_name": model_name},
         dataset=Dataset.from_list([{"text": f"test{i}"} for i in range(num_examples)]),
     )
 
 
-# --- Test Case ---
+# ============================================================================
+# Tests for generate_intervene
+# ============================================================================
 
 
-class TestGenerateInterveneScoped:
-    def test_intervention_scoped_to_iter_zero(self):
-        """
-        Test that:
-        1. Intervention is scoped to tracer.iter[0] (first generation step).
-        2. The values in the layer output are actually modified.
-        """
-        model = create_mock_model()
+class TestMuranoModelGenerateIntervene:
+    """Test suite for MuranoModel.generate_intervene method."""
 
-        # --- Setup nnsight structure ---
-        mock_tracer = model.model.generate.return_value
-
-        # Mock the 'iter' object on the tracer
-        mock_iter_obj = Mock()
-        mock_tracer.iter = mock_iter_obj
-
-        # Mock the context manager returned by tracer.iter[0]
-        mock_iter_ctx = Mock()
-        mock_iter_ctx.__enter__ = Mock(return_value=mock_iter_ctx)
-        mock_iter_ctx.__exit__ = Mock(return_value=None)
-
-        # Configure tracer.iter.__getitem__ to return our context manager
-        mock_iter_obj.__getitem__ = Mock(return_value=mock_iter_ctx)
-
-        # Setup generator output
-        mock_tracer.generator = Mock()
-        mock_tracer.generator.output = torch.tensor([[1, 2, 3]])
-
-        instance = create_model_instance(model)
-
-        # --- Setup Data and Layers ---
-        input_ids = torch.tensor([[101, 102]])
-        batch_size = 1
-        hidden_dim = 768
+    def test_generate_intervene_basic(self, murano_model):
+        """Test basic generation with intervention."""
+        # Setup
         target_layer = 5
+        hidden_dim = murano_model.model.config.hidden_size
+        loc_int = Location(layers=[target_layer], modules=["mlp"], token_pos=[-1])
 
-        # Initialize target layer with zeros
-        initial_layer_output = torch.zeros(batch_size, 2, hidden_dim)
-        mock_proxy = TensorProxy(initial_layer_output)
-        model.model.transformer.h[target_layer].mlp.output = mock_proxy
-
-        # Prepare Intervention Data (value = 99.0)
-        intervention_val = 99.0
-        activations = np.full(
-            (1, 1, 1, 1, hidden_dim), intervention_val, dtype=np.float32
-        )
-        location = Location(layers=[target_layer], modules=["mlp"], token_pos=[-1])
-
-        dataset = ActivationDataset(
-            activations=activations,
-            location=location,
-            global_metadata={"model_name": "gpt2"},
-            dataset=Dataset.from_list([{"text": "test"}]),
+        # Create a dummy dataset
+        # Shape: (1 example, 1 layer, 1 module, 1 token, hidden_dim)
+        act_dataset = create_dummy_activation_dataset(
+            shape=(1, 1, 1, 1, hidden_dim), layer_idx=target_layer
         )
 
-        # --- Run the Function ---
-        instance.generate_intervene(
-            input={"input_ids": input_ids},
-            intervene_location=location,
-            activation_dataset=dataset,
-            max_new_tokens=2,
+        # Execute
+        result = murano_model.generate_intervene(
+            input="The quick brown fox",
+            intervene_location=loc_int,
+            activation_dataset=act_dataset,
+            max_new_tokens=5,
             mode="replacement",
         )
 
-        # --- Assertions ---
+        # Assertions
+        assert "output_ids" in result
+        assert "input_ids" in result
 
-        # Verify tracer.iter[0] was accessed
-        mock_iter_obj.__getitem__.assert_called_with(0)
+        # Check that we actually generated tokens
+        input_len = result["input_ids"].shape[1]
+        output_len = result["output_ids"].shape[1]
+        assert output_len > input_len
 
-        # Check if the tensor was actually modified
-        modified_tensor = mock_proxy._tensor
+    def test_generate_intervene_steered_output(self, murano_model):
+        """
+        Functional test: Verify that intervention changes the output.
+        We force a massive value into the MLP to guarantee output degradation/change.
+        """
+        target_layer = 8
+        prompt = "I enjoy walking in the"
+        loc_int = Location(layers=[target_layer], modules=["mlp"], token_pos=[-1])
 
-        # Check index 1 (should be replaced with 99.0)
-        assert torch.all(modified_tensor[:, 1, :] == intervention_val), (
-            f"Intervention values not applied. Expected {intervention_val}"
+        # 1. Baseline generation (no intervention logic helper, just basic check)
+        hidden_dim = murano_model.model.config.hidden_size
+
+        # Zero intervention (should be close to baseline)
+        act_dataset_zero = create_dummy_activation_dataset(
+            shape=(1, 1, 1, 1, hidden_dim), layer_idx=target_layer
+        )
+        act_dataset_zero.activations[:] = 0
+
+        res_zero = murano_model.generate_intervene(
+            input=prompt,
+            intervene_location=loc_int,
+            activation_dataset=act_dataset_zero,
+            max_new_tokens=5,
+            mode="addition",  # Adding 0 should do nothing
         )
 
-        # Check index 2 (should be replaced with 0)
-        assert torch.all(modified_tensor[:, 0, :] == 0), (
-            f"Intervention values applied to wrong position. Expected {0}"
+        # Massive intervention
+        act_dataset_huge = create_dummy_activation_dataset(
+            shape=(1, 1, 1, 1, hidden_dim), layer_idx=target_layer
+        )
+        rng = np.random.default_rng(42)
+        act_dataset_huge.activations[:] = (
+            rng.standard_normal(act_dataset_huge.activations.shape) * 100.0
         )
 
-        print("Success: Intervention correctly scoped to tracer.iter[0]")
+        res_huge = murano_model.generate_intervene(
+            input=prompt,
+            intervene_location=loc_int,
+            activation_dataset=act_dataset_huge,
+            max_new_tokens=5,
+            mode="addition",
+        )
+
+        # Outputs should differ
+
+        ids_zero = res_zero["output_ids"][0].tolist()
+        ids_huge = res_huge["output_ids"][0].tolist()
+
+        # pdb.set_trace()
+        assert ids_zero != ids_huge, (
+            "Intervention with massive vector did not change output"
+        )
