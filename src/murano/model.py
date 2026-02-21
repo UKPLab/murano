@@ -67,41 +67,41 @@ class MuranoModel:
                 "Input must be a string, tensor, or dictionary with 'input_ids'."
             )
 
+        # Determine sequence lengths for semantic resolution
+        seq_len = input_ids.shape[1]
+        total_len = seq_len
+        prompt_len = seq_len
+
         with self.model.trace() as tracer:
             with tracer.invoke(input_ids, max_new_tokens=1, **kwargs):
                 layers_list = self.model.layers
 
                 # Handle single Location object
                 if isinstance(location, Location) and not isinstance(location, list):
+                    # Resolve indices for this location
+                    resolved_pos = location.resolve_indices(total_len, prompt_len)
+
                     for layer in location.layers:
                         layer_activation = []
                         for module in location.modules:
                             # Special handling for "output" module
                             if module == "output":
                                 layer_module = layers_list[layer]
-                                # hidden_states = layer_module.output[0][:, location.token_pos, :] if location.token_pos is not None else layer_module.output[0]
-                                hidden_states = (
-                                    layer_module.output[:, location.token_pos, :]
-                                    if location.token_pos is not None
-                                    else layer_module.output
+                                # output is usually a tuple (hidden_states,) or tensor
+                                output = layer_module.output
+                                tensor_out = (
+                                    output[0] if isinstance(output, tuple) else output
                                 )
+                                hidden_states = tensor_out[:, resolved_pos, :]
 
                             else:
                                 # Access standardized modules (e.g., 'mlp', 'self_attn')
                                 layer_module = getattr(layers_list[layer], module)
                                 output = layer_module.output
-                                if isinstance(output, tuple):
-                                    hidden_states = (
-                                        output[0][:, location.token_pos, :]
-                                        if location.token_pos is not None
-                                        else output[0]
-                                    )
-                                else:
-                                    hidden_states = (
-                                        output[:, location.token_pos, :]
-                                        if location.token_pos is not None
-                                        else output
-                                    )
+                                tensor_out = (
+                                    output[0] if isinstance(output, tuple) else output
+                                )
+                                hidden_states = tensor_out[:, resolved_pos, :]
 
                             module_activation = hidden_states.save()
                             layer_activation.append(module_activation)
@@ -113,6 +113,9 @@ class MuranoModel:
                 ):
                     layer_indices = []
                     for loc in location:
+                        # Resolve indices for each location
+                        resolved_pos = loc.resolve_indices(total_len, prompt_len)
+
                         if isinstance(loc.layers, slice):
                             # Use self.model.num_layers from StandardizedTransformer
                             selected_layers = list(range(self.model.num_layers))
@@ -132,35 +135,22 @@ class MuranoModel:
                                 if module == "output":
                                     layer_module = layer
                                     output = layer_module.output
-                                    if isinstance(output, tuple):
-                                        hidden_states = (
-                                            output[0][:, loc.token_pos, :]
-                                            if loc.token_pos is not None
-                                            else output[0]
-                                        )
-                                    else:
-                                        hidden_states = (
-                                            output[:, loc.token_pos, :]
-                                            if loc.token_pos is not None
-                                            else output
-                                        )
-
+                                    tensor_out = (
+                                        output[0]
+                                        if isinstance(output, tuple)
+                                        else output
+                                    )
+                                    hidden_states = tensor_out[:, resolved_pos, :]
                                 else:
                                     # Standardized access (e.g., layer.mlp, layer.self_attn)
                                     layer_module = getattr(layer, module)
                                     output = layer_module.output
-                                    if isinstance(output, tuple):
-                                        hidden_states = (
-                                            output[0][:, loc.token_pos, :]
-                                            if loc.token_pos is not None
-                                            else output[0]
-                                        )
-                                    else:
-                                        hidden_states = (
-                                            output[:, loc.token_pos, :]
-                                            if loc.token_pos is not None
-                                            else output
-                                        )
+                                    tensor_out = (
+                                        output[0]
+                                        if isinstance(output, tuple)
+                                        else output
+                                    )
+                                    hidden_states = tensor_out[:, resolved_pos, :]
 
                                 saved_output = hidden_states.save()
                                 activations.append(saved_output)
@@ -280,37 +270,18 @@ class MuranoModel:
 
         batch_size = input_ids.shape[0]
         intrv_batch_size = intervention_activation.shape[0]
-        # TODO: add check on hidden dim from model
-        intrv_shape = tuple(intervention_activation.shape[1:])
-        expected_shape = (
-            len(location_intervention.layers),
-            len(location_intervention.modules),
-            len(location_intervention.token_pos),
-        )
 
         # Check intervention activations size
-        # Expected shape: (n examples, n layers, n modules, n tokens, hidden_dim)
         if intrv_batch_size != batch_size and intrv_batch_size != 1:
             raise ValueError(
                 f"Intervention activation must have batch size 1 or {batch_size}. \
                              Found: {intrv_batch_size} "
             )
-        if intrv_shape[:-1] != expected_shape:
-            raise ValueError(
-                f"Shape mismatch: expected (n layers, n modules, n tokens) = {expected_shape}, \
-                              found {intrv_shape[:-1]} (full shape: {intrv_shape})"
-            )
 
-        if location_intervention.token_pos and len(location_intervention.token_pos) > 0:
-            intrv_pos = location_intervention.token_pos
-        else:
-            # Acts like : in indexing
-            intrv_pos = slice(None)
-
-        if location_recording.token_pos and len(location_recording.token_pos) > 0:
-            record_pos = location_recording.token_pos
-        else:
-            record_pos = slice(None)
+        # Resolve indices
+        seq_len = input_ids.shape[1]
+        intrv_pos = location_intervention.resolve_indices(seq_len, seq_len)
+        record_pos = location_recording.resolve_indices(seq_len, seq_len)
 
         activations = []
         with self.model.trace() as tracer:
@@ -379,6 +350,13 @@ class MuranoModel:
         """
         Generate text with intervention applied via nnsight at each forward pass step.
         """
+        if max_new_tokens <= 0:
+            raise ValueError(
+                f"max_new_tokens must be > 0 (got {max_new_tokens}). "
+                f"If you want to intervene on a prompt without generating new text, "
+                f"use the `record_intervene()` method instead."
+            )
+
         if isinstance(input, str):
             tokens = self.model.tokenizer(input, return_tensors="pt")
             input_ids = tokens["input_ids"]
@@ -400,20 +378,16 @@ class MuranoModel:
             activation_dataset, intervene_location, batch_size, device, coeff=1.0
         )
 
-        # Determine token positions
-        if intervene_location.token_pos and len(intervene_location.token_pos) > 0:
-            intrv_pos = torch.tensor(
-                intervene_location.token_pos, device=device, dtype=torch.long
-            )
-        else:
-            intrv_pos = slice(None)
-
+        # Resolve temporal slice for iteration (e.g., prompt only, gen only, or both)
+        time_slice = intervene_location.resolve_time_steps(max_new_tokens)
+        # pdb.set_trace()
         generated_output = None
 
         with self.model.generate(
             input_ids, max_new_tokens=max_new_tokens, **generation_kwargs
         ) as tracer:
-            with tracer.iter[0]:  # Intervene at the first generation step only
+            # Apply intervention to the resolved time steps
+            with tracer.iter[time_slice]:
                 # Universal layer access
                 layers_list = self.model.layers
 
@@ -426,10 +400,17 @@ class MuranoModel:
                         # (batch X tokens X hidden)
                         target = output[0] if isinstance(output, tuple) else output
 
-                        # Apply intervention (modification of the proxy)
+                        # Determine spatial intervention positions within the current time step
+                        if isinstance(intervene_location.token_pos, list):
+                            # Specific indices relative to the current slice
+                            intrv_pos = intervene_location.token_pos
+                        elif intervene_location.token_pos == "last":
+                            # "last" time step 0, final spatial token
+                            intrv_pos = slice(-1, None)
+                        else:
+                            # keywords (prompt, generation, all), we apply to all tokens in the active step
+                            intrv_pos = slice(None)
 
-                        # val_before = target[:, intrv_pos, :].abs().max()
-                        # pdb.set_trace()
                         if mode == "replacement":
                             target[:, intrv_pos, :] = intervention_activation
                         elif mode == "addition":
