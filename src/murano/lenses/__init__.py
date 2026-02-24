@@ -1,5 +1,5 @@
-from .logit_lens import LogitLens
+from .logit_lens import LogitComputationLens
 
 __all__ = [
-    "LogitLens",
+    "LogitComputationLens",
 ]

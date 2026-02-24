@@ -7,7 +7,6 @@ from datasets import Dataset
 
 from nnterp import StandardizedTransformer
 
-from .lenses.base_lens import BaseLens
 from .utils import (
     Location,
     ActivationDataset,

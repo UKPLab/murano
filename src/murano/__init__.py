@@ -1,4 +1,4 @@
-from .lenses import LogitLens
+from .lenses import LogitComputationLens
 from .model import MuranoModel
 from .utils import (
     Location,
@@ -11,7 +11,7 @@ from .utils import (
 
 __all__ = [
     "MuranoModel",
-    "LogitLens",
+    "LogitComputationLens",
     "Location",
     "LayerLocation",  # Backward compatibility
     "prepare_input_ids",
