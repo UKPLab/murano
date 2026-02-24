@@ -1,35 +1,46 @@
-from typing import Any
-
-import plotly.express as px
-import plotly.io as pio
 import torch
+from typing import Any, Dict
 
-from .base_lens import BaseLens
-
-pio.renderers.default = "browser"
+from .base_lens import BaseComputationLens
 
 
-class LogitLens(BaseLens):
+class LogitComputationLens(BaseComputationLens):
+    """
+    Projects intermediate hidden states (activations) to the vocabulary
+    to determine what the model was 'predicting' at each layer.
+    """
+
     def __init__(self):
-        super().__init__(name="LogitLens")
+        super().__init__(name="LogitComputationLens")
 
-    def process(self, artifact: dict) -> dict:
+    def process(self, artifact: Dict[str, Any]) -> Dict[str, Any]:
         model = artifact["model"]
         activations = artifact["activations"]
+        input_ids = artifact["input_ids"]
 
         probs_layers = []
         for activation in activations:
-            activation = activation[0]
-            normalized = model.transformer.ln_f(activation)
+            # Extract the actual tensor
+            hidden_state = activation[0]
+
+            normalized = model.transformer.ln_f(hidden_state)
             logits = model.lm_head(normalized)
 
+            # Compute probabilities
             probs = torch.nn.functional.softmax(logits, dim=-1)
+
+            if probs.dim() == 3 and probs.size(0) == 1:
+                probs = probs.squeeze(0)
+
             probs_layers.append(probs)
 
+        # (num_layers X sequence_length X vocab_size)
         all_probs = torch.stack(probs_layers)
 
+        # Get max probabilities and their corresponding token IDs
         max_probs, tokens = all_probs.max(dim=-1)
 
+        # Decode
         words = [
             [
                 model.tokenizer.decode(t.cpu()).encode("unicode_escape").decode()
@@ -38,8 +49,9 @@ class LogitLens(BaseLens):
             for layer_tokens in tokens
         ]
 
-        input_words = [model.tokenizer.decode(t) for t in artifact["input_ids"]]
+        input_words = [model.tokenizer.decode(t) for t in input_ids]
 
+        # Enrich the artifact
         artifact["max_probs"] = max_probs
         artifact["predicted_tokens"] = tokens
         artifact["predicted_words"] = words
@@ -47,24 +59,3 @@ class LogitLens(BaseLens):
         artifact["all_probs"] = all_probs
 
         return artifact
-
-    def visualize(self, artifact: dict) -> Any:
-        max_probs = artifact["max_probs"].detach().cpu().numpy().squeeze(axis=1)
-        words = artifact["predicted_words"]
-        input_words = artifact["input_words"]
-        layer_indices = artifact["layer_indices"]
-
-        fig = px.imshow(
-            max_probs,
-            x=input_words,
-            y=[f"Layer {i}" for i in layer_indices],
-            color_continuous_scale=px.colors.diverging.RdYlBu_r,
-            color_continuous_midpoint=0.50,
-            text_auto=True,
-            labels=dict(x="Input Tokens", y="Layers", color="Probability"),
-        )
-
-        fig.update_layout(title="Logit Lens Visualization", xaxis_tickangle=0)
-
-        fig.update_traces(text=words, texttemplate="%{text}")
-        fig.show()
