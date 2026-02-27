@@ -1,4 +1,4 @@
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Optional
 import numpy as np
 import torch
 from datasets import Dataset
@@ -10,11 +10,13 @@ class Location:
     Location specifies a slice of model activations to extract or analyze.
     """
 
+    VALID_KEYWORDS = {"prompt", "generation", "all", "last"}
+
     def __init__(
         self,
         layers: Union[int, List[int]],
         modules: Union[str, List[str]] = "mlp",
-        token_pos: Union[int, List[int]] = None,
+        token_pos: Union[int, List[int], str] = None,
     ):
         # FIX: Allow slice to pass through without being wrapped in a list
         if isinstance(layers, (list, slice)):
@@ -23,14 +25,122 @@ class Location:
             self.layers = [layers]
 
         self.modules = modules if isinstance(modules, list) else [modules]
-        if isinstance(token_pos, list) or token_pos is None:
+
+        # Handle token_pos
+        if isinstance(token_pos, str):
+            if token_pos not in self.VALID_KEYWORDS:
+                raise ValueError(
+                    f"Invalid token_pos keyword: '{token_pos}'. "
+                    f"Must be one of {self.VALID_KEYWORDS}."
+                )
+            self.token_pos = token_pos
+        elif isinstance(token_pos, list) or token_pos is None:
             self.token_pos = token_pos
         else:
             self.token_pos = [token_pos]
-        # TODO: implement keyword based indexing for token_pos
 
     def __repr__(self):
         return f"(layers={self.layers}, modules={self.modules}, token_pos={self.token_pos})"
+
+    def resolve_indices(
+        self, total_seq_len: int, prompt_len: int
+    ) -> Union[slice, List[int]]:
+        """
+        Resolve the token_pos (keyword or list) into concrete indices or a slice
+        based on the provided sequence dimensions.
+
+        Args:
+            total_seq_len: The total length of the sequence (prompt + generation).
+            prompt_len: The length of the prompt.
+
+        Returns:
+            A slice or list of integers representing the token positions.
+        """
+        if isinstance(self.token_pos, list):
+            # Resolve negative indices in the list
+            return [t if t >= 0 else total_seq_len + t for t in self.token_pos]
+
+        if self.token_pos is None:
+            # Default to all
+            return slice(0, total_seq_len)
+
+        if self.token_pos == "prompt":
+            return slice(0, prompt_len)
+        elif self.token_pos == "generation":
+            return slice(prompt_len, total_seq_len)
+        elif self.token_pos == "all":
+            return slice(0, total_seq_len)
+        elif self.token_pos == "last":
+            return slice(prompt_len - 1, prompt_len)
+
+        # Should be unreachable due to init validation, but fallback
+        return slice(0, total_seq_len)
+
+    def applies_to_prompt_phase(self, prompt_len: int) -> bool:
+        """
+        Check if this location includes tokens from the prompt phase.
+        """
+        if isinstance(self.token_pos, str):
+            if self.token_pos in ["prompt", "last", "all"]:
+                return True
+            if self.token_pos in ["generation"]:
+                return False
+            return False
+
+        if self.token_pos is None:
+            return True
+
+        # Check list indices
+        # We assume indices < prompt_len are in prompt phase
+        # Negative indices are ambiguous without total len, but usually imply end (generation)
+        return any(0 <= t < prompt_len for t in self.token_pos)
+
+    def applies_to_generation_phase(self, prompt_len: int) -> bool:
+        """
+        Check if this location includes tokens from the generation phase.
+        """
+        if isinstance(self.token_pos, str):
+            if self.token_pos in ["generation", "all"]:
+                return True
+            if self.token_pos == "prompt":
+                return False
+            return False
+
+        if self.token_pos is None:
+            return True
+
+        # Check list indices
+        # We assume indices >= prompt_len are in generation phase
+        # Negative indices usually imply end (generation)
+        return any(t >= prompt_len or t < 0 for t in self.token_pos)
+
+    def resolve_time_steps(
+        self, num_steps: Optional[int] = None
+    ) -> Union[slice, List[int]]:
+        """
+        Resolve token_pos into a slice or list suitable for nnsight's tracer.iter[].
+
+        Mappings:
+            "prompt"     -> slice(0, 1)    (Step 0)
+            "last"       -> slice(0, 1)    (Step 0)
+            "generation" -> slice(1, None) (Steps 1 to End)
+            "all"        -> slice(None)    (All Steps)
+        """
+        if isinstance(self.token_pos, list):
+            # FIX: Force explicit lists to run ONLY during the Prompt Phase (Step 0)
+            return slice(0, 1)
+
+        if self.token_pos is None:
+            return slice(None)
+
+        if self.token_pos == "prompt" or "last":
+            return slice(0, 1)
+        elif self.token_pos == "generation":
+            return slice(1, None)
+        elif self.token_pos == "all":
+            return slice(None)
+
+        return slice(None)
 
     def get_slice_idx(self, _slice):
         """
@@ -46,8 +156,21 @@ class Location:
         else:
             # Original logic for list
             layer_idx = [self.layers.index(l) for l in _slice.layers]
+
         module_idx = [self.modules.index(m) for m in _slice.modules]
-        token_idx = [self.token_pos.index(p) for p in _slice.token_pos]
+
+        # Handle string token_pos in get_slice_idx if possible, else raise
+        if isinstance(self.token_pos, str):
+            if isinstance(_slice.token_pos, str) and _slice.token_pos == self.token_pos:
+                # If requesting the exact same keyword, return full slice
+                token_idx = slice(None)
+            else:
+                raise NotImplementedError(
+                    "Slicing by index into a keyword-based Location is not yet supported."
+                )
+        else:
+            token_idx = [self.token_pos.index(p) for p in _slice.token_pos]
+
         return (slice(None), layer_idx, module_idx, token_idx, slice(None))
 
     def is_valid_slice(self, _slice) -> bool:
@@ -60,10 +183,23 @@ class Location:
         else:
             layers_valid = all(l in self.layers for l in _slice.layers)
 
+        # Handle token_pos validation with keywords
+        if isinstance(self.token_pos, str):
+            if self.token_pos == "all":
+                token_valid = True
+
+            elif self.token_pos == "generation":
+                token_valid = _slice.token_pos == "generation"
+
+            else:
+                token_valid = self.token_pos == _slice.token_pos
+        else:
+            token_valid = all(p in self.token_pos for p in _slice.token_pos)
+
         return (
             layers_valid
             and all(m in self.modules for m in _slice.modules)
-            and all(p in self.token_pos for p in _slice.token_pos)
+            and token_valid
         )
 
 
@@ -212,7 +348,14 @@ def steering_vector_to_activation_dataset(
 
     modules_dim = len(location.modules) if location.modules else 1
 
-    if isinstance(location.token_pos, list):
+    # Update: Handle keyword token_pos for dimension calculation
+    if isinstance(location.token_pos, str):
+        # Assuming steering vectors are often 1-token vectors broadcasted.
+        token_pos_dim = 1
+        # If the input steering vector has more tokens, we trust its shape
+        if sv_array.shape[3] > 1:
+            token_pos_dim = sv_array.shape[3]
+    elif isinstance(location.token_pos, list):
         token_pos_dim = len(location.token_pos)
     elif location.token_pos is not None:
         token_pos_dim = 1
@@ -281,8 +424,20 @@ def create_intervention_hook(intervention_activation: torch.Tensor, location: Lo
         # Apply intervention based on Location.token_pos
         token_pos = location.token_pos
 
-        # Check if applying to all tokens
-        if token_pos is None or (
+        # New: Handle keyword token_pos in hook
+        if isinstance(token_pos, str):
+            # For "last", we target the last token of the current chunk
+            if token_pos == "last":
+                output_tensor[:, -1:, :] = (
+                    output_tensor[:, -1:, :] + act_full[:, -1:, :]
+                )
+            else:
+                # For "prompt", "generation", "all", we typically apply to everything
+                # that made it into this hook call (since nnsight filtered the steps).
+                output_tensor[:] = output_tensor[:] + act_full
+
+        # Existing logic for list/None
+        elif token_pos is None or (
             isinstance(token_pos, list) and len(token_pos) == 1 and token_pos[0] is None
         ):
             # Apply to all tokens in current sequence
@@ -300,7 +455,7 @@ def create_intervention_hook(intervention_activation: torch.Tensor, location: Lo
                     )
         else:
             raise ValueError(
-                f"Invalid token_pos in Location: {token_pos}. Must be None, [None], or a list of integers."
+                f"Invalid token_pos in Location: {token_pos}. Must be None, [None], a list of integers, or a valid keyword."
             )
 
         return (

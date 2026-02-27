@@ -183,7 +183,7 @@ class TestGenerateInterveneScoped:
         # --- Assertions ---
 
         # Verify tracer.iter[0] was accessed
-        mock_iter_obj.__getitem__.assert_called_with(0)
+        mock_iter_obj.__getitem__.assert_called_with(slice(0, 1, None))
 
         # Check if the tensor was actually modified
         modified_tensor = mock_proxy._tensor
