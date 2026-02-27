@@ -1,6 +1,7 @@
 from typing import List, Union, Optional
 import sys
 import os
+import pdb
 import torch
 from torch.utils.data import DataLoader
 from datasets import Dataset
@@ -19,15 +20,21 @@ from .utils import (
 
 
 class MuranoModel:
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, **kwargs):
+        device_map = kwargs.pop("device_map", "auto")
+        dispatch = kwargs.pop("dispatch", True)
+
         self.model = StandardizedTransformer(
-            model_name, device_map="auto", dispatch=True
+            model_name,
+            device_map=device_map,
+            dispatch=dispatch,
+            **kwargs,
         )
         self.model_name = model_name
 
     @classmethod
-    def from_pretrained(cls, model_name: str):
-        return cls(model_name)
+    def from_pretrained(cls, model_name: str, **kwargs):
+        return cls(model_name, **kwargs)
 
     # TODO: integrate with record_intervene
     def record(
@@ -48,7 +55,10 @@ class MuranoModel:
         activations = []
 
         # Handle input format
-        if isinstance(input, torch.Tensor):
+        if isinstance(input, str):
+            tokens = self.model.tokenizer(input, return_tensors="pt")
+            input_ids = tokens["input_ids"]
+        elif isinstance(input, torch.Tensor):
             input_ids = input
         elif isinstance(input, dict):
             input_ids = input["input_ids"]
@@ -256,7 +266,10 @@ class MuranoModel:
         Requires: ActivationDataset from examples/federico_visualization.py to be available.
         """
         # Handle input format
-        if isinstance(input, torch.Tensor):
+        if isinstance(input, str):
+            tokens = self.model.tokenizer(input, return_tensors="pt")
+            input_ids = tokens["input_ids"]
+        elif isinstance(input, torch.Tensor):
             input_ids = input
         elif isinstance(input, dict):
             input_ids = input["input_ids"]
@@ -282,10 +295,10 @@ class MuranoModel:
                 f"Intervention activation must have batch size 1 or {batch_size}. \
                              Found: {intrv_batch_size} "
             )
-        if intrv_shape != expected_shape:
+        if intrv_shape[:-1] != expected_shape:
             raise ValueError(
                 f"Shape mismatch: expected (n layers, n modules, n tokens) = {expected_shape}, \
-                              found {intrv_shape}"
+                              found {intrv_shape[:-1]} (full shape: {intrv_shape})"
             )
 
         if location_intervention.token_pos and len(location_intervention.token_pos) > 0:
@@ -312,7 +325,11 @@ class MuranoModel:
                         output = layer_module.output
                         target = output[0] if isinstance(output, tuple) else output
 
-                        # TODO: implement passing function here
+                        # Move the intervention tensor to device
+                        intervention_activation = intervention_activation.to(
+                            target.device
+                        )
+
                         # Apply intervention based on mode
                         if mode == "replacement":
                             target[:, intrv_pos, :] = intervention_activation
@@ -330,10 +347,16 @@ class MuranoModel:
                 for layer in location_recording.layers:
                     layer_activation = []
                     for module in location_recording.modules:
-                        layer_module = getattr(layers_list[layer], module)
-                        output = layer_module.output
-                        source = output[0] if isinstance(output, tuple) else output
+                        if module == "output":
+                            # For 'output', we access the layer's output directly, not as a submodule
+                            layer_module = layers_list[layer]
+                            output = layer_module.output
+                        else:
+                            # For submodules like 'mlp', we access the submodule first
+                            layer_module = getattr(layers_list[layer], module)
+                            output = layer_module.output
 
+                        source = output[0] if isinstance(output, tuple) else output
                         hidden_states = source[:, record_pos, :]
 
                         layer_activation.append(hidden_states.save())
@@ -356,12 +379,17 @@ class MuranoModel:
         """
         Generate text with intervention applied via nnsight at each forward pass step.
         """
-        if isinstance(input, torch.Tensor):
+        if isinstance(input, str):
+            tokens = self.model.tokenizer(input, return_tensors="pt")
+            input_ids = tokens["input_ids"]
+        elif isinstance(input, torch.Tensor):
             input_ids = input
         elif isinstance(input, dict):
             input_ids = input["input_ids"]
         else:
-            input_ids = input
+            raise ValueError(
+                "Input must be a string, tensor, or dictionary with 'input_ids'."
+            )
 
         batch_size = 1  # Default or extract from input_ids if tensor
         if isinstance(input_ids, torch.Tensor):
@@ -374,9 +402,13 @@ class MuranoModel:
 
         # Determine token positions
         if intervene_location.token_pos and len(intervene_location.token_pos) > 0:
-            intrv_pos = intervene_location.token_pos
+            intrv_pos = torch.tensor(
+                intervene_location.token_pos, device=device, dtype=torch.long
+            )
         else:
             intrv_pos = slice(None)
+
+        generated_output = None
 
         with self.model.generate(
             input_ids, max_new_tokens=max_new_tokens, **generation_kwargs
@@ -391,19 +423,26 @@ class MuranoModel:
                         layer_module = getattr(layers_list[layer_idx], module_name)
                         output = layer_module.output
 
-                        # Handle tuple vs tensor (consistent with your record_intervene)
+                        # (batch X tokens X hidden)
                         target = output[0] if isinstance(output, tuple) else output
 
                         # Apply intervention (modification of the proxy)
+
+                        # val_before = target[:, intrv_pos, :].abs().max()
+                        # pdb.set_trace()
                         if mode == "replacement":
                             target[:, intrv_pos, :] = intervention_activation
                         elif mode == "addition":
                             target[:, intrv_pos, :] = (
                                 target[:, intrv_pos, :] + intervention_activation
                             )
+                        # val_after = target[:, intrv_pos, :].abs().max()
+                        # pdb.set_trace()
 
-        # tracer.generator stores the output_ids
+            # Capture the output inside the block
+            generated_output = self.model.generator.output.save()
+
         return {
-            "output_ids": tracer.generator.output,
+            "output_ids": generated_output,
             "input_ids": input_ids,
         }
