@@ -1,4 +1,4 @@
-from typing import List, Union, Optional
+from typing import Callable, List, Union, Optional
 import sys
 import os
 import pdb
@@ -237,13 +237,54 @@ class MuranoModel:
         else:
             raise TypeError(f"Unsupported type in structure: {type(obj)}")
 
+    def _apply_intervention(
+        self,
+        target,
+        intrv_pos,
+        mode: str = "replacement",
+        intervention_activation: Optional[torch.Tensor] = None,
+        intervention_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+    ) -> None:
+        """
+        Apply an intervention to the selected activation slice.
+
+        A callback takes precedence over the legacy mode-based behavior and
+        receives a cloned slice to avoid nnsight graph/view issues.
+        """
+        base_activation = target[:, intrv_pos, :].clone()
+
+        if intervention_fn is not None:
+            if not callable(intervention_fn):
+                raise TypeError("intervention_fn must be callable.")
+            steered_activation = intervention_fn(base_activation)
+        else:
+            if intervention_activation is None:
+                raise ValueError(
+                    "intervention_activation must be provided when intervention_fn is not set."
+                )
+            if hasattr(base_activation, "device"):
+                intervention_activation = intervention_activation.to(
+                    base_activation.device
+                )
+            if mode == "replacement":
+                steered_activation = intervention_activation
+            elif mode == "addition":
+                steered_activation = base_activation + intervention_activation
+            else:
+                raise ValueError(
+                    f"Invalid mode: {mode}. Must be 'replacement' or 'addition'."
+                )
+
+        target[:, intrv_pos, :] = steered_activation
+
     def record_intervene(
         self,
         input: Union[str, torch.Tensor, dict],
         location_intervention: Location,
         location_recording: Location,
-        intervention_activation: torch.Tensor,
+        intervention_activation: Optional[torch.Tensor] = None,
         mode: str = "replacement",
+        intervention_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     ) -> dict:
         """
         Replace or add activations at intervene_location with activation_dataset, then record at record_location.
@@ -268,15 +309,21 @@ class MuranoModel:
                 "Input must be a string, tensor, or dictionary with 'input_ids'."
             )
 
-        batch_size = input_ids.shape[0]
-        intrv_batch_size = intervention_activation.shape[0]
+        if intervention_fn is None:
+            if intervention_activation is None:
+                raise ValueError(
+                    "intervention_activation must be provided when intervention_fn is not set."
+                )
 
-        # Check intervention activations size
-        if intrv_batch_size != batch_size and intrv_batch_size != 1:
-            raise ValueError(
-                f"Intervention activation must have batch size 1 or {batch_size}. \
-                             Found: {intrv_batch_size} "
-            )
+            batch_size = input_ids.shape[0]
+            intrv_batch_size = intervention_activation.shape[0]
+
+            # Check intervention activations size
+            if intrv_batch_size != batch_size and intrv_batch_size != 1:
+                raise ValueError(
+                    f"Intervention activation must have batch size 1 or {batch_size}. \
+                                 Found: {intrv_batch_size} "
+                )
 
         # Resolve indices
         seq_len = input_ids.shape[1]
@@ -296,23 +343,13 @@ class MuranoModel:
                         output = layer_module.output
                         target = output[0] if isinstance(output, tuple) else output
 
-                        # Move the intervention tensor to device
-                        intervention_activation = intervention_activation.to(
-                            target.device
+                        self._apply_intervention(
+                            target=target,
+                            intrv_pos=intrv_pos,
+                            mode=mode,
+                            intervention_activation=intervention_activation,
+                            intervention_fn=intervention_fn,
                         )
-
-                        # Apply intervention based on mode
-                        if mode == "replacement":
-                            target[:, intrv_pos, :] = intervention_activation
-                        elif mode == "addition":
-                            target[:, intrv_pos, :] = (
-                                target[:, intrv_pos, :] + intervention_activation
-                            )
-                        else:
-                            raise ValueError(
-                                f"Invalid mode: {mode}. \
-                                             Must be 'replacement' or 'addition'."
-                            )
 
                 # Record
                 for layer in location_recording.layers:
@@ -342,9 +379,10 @@ class MuranoModel:
         self,
         input: Union[str, torch.Tensor, dict],
         intervene_location: Location,
-        activation_dataset,  # Assuming this is the source for intervention_activation
+        activation_dataset=None,  # Assuming this is the source for intervention_activation
         max_new_tokens: int = 20,
         mode: str = "replacement",
+        intervention_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         **generation_kwargs,
     ) -> dict:
         """
@@ -373,10 +411,16 @@ class MuranoModel:
         if isinstance(input_ids, torch.Tensor):
             batch_size = input_ids.shape[0]
 
-        device = next(self.model.parameters()).device
-        intervention_activation = prepare_intervention_activation(
-            activation_dataset, intervene_location, batch_size, device, coeff=1.0
-        )
+        intervention_activation = None
+        if intervention_fn is None:
+            if activation_dataset is None:
+                raise ValueError(
+                    "activation_dataset must be provided when intervention_fn is not set."
+                )
+            device = next(self.model.parameters()).device
+            intervention_activation = prepare_intervention_activation(
+                activation_dataset, intervene_location, batch_size, device, coeff=1.0
+            )
 
         # Resolve temporal slice for iteration (e.g., prompt only, gen only, or both)
         time_slice = intervene_location.resolve_time_steps(max_new_tokens)
@@ -411,12 +455,13 @@ class MuranoModel:
                             # keywords (prompt, generation, all), we apply to all tokens in the active step
                             intrv_pos = slice(None)
 
-                        if mode == "replacement":
-                            target[:, intrv_pos, :] = intervention_activation
-                        elif mode == "addition":
-                            target[:, intrv_pos, :] = (
-                                target[:, intrv_pos, :] + intervention_activation
-                            )
+                        self._apply_intervention(
+                            target=target,
+                            intrv_pos=intrv_pos,
+                            mode=mode,
+                            intervention_activation=intervention_activation,
+                            intervention_fn=intervention_fn,
+                        )
                         # val_after = target[:, intrv_pos, :].abs().max()
                         # pdb.set_trace()
 
