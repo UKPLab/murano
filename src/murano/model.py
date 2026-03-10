@@ -262,10 +262,6 @@ class MuranoModel:
                 raise ValueError(
                     "intervention_activation must be provided when intervention_fn is not set."
                 )
-            if hasattr(base_activation, "device"):
-                intervention_activation = intervention_activation.to(
-                    base_activation.device
-                )
             if mode == "replacement":
                 steered_activation = intervention_activation
             elif mode == "addition":
