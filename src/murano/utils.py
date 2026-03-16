@@ -42,11 +42,9 @@ class Location:
     def __repr__(self):
         return f"(layers={self.layers}, modules={self.modules}, token_pos={self.token_pos})"
 
-    def resolve_indices(
-        self, total_seq_len: int, prompt_len: int
-    ) -> Union[slice, List[int]]:
+    def resolve_indices(self, total_seq_len: int, prompt_len: int) -> List[int]:
         """
-        Resolve the token_pos (keyword or list) into concrete indices or a slice
+        Resolve the token_pos (keyword or list) into concrete indices
         based on the provided sequence dimensions.
 
         Args:
@@ -54,7 +52,7 @@ class Location:
             prompt_len: The length of the prompt.
 
         Returns:
-            A slice or list of integers representing the token positions.
+            A list of integers representing the token positions.
         """
         if isinstance(self.token_pos, list):
             # Resolve negative indices in the list
@@ -62,19 +60,19 @@ class Location:
 
         if self.token_pos is None:
             # Default to all
-            return slice(0, total_seq_len)
+            return list(range(0, total_seq_len))
 
         if self.token_pos == "prompt":
-            return slice(0, prompt_len)
+            return list(range(0, prompt_len))
         elif self.token_pos == "generation":
-            return slice(prompt_len, total_seq_len)
+            return list(range(prompt_len, total_seq_len))
         elif self.token_pos == "all":
-            return slice(0, total_seq_len)
+            return list(range(0, total_seq_len))
         elif self.token_pos == "last":
-            return slice(prompt_len - 1, prompt_len)
+            return list(range(prompt_len - 1, prompt_len))
 
         # Should be unreachable due to init validation, but fallback
-        return slice(0, total_seq_len)
+        return list(range(0, total_seq_len))
 
     def applies_to_prompt_phase(self, prompt_len: int) -> bool:
         """
