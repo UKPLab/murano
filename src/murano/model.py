@@ -343,45 +343,91 @@ class MuranoModel:
         intrv_pos = location_intervention.resolve_indices(seq_len, seq_len)
         record_pos = location_recording.resolve_indices(seq_len, seq_len)
 
+        # Prepare intervention activations for each layer BEFORE entering trace context
+        # This avoids nnsight graph issues when the same tensor is used multiple times
+        intervention_activations_by_layer = {}
+        if intervention_activation is not None and intervention_fn is None:
+            intervention_layers = (
+                location_intervention.layers
+                if isinstance(location_intervention.layers, list)
+                else [location_intervention.layers]
+            )
+            for layer in intervention_layers:
+                intervention_activations_by_layer[layer] = (
+                    intervention_activation.clone()
+                    .detach()
+                    .requires_grad_(intervention_activation.requires_grad)
+                )
+
         activations = []
         with self.model.trace() as tracer:
             with tracer.invoke(input_ids, max_length=10):
                 # Universal layer access
                 layers_list = self.model.layers
 
-                # Intervene
-                for layer in location_intervention.layers:
-                    for module in location_intervention.modules:
-                        layer_module = getattr(layers_list[layer], module)
-                        output = layer_module.output
-                        target = output[0] if isinstance(output, tuple) else output
+                # first intervene then record
+                all_layers = sorted(
+                    set(
+                        location_intervention.layers
+                        if isinstance(location_intervention.layers, list)
+                        else [location_intervention.layers]
+                    )
+                    | set(
+                        location_recording.layers
+                        if isinstance(location_recording.layers, list)
+                        else [location_recording.layers]
+                    )
+                )
 
-                        self._apply_intervention(
-                            target=target,
-                            intrv_pos=intrv_pos,
-                            mode=mode,
-                            intervention_activation=intervention_activation,
-                            intervention_fn=intervention_fn,
-                        )
-
-                # Record
-                for layer in location_recording.layers:
-                    layer_activation = []
-                    for module in location_recording.modules:
-                        if module == "output":
-                            # For 'output', we access the layer's output directly, not as a submodule
-                            layer_module = layers_list[layer]
-                            output = layer_module.output
-                        else:
-                            # For submodules like 'mlp', we access the submodule first
+                for layer in all_layers:
+                    # Intervene first (if this layer is in the intervention set)
+                    if layer in (
+                        location_intervention.layers
+                        if isinstance(location_intervention.layers, list)
+                        else [location_intervention.layers]
+                    ):
+                        for module in location_intervention.modules:
                             layer_module = getattr(layers_list[layer], module)
                             output = layer_module.output
+                            target = output[0] if isinstance(output, tuple) else output
 
-                        source = output[0] if isinstance(output, tuple) else output
-                        hidden_states = source[:, record_pos, :]
+                            # Use pre-cloned intervention activation for this layer
+                            layer_intervention_activation = (
+                                intervention_activations_by_layer.get(layer, None)
+                                if intervention_fn is None
+                                else None
+                            )
 
-                        layer_activation.append(hidden_states.save())
-                    activations.append(layer_activation)
+                            self._apply_intervention(
+                                target=target,
+                                intrv_pos=intrv_pos,
+                                mode=mode,
+                                intervention_activation=layer_intervention_activation,
+                                intervention_fn=intervention_fn,
+                            )
+
+                    # Record second
+                    if layer in (
+                        location_recording.layers
+                        if isinstance(location_recording.layers, list)
+                        else [location_recording.layers]
+                    ):
+                        layer_activation = []
+                        for module in location_recording.modules:
+                            if module == "output":
+                                # For 'output', we access the layer's output directly, not as a submodule
+                                layer_module = layers_list[layer]
+                                output = layer_module.output
+                            else:
+                                # For submodules like 'mlp', we access the submodule first
+                                layer_module = getattr(layers_list[layer], module)
+                                output = layer_module.output
+
+                            source = output[0] if isinstance(output, tuple) else output
+                            hidden_states = source[:, record_pos, :]
+
+                            layer_activation.append(hidden_states.save())
+                        activations.append(layer_activation)
 
         # TODO: return some class from HuggingFace (possibly CausalLMOutputWithPast, shared by Llama, Qwen, Gemma)
         return {"activations": activations, "input_ids": input_ids}
