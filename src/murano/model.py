@@ -279,7 +279,8 @@ class MuranoModel:
                     pass
 
             if mode == "replacement":
-                steered_activation = intervention_activation
+                # Clone to allow reuse across multiple interventions in nnsight graph
+                steered_activation = intervention_activation.clone()
             elif mode == "addition":
                 steered_activation = base_activation + intervention_activation
             else:
