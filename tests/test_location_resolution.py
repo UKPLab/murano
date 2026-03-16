@@ -54,28 +54,28 @@ class TestLocationEssentials:
     # --- resolve_indices Method (4 tests) ---
 
     def test_resolve_prompt_keyword(self):
-        """'prompt' should resolve to slice(0, prompt_len)."""
+        """'prompt' should resolve to list of indices [0, prompt_len)."""
         loc = Location(layers=[6], modules=["mlp"], token_pos="prompt")
         result = loc.resolve_indices(total_seq_len=20, prompt_len=10)
-        assert result == slice(0, 10)
+        assert result == list(range(0, 10))
 
     def test_resolve_generation_keyword(self):
-        """'generation' should resolve to slice(prompt_len, total_seq_len)."""
+        """'generation' should resolve to list of indices [prompt_len, total_seq_len)."""
         loc = Location(layers=[6], modules=["mlp"], token_pos="generation")
         result = loc.resolve_indices(total_seq_len=20, prompt_len=10)
-        assert result == slice(10, 20)
+        assert result == list(range(10, 20))
 
     def test_resolve_all_keyword(self):
-        """'all' should resolve to slice(0, total_seq_len)."""
+        """'all' should resolve to list of indices [0, total_seq_len)."""
         loc = Location(layers=[6], modules=["mlp"], token_pos="all")
         result = loc.resolve_indices(total_seq_len=20, prompt_len=10)
-        assert result == slice(0, 20)
+        assert result == list(range(0, 20))
 
     def test_resolve_last_keyword(self):
         """'last' should resolve to last prompt token."""
         loc = Location(layers=[6], modules=["mlp"], token_pos="last")
         result = loc.resolve_indices(total_seq_len=20, prompt_len=10)
-        assert result == slice(9, 10)
+        assert result == [9]
 
     # --- Phase Detection (3 tests) ---
 
