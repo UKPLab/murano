@@ -262,6 +262,22 @@ class MuranoModel:
                 raise ValueError(
                     "intervention_activation must be provided when intervention_fn is not set."
                 )
+            # Ensure intervention_activation is on the same device as target
+            if hasattr(target, "device") and hasattr(intervention_activation, "device"):
+                try:
+                    target_device = target.device
+                    # Only move if target is on a real device (not meta)
+                    if (
+                        str(target_device.type) != "meta"
+                        and intervention_activation.device != target_device
+                    ):
+                        intervention_activation = intervention_activation.to(
+                            target_device
+                        )
+                except (AttributeError, NotImplementedError):
+                    # If we can't access device info (e.g., TensorProxy), skip device movement
+                    pass
+
             if mode == "replacement":
                 steered_activation = intervention_activation
             elif mode == "addition":
