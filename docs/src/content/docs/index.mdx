@@ -1,0 +1,34 @@
+---
+title: Murano
+description: Mechanistic interpretability pipelines for LLMs — record activations, find directions, steer generations, probe representations.
+template: splash
+hero:
+  tagline: Mechanistic interpretability for LLMs — record, steer, probe, evaluate.
+  image:
+    file: ../../assets/logo.png
+  actions:
+    - text: Get started
+      link: /getting-started/installation/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/UKPLab/murano
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+  <Card title="Record activations" icon="document">
+    Extract hidden states from any layer, module, or token position with a single call.
+  </Card>
+  <Card title="Find directions" icon="magnifier">
+    Compute contrastive steering vectors from paired positive/negative datasets.
+  </Card>
+  <Card title="Steer generations" icon="right-arrow">
+    Apply activation patching or steering vectors during generation.
+  </Card>
+  <Card title="Pipeline API" icon="list-format">
+    Compose reusable steps into reproducible experiment pipelines.
+  </Card>
+</CardGrid>
