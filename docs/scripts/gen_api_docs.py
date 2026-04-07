@@ -33,10 +33,59 @@ MODULES = [
 ]
 
 
+_SECTION_HEADERS = {
+    "Args", "Arguments", "Parameters",
+    "Returns", "Return",
+    "Raises",
+    "Attributes",
+    "Note", "Notes",
+    "Example", "Examples",
+    "Reads from results", "Writes to results",
+}
+
+
+def _format_docstring(raw: str) -> str:
+    """Convert Google-style docstring to Markdown."""
+    lines = raw.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Detect section header like "Args:" or "Returns:"
+        if stripped.rstrip(":") in _SECTION_HEADERS and stripped.endswith(":"):
+            out.append(f"\n**{stripped}**\n")
+            i += 1
+            # Collect indented items under this section
+            while i < len(lines):
+                item_line = lines[i]
+                if not item_line.strip():
+                    i += 1
+                    break
+                # Item lines are indented; continuation lines are further indented
+                item_stripped = item_line.strip()
+                # Check if this is a new section header
+                if item_stripped.rstrip(":") in _SECTION_HEADERS and item_stripped.endswith(":"):
+                    break
+                # Split "name: description" if possible
+                if ":" in item_stripped:
+                    name, _, desc = item_stripped.partition(":")
+                    out.append(f"- **`{name.strip()}`**: {desc.strip()}")
+                else:
+                    out.append(f"- {item_stripped}")
+                i += 1
+        else:
+            out.append(line)
+            i += 1
+
+    return "\n".join(out).strip()
+
+
 def _docstring(obj: griffe.Object) -> str:
     if obj.docstring is None:
         return ""
-    return obj.docstring.value.strip()
+    return _format_docstring(obj.docstring.value.strip())
 
 
 def _signature(func: griffe.Function) -> str:
@@ -56,7 +105,7 @@ def render_function(func: griffe.Function, heading: int = 3) -> str:
     h = "#" * heading
     doc = _docstring(func)
     sig = _signature(func)
-    lines = [f"{h} `{func.name}{sig}`", ""]
+    lines = [f"{h} `{func.name}`", "", f"```python", f"def {func.name}{sig}:", f"```", ""]
     if doc:
         lines += [doc, ""]
     return "\n".join(lines)
@@ -117,9 +166,22 @@ def generate():
             body = f":::caution[Generation error]\n{e}\n:::"
 
         content = f"---\ntitle: {title}\ndescription: API reference for {module_path}\n---\n\n{body}\n"
-        out_file.write_text(content)
+        out_file.write_text(content, encoding="utf-8")
         print(f"  wrote {out_file.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":
     generate()
+
+    # Run doc quality check
+    print("\n--- Docstring Quality Check ---")
+    from doc_check import run, format_report, REPORT_PATH, REPO_ROOT
+
+    report = run()
+    print(format_report(report))
+    REPORT_PATH.write_text(format_report(report), encoding="utf-8")
+    print(f"\nReport written to {REPORT_PATH.relative_to(REPO_ROOT)}")
+    if report.errors:
+        print(f"\n⚠ {len(report.errors)} error(s), {len(report.warnings)} warning(s)")
+    else:
+        print(f"\n✓ {len(report.warnings)} warning(s), 0 errors")

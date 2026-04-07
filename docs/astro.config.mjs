@@ -13,6 +13,7 @@ export default defineConfig({
 				{
 					label: 'Getting Started',
 					items: [
+						{ label: 'Overview', slug: 'getting-started/overview' },
 						{ label: 'Installation', slug: 'getting-started/installation' },
 						{ label: 'Quickstart', slug: 'getting-started/quickstart' },
 					],
@@ -30,6 +31,12 @@ export default defineConfig({
 				{
 					label: 'API Reference',
 					autogenerate: { directory: 'reference' },
+				},
+				{
+					label: 'Reproduction Gallery',
+					items: [
+						{ label: 'Overview', slug: 'reproductions' },
+					],
 				},
 			],
 		}),
