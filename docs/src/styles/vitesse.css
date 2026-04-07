@@ -1,0 +1,187 @@
+/* ============================================
+   Vitesse-inspired theme overrides for Starlight
+   ============================================ */
+
+/* --- Color palette --- */
+:root {
+  /* Vitesse light backgrounds & text */
+  --sl-color-bg: #eef5fc;
+  --sl-color-bg-nav: #e4edf6;
+  --sl-color-bg-sidebar: #e4edf6;
+  --sl-color-hairline: #d0d7de;
+  --sl-color-hairline-light: #dce3ea;
+
+  --sl-color-text: #18181b;
+  --sl-color-text-accent: #18181b;
+
+  /* Accent – muted teal to complement the cool palette */
+  --sl-color-accent-low: #d4eae6;
+  --sl-color-accent: #42917e;
+  --sl-color-accent-high: #1a5c4b;
+
+  /* Typography */
+  --sl-font: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --sl-font-mono: 'DM Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+
+  /* Softer borders */
+  --sl-color-gray-6: #d5d5d5;
+  --sl-color-gray-5: #a3a3a3;
+}
+
+/* --- Dark mode --- */
+:root[data-theme='dark'] {
+  --sl-color-bg: #0d1117;
+  --sl-color-bg-nav: #161b22;
+  --sl-color-bg-sidebar: #161b22;
+  --sl-color-hairline: #30363d;
+  --sl-color-hairline-light: #21262d;
+
+  --sl-color-text: #ffffff;
+  --sl-color-text-accent: #ffffff;
+
+  --sl-color-accent-low: #1a3332;
+  --sl-color-accent: #56d4b0;
+  --sl-color-accent-high: #a8edd8;
+
+  --sl-color-gray-6: #484848;
+  --sl-color-gray-5: #787878;
+}
+
+/* --- Global tweaks --- */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Links: Vitesse-style bottom-border --- */
+.sl-markdown-content a:not([class]) {
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+  border-bottom-color: rgba(125, 125, 125, 0.3);
+  transition: border-color 0.2s ease;
+}
+.sl-markdown-content a:not([class]):hover {
+  border-bottom-color: currentColor;
+}
+
+/* --- Sidebar --- */
+nav.sidebar .top-level > li > details > summary,
+nav.sidebar a {
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+nav.sidebar a[aria-current='page'] {
+  font-weight: 600;
+}
+
+/* --- Header bar: subtle blur --- */
+header.header {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* --- Code blocks: match frankniujc.github.io --- */
+
+/* Code block wrapper */
+.expressive-code .frame {
+  position: relative;
+  background-color: #ffffff !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0.375rem !important;
+}
+.expressive-code pre {
+  background-color: #ffffff !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+:root[data-theme='dark'] .expressive-code .frame,
+:root[data-theme='dark'] .expressive-code pre {
+  background-color: #161b22 !important;
+}
+
+/* Code text styling */
+.expressive-code pre code {
+  font-size: 1em;
+  line-height: 1.7142857;
+  color: #444;
+}
+:root[data-theme='dark'] .expressive-code pre code {
+  color: #e5e7eb;
+}
+
+/* Remove frame header when no title */
+.expressive-code .frame:not(.has-title) .header {
+  display: none;
+}
+
+/* Copy button — pill with "Copy" text */
+.expressive-code .copy button {
+  width: auto !important;
+  height: auto !important;
+  font-size: 0.75rem !important;
+  line-height: 1 !important;
+  padding: 0.3rem 0.6rem !important;
+  border-radius: 0.25rem !important;
+  background: rgba(125, 125, 125, 0.3) !important;
+  color: inherit !important;
+  backdrop-filter: blur(4px);
+  border: none !important;
+  box-shadow: none !important;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+/* Override the mask-icon ::after with "Copy" text */
+.expressive-code .copy button::after {
+  content: 'Copy' !important;
+  position: static !important;
+  background-color: transparent !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  margin: 0 !important;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: inherit;
+}
+/* Hide the background overlay div and border pseudo */
+.expressive-code .copy button > div,
+.expressive-code .copy button::before {
+  display: none !important;
+}
+.expressive-code .frame:hover .copy button {
+  opacity: 1;
+}
+.expressive-code .copy button:hover {
+  background: rgba(125, 125, 125, 0.5) !important;
+}
+
+/* Inline code — match frankniujc.github.io */
+.sl-markdown-content :not(pre) > code {
+  font-weight: 600;
+  font-size: 0.875em;
+  background: rgb(220, 220, 220);
+  border-radius: 0.25rem;
+  padding: 0.08em 0.19em;
+  margin: 0 0.08em;
+}
+:root[data-theme='dark'] .sl-markdown-content :not(pre) > code {
+  background: rgb(38, 50, 56);
+}
+
+/* --- Prev/Next pagination --- */
+.pagination-links a {
+  font-size: 0.875rem;
+  padding: 0.75rem 1rem;
+  border-color: var(--sl-color-hairline);
+}
+.pagination-links .link-title {
+  font-size: 1rem;
+}
+
+/* --- Smoother page transitions --- */
+main {
+  animation: vitesse-fade 0.35s ease;
+}
+@keyframes vitesse-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
