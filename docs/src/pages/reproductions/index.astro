@@ -1,0 +1,114 @@
+---
+import ReproLayout from '../../layouts/ReproLayout.astro';
+import ReproCard from '../../components/ReproCard.astro';
+
+const reproductions = [
+  {
+    slug: 'tmlr2026',
+    title: 'Shape Happens: Automatic Feature Manifold Discovery in LLMs via Supervised Multi-Dimensional Scaling',
+    venue: 'TMLR 2026',
+    authors: 'Tiblias, Bigoulaeva, Niu, Balloccu, Gurevych',
+    description: 'Introduces SMDS, a framework for discovering and comparing geometric hypotheses about how LLMs organize features in latent space. Shows that feature manifolds form circles, chains, and clusters reflecting the semantic structure of the encoded concept.',
+    tags: ['probing', 'representations', 'geometry'],
+    paper: 'https://arxiv.org/abs/2510.01025',
+    code: 'https://github.com/UKPLab/supervised-multidimensional-scaling',
+  },
+];
+---
+
+<ReproLayout title="Reproduction Gallery" description="End-to-end reproductions of published mechanistic interpretability results using Murano.">
+  <div class="gallery">
+    <div class="gallery-header">
+      <h1 class="gallery-title">Reproduction Gallery</h1>
+      <p class="gallery-subtitle">
+        End-to-end reproductions of published interpretability results, implemented with Murano pipelines.
+        Each entry includes a runnable notebook, paper reference, and walkthrough.
+      </p>
+    </div>
+
+    <div class="gallery-grid">
+      {reproductions.map((r) => (
+        <ReproCard
+          title={r.title}
+          href={`/reproductions/${r.slug}`}
+          venue={r.venue}
+          authors={r.authors}
+          description={r.description}
+          tags={r.tags}
+          paper={r.paper}
+          code={r.code}
+        />
+      ))}
+
+      <a href="https://github.com/UKPLab/murano/issues" class="card-empty" target="_blank" rel="noopener">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+        <span class="empty-text">Your reproduction here.</span>
+        <span class="empty-hint">Submit a notebook and we'll feature it in the gallery.</span>
+      </a>
+    </div>
+  </div>
+</ReproLayout>
+
+<style>
+.gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.gallery-header {
+  padding-top: 1rem;
+}
+
+.gallery-title {
+  font-size: clamp(1.5rem, 3.5vw, 2rem);
+  font-weight: 800;
+  margin: 0 0 0.75rem;
+}
+
+.gallery-subtitle {
+  font-size: 1rem;
+  color: var(--sl-color-gray-3);
+  margin: 0;
+  max-width: 60ch;
+  line-height: 1.6;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.card-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  border: 1.5px dashed var(--sl-color-hairline);
+  border-radius: 0.75rem;
+  color: var(--sl-color-gray-4);
+  text-align: center;
+  text-decoration: none;
+  min-height: 140px;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.card-empty:hover {
+  border-color: var(--sl-color-accent);
+  color: var(--sl-color-accent);
+}
+
+.empty-text {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.empty-hint {
+  font-size: 0.8125rem;
+}
+</style>

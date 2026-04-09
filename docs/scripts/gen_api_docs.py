@@ -3,7 +3,7 @@
 Run from the repo root:
     python docs/scripts/gen_api_docs.py
 
-Outputs Markdown files to docs/src/content/docs/reference/.
+Outputs Markdown files to docs/src/content/docs/docs/reference/.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import griffe
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 SRC = REPO_ROOT / "src"
-OUT = REPO_ROOT / "docs" / "src" / "content" / "docs" / "reference"
+OUT = REPO_ROOT / "docs" / "src" / "content" / "docs" / "docs" / "reference"
 
 # Modules to document: (import path, output slug)
 MODULES = [

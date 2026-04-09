@@ -1,0 +1,313 @@
+---
+const reproductions = [
+  {
+    title: 'Hypothesis-Driven Feature Manifold Analysis in LLMs via Supervised Multi-Dimensional Scaling',
+    venue: 'TMLR 2026',
+    authors: ['Federico Tiblias', 'Irina Bigoulaeva', 'Jingcheng Niu', 'Simone Balloccu', 'Iryna Gurevych'],
+    description: 'Reproduces SMDS — a technique for discovering how LLMs organize concepts spatially. Shows that temporal features form geometric structures (circles, lines, clusters) consistent across model families.',
+    tags: ['probing', 'representations', 'geometry'],
+    paper: 'https://openreview.net/forum?id=vCKZ40YYPr',
+    github: 'https://github.com/UKPLab/arxiv2025-shape-happens',
+    notebook: '/reproductions/',
+  },
+];
+---
+
+<section class="repro-gallery">
+  <div class="repro-header">
+    <p class="repro-eyebrow">Reproduction Gallery</p>
+    <h2 class="repro-title">Community reproductions.</h2>
+    <p class="repro-subtitle">
+      Interpretability papers reproduced with Murano — one coherent API,
+      end-to-end experiments.
+    </p>
+  </div>
+
+  <div class="repro-grid">
+    {reproductions.map((r) => (
+      <div class="repro-card">
+        <div class="repro-card-top">
+          <div class="repro-meta">
+            <span class="repro-venue">{r.venue}</span>
+            <div class="repro-tags">
+              {r.tags.map(t => <span class="repro-tag">{t}</span>)}
+            </div>
+          </div>
+          <h3 class="repro-card-title">{r.title}</h3>
+          <p class="repro-authors">{r.authors.join(', ')}</p>
+          <p class="repro-desc">{r.description}</p>
+        </div>
+
+        <div class="repro-card-footer">
+          <a href={r.notebook} class="repro-btn repro-btn--primary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+            </svg>
+            Open notebook
+          </a>
+          <div class="repro-links">
+            <a href={r.paper} class="repro-link" target="_blank" rel="noopener" title="Paper">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              </svg>
+              Paper
+            </a>
+            <a href={r.github} class="repro-link" target="_blank" rel="noopener" title="GitHub">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+              </svg>
+              Code
+            </a>
+          </div>
+        </div>
+      </div>
+    ))}
+
+    <!-- Placeholder / call-to-action card -->
+    <div class="repro-card repro-card--empty">
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+      </svg>
+      <p class="empty-text">Your reproduction here.</p>
+      <p class="empty-hint">Submit a notebook and we'll add it to the gallery.</p>
+    </div>
+  </div>
+
+  <div class="repro-footer">
+    <a href="/reproductions/" class="repro-all-link">Browse all reproductions →</a>
+  </div>
+</section>
+
+<style>
+.repro-gallery {
+  margin: 0 !important;
+  padding: 4.5rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2.5rem;
+}
+
+/* ── Header ── */
+.repro-header {
+  text-align: center;
+}
+
+.repro-eyebrow {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sl-color-accent);
+  margin: 0 0 0.75rem;
+}
+
+.repro-title {
+  font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0 0 0.75rem;
+  color: var(--sl-color-text);
+}
+
+.repro-subtitle {
+  font-size: 1.0625rem;
+  color: var(--sl-color-gray-3);
+  margin: 0;
+  max-width: 52ch;
+}
+
+/* ── Grid ── */
+.repro-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .repro-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Card ── */
+.repro-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.75rem;
+  background: var(--sl-color-bg-nav);
+  margin: 0 !important;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.repro-card:hover {
+  border-color: var(--sl-color-accent);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--sl-color-accent) 10%, transparent);
+}
+
+/* ── Card top ── */
+.repro-card-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.repro-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.repro-venue {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--sl-font-mono);
+  color: var(--sl-color-accent);
+  letter-spacing: 0.04em;
+}
+
+.repro-tags {
+  display: flex;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.repro-tag {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2rem;
+  border: 1px solid var(--sl-color-hairline);
+  color: var(--sl-color-gray-3);
+}
+
+.repro-card-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--sl-color-text);
+  margin: 0;
+}
+
+.repro-authors {
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-4);
+  margin: 0;
+}
+
+.repro-desc {
+  font-size: 0.875rem;
+  color: var(--sl-color-gray-3);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── Card footer ── */
+.repro-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--sl-color-hairline);
+  flex-wrap: wrap;
+}
+
+.repro-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.45rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.8375rem;
+  font-weight: 600;
+  text-decoration: none !important;
+  border: none !important;
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.repro-btn--primary {
+  background: var(--sl-color-accent);
+  color: #fff;
+}
+
+.repro-btn--primary:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.repro-links {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.repro-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--sl-color-gray-3);
+  text-decoration: none !important;
+  border: none !important;
+  transition: color 0.2s;
+}
+
+.repro-link:hover {
+  color: var(--sl-color-accent);
+}
+
+/* ── Empty / CTA card ── */
+.repro-card--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-style: dashed;
+  color: var(--sl-color-gray-4);
+  text-align: center;
+  min-height: 200px;
+}
+
+.repro-card--empty:hover {
+  border-color: var(--sl-color-accent);
+  color: var(--sl-color-accent);
+  box-shadow: none;
+}
+
+.empty-text {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
+  color: inherit;
+}
+
+.empty-hint {
+  font-size: 0.8125rem;
+  margin: 0;
+  color: var(--sl-color-gray-4);
+}
+
+/* ── Footer link ── */
+.repro-footer {
+  text-align: center;
+}
+
+.repro-all-link {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--sl-color-accent);
+  text-decoration: none !important;
+  border: none !important;
+  transition: opacity 0.2s;
+}
+
+.repro-all-link:hover {
+  opacity: 0.75;
+}
+</style>

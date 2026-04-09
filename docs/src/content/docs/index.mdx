@@ -8,27 +8,28 @@ hero:
     file: ../../assets/logo.png
   actions:
     - text: Get started
-      link: /getting-started/overview/
+      link: /docs/getting-started/overview/
       icon: right-arrow
     - text: View on GitHub
       link: https://github.com/UKPLab/murano
       icon: external
       variant: minimal
+    - text: Reproduction Gallery
+      link: /reproductions/
+      icon: open-book
+      variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import SocialBar from '../../components/SocialBar.astro';
+import CodeComparison from '../../components/CodeComparison.astro';
+import GallerySection from '../../components/GallerySection.astro';
+import ReproductionGallery from '../../components/ReproductionGallery.astro';
+import TeamSection from '../../components/TeamSection.astro';
+import CTASection from '../../components/CTASection.astro';
 
-<CardGrid>
-  <Card title="Record activations" icon="document">
-    Extract hidden states from any layer, module, or token position with a single call.
-  </Card>
-  <Card title="Find directions" icon="magnifier">
-    Compute contrastive steering vectors from paired positive/negative datasets.
-  </Card>
-  <Card title="Steer generations" icon="right-arrow">
-    Apply activation patching or steering vectors during generation.
-  </Card>
-  <Card title="Pipeline API" icon="list-format">
-    Compose reusable steps into reproducible experiment pipelines.
-  </Card>
-</CardGrid>
+<CodeComparison />
+<GallerySection />
+<ReproductionGallery />
+<TeamSection />
+<CTASection />
+<SocialBar />

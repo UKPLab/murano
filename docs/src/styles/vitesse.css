@@ -48,6 +48,10 @@
 }
 
 /* --- Global tweaks --- */
+html {
+  overflow-x: clip;
+}
+
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -114,21 +118,33 @@ header.header {
   display: none;
 }
 
+/* Anchor copy wrapper to top-right of the frame */
+.expressive-code .frame {
+  position: relative;
+}
+.expressive-code .copy {
+  position: absolute !important;
+  top: 0.5rem !important;
+  right: 0.5rem !important;
+  z-index: 2;
+}
+
 /* Copy button — pill with "Copy" text */
 .expressive-code .copy button {
   width: auto !important;
   height: auto !important;
   font-size: 0.75rem !important;
+  font-weight: 600 !important;
   line-height: 1 !important;
-  padding: 0.3rem 0.6rem !important;
-  border-radius: 0.25rem !important;
-  background: rgba(125, 125, 125, 0.3) !important;
-  color: inherit !important;
+  padding: 0.3rem 0.65rem !important;
+  border-radius: 0.3rem !important;
+  background: color-mix(in srgb, var(--sl-color-bg) 70%, transparent) !important;
+  color: var(--sl-color-gray-3) !important;
   backdrop-filter: blur(4px);
-  border: none !important;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent) !important;
   box-shadow: none !important;
   opacity: 0;
-  transition: opacity 0.2s ease, background 0.2s ease;
+  transition: opacity 0.15s, color 0.15s !important;
 }
 /* Override the mask-icon ::after with "Copy" text */
 .expressive-code .copy button::after {
@@ -151,7 +167,7 @@ header.header {
   opacity: 1;
 }
 .expressive-code .copy button:hover {
-  background: rgba(125, 125, 125, 0.5) !important;
+  color: var(--sl-color-text) !important;
 }
 
 /* Inline code — match frankniujc.github.io */

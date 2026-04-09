@@ -1,0 +1,37 @@
+---
+title: Reproductions
+description: End-to-end reproductions of published interpretability results, built with Murano pipelines.
+---
+
+import { Card, CardGrid, LinkButton } from '@astrojs/starlight/components';
+
+The **Reproduction Gallery** collects end-to-end reproductions of published mechanistic interpretability results, implemented with Murano pipelines. Each entry in the gallery documents the paper, the experimental setup, and the results obtained, and comes with a runnable notebook.
+
+<LinkButton href="/reproductions/" icon="external">Browse the gallery</LinkButton>
+
+## Why reproductions?
+
+Interpretability moves fast, and papers rarely agree on APIs, data formats, or evaluation protocols. The gallery exists so that anyone can:
+
+- **Run published experiments in a few lines** — Murano's unified `Pipeline` API collapses activation recording, probing, steering, and evaluation into declarative composable steps.
+- **Compare results across papers** — same dataset format, same model loader, same metrics.
+- **Extend and remix** — every reproduction ships as a notebook you can fork and modify.
+
+## What's in a reproduction?
+
+Each gallery entry contains:
+
+| Section | What it covers |
+|---|---|
+| **Paper metadata** | Venue, authors, BibTeX, links to arXiv / OpenReview / original code |
+| **TL;DR** | A 2–3 sentence summary of the core claim |
+| **Abstract** | Verbatim paper abstract for context |
+| **Reproducing with Murano** | Step-by-step walkthrough with runnable code |
+| **Key results** | A table comparing paper vs. reproduction numbers |
+| **Citation** | BibTeX entry for the original work |
+
+## Have something to add?
+
+If you've reproduced an interpretability paper with Murano — or you're using Murano in your own research and want to share a reference implementation — we'd love to feature it.
+
+<LinkButton href="/docs/reproductions/submit/" icon="right-arrow">Submit a reproduction →</LinkButton>

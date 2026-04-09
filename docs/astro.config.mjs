@@ -6,6 +6,10 @@ import starlight from '@astrojs/starlight';
 export default defineConfig({
 	integrations: [
 		starlight({
+			components: {
+				ThemeSelect: './src/components/ThemeSelect.astro',
+				SocialIcons: './src/components/SiteNav.astro',
+			},
 			title: 'Murano',
 			logo: { src: './src/assets/logo.png' },
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/UKPLab/murano' }],
@@ -31,30 +35,31 @@ export default defineConfig({
 				{
 					label: 'Getting Started',
 					items: [
-						{ label: 'Overview', slug: 'getting-started/overview' },
-						{ label: 'Installation', slug: 'getting-started/installation' },
-						{ label: 'Quickstart', slug: 'getting-started/quickstart' },
+						{ label: 'Overview', slug: 'docs/getting-started/overview' },
+						{ label: 'Installation', slug: 'docs/getting-started/installation' },
+						{ label: 'Quickstart', slug: 'docs/getting-started/quickstart' },
 					],
 				},
 				{
 					label: 'Guides',
 					items: [
-						{ label: 'Recording Activations', slug: 'guides/record' },
-						{ label: 'Activation Patching', slug: 'guides/patch' },
-						{ label: 'Steering Vectors', slug: 'guides/steer' },
-						{ label: 'Probing', slug: 'guides/probe' },
-						{ label: 'Pipelines', slug: 'guides/pipeline' },
+						{ label: 'Recording Activations', slug: 'docs/guides/record' },
+						{ label: 'Activation Patching', slug: 'docs/guides/patch' },
+						{ label: 'Steering Vectors', slug: 'docs/guides/steer' },
+						{ label: 'Probing', slug: 'docs/guides/probe' },
+						{ label: 'Pipelines', slug: 'docs/guides/pipeline' },
+					],
+				},
+				{
+					label: 'Reproductions',
+					items: [
+						{ label: 'Overview', slug: 'docs/reproductions/overview' },
+						{ label: 'Submit a Reproduction', slug: 'docs/reproductions/submit' },
 					],
 				},
 				{
 					label: 'API Reference',
-					autogenerate: { directory: 'reference' },
-				},
-				{
-					label: 'Reproduction Gallery',
-					items: [
-						{ label: 'Overview', slug: 'reproductions' },
-					],
+					autogenerate: { directory: 'docs/reference' },
 				},
 			],
 		}),

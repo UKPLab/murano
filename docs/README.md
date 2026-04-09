@@ -31,15 +31,16 @@ The dev server hot-reloads Markdown changes. Re-run step 1 whenever you change a
 | What | Where |
 |---|---|
 | Landing page | `src/content/docs/index.mdx` |
-| Getting started | `src/content/docs/getting-started/` |
-| Guides / tutorials | `src/content/docs/guides/` |
+| Getting started | `src/content/docs/docs/getting-started/` |
+| Guides / tutorials | `src/content/docs/docs/guides/` |
+| Reproductions guide | `src/content/docs/docs/reproductions/` |
 | API reference | auto-generated — edit Python docstrings instead |
 
 New pages are picked up automatically. To add a page to the sidebar, add an entry in `astro.config.mjs`.
 
 ## API reference generation
 
-`scripts/gen_api_docs.py` uses [griffe](https://mkdocstrings.github.io/griffe/) to parse Python docstrings and writes Markdown files to `src/content/docs/reference/`. That folder is gitignored — it must be regenerated before each build.
+`scripts/gen_api_docs.py` uses [griffe](https://mkdocstrings.github.io/griffe/) to parse Python docstrings and writes Markdown files to `src/content/docs/docs/reference/`. That folder is gitignored — it must be regenerated before each build.
 
 To add a new module to the reference, append it to the `MODULES` list in the script:
 

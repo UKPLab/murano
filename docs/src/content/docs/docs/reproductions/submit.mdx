@@ -1,0 +1,137 @@
+---
+title: Submit a Reproduction
+description: How to contribute a new reproduction to the Murano gallery.
+---
+
+import { Steps, Aside, FileTree, LinkButton } from '@astrojs/starlight/components';
+
+This page walks you through the full submission process — from writing the reproduction notebook to opening the pull request.
+
+<Aside type="tip">
+Not sure if your work is a good fit? Open a [discussion](https://github.com/UKPLab/murano/discussions) first and we'll help you scope it.
+</Aside>
+
+## Before you start
+
+A good reproduction is one that:
+
+- Targets a **published** interpretability paper (arXiv, conference, or workshop — preprints are fine)
+- Uses **Murano** for the core experimental steps (recording, probing, steering, patching, or evaluation)
+- Runs **end-to-end** on a single GPU or on Colab free tier where possible
+- Reports **numbers that match the paper** (exact or within a reasonable tolerance) — or documents the discrepancies honestly
+- Is **self-contained** — the notebook plus a short Markdown walkthrough should be enough to rerun the experiment from scratch
+
+We do not expect bit-exact reproductions. We do expect intellectual honesty: if you couldn't reproduce a result, say so and describe what you tried.
+
+## Submission steps
+
+<Steps>
+
+1. **Fork the repo and create a branch**
+
+   ```bash
+   git clone https://github.com/<your-username>/murano.git
+   cd murano
+   git checkout -b repro/<short-slug>
+   ```
+
+   Use a short slug that identifies the paper, e.g. `repro/arditi-2024-refusal` or `repro/tmlr2026-shape-happens`.
+
+2. **Add your notebook**
+
+   Drop your `.ipynb` into `notebooks/reproductions/` with a descriptive filename:
+
+   <FileTree>
+   - notebooks/
+     - reproductions/
+       - **your_paper_slug.ipynb**
+   </FileTree>
+
+   The notebook should:
+   - Start with a markdown cell citing the paper (title, authors, venue, arXiv link)
+   - Install dependencies in the first code cell (`!pip install murano ...`)
+   - Run the full experiment end-to-end without manual intervention
+   - Print or plot the key results at the end
+
+3. **Write the gallery entry**
+
+   Create a new Astro page at `docs/src/pages/reproductions/<your-slug>.astro`. The easiest way is to copy an existing one:
+
+   ```bash
+   cp docs/src/pages/reproductions/tmlr2026.astro \
+      docs/src/pages/reproductions/<your-slug>.astro
+   ```
+
+   Each gallery entry should include:
+
+   - **Header**: badges (venue + tags), title, authors, action buttons (Colab, arXiv, OpenReview, Code)
+   - **TL;DR**: a 2–3 sentence plain-language summary
+   - **Abstract**: verbatim from the paper
+   - **Reproducing with Murano**: step-by-step walkthrough with code blocks
+   - **Key results**: table comparing your numbers to the paper's
+   - **Citation**: BibTeX entry
+
+4. **Register the entry in the gallery index**
+
+   Open `docs/src/pages/reproductions/index.astro` and add your entry to the `reproductions` array:
+
+   ```js
+   const reproductions = [
+     // ... existing entries
+     {
+       slug: 'your-slug',
+       title: 'Paper title',
+       venue: 'Venue Year',
+       authors: 'First Author, Second Author, ...',
+       description: 'One-sentence summary.',
+       tags: ['probing', 'steering', /* ... */],
+       paper: 'https://arxiv.org/abs/...',
+       code: 'https://github.com/...',
+     },
+   ];
+   ```
+
+5. **Test the build locally**
+
+   ```bash
+   cd docs
+   npm install
+   npm run dev
+   ```
+
+   Visit `http://localhost:4321/reproductions/` and confirm that:
+   - Your card appears in the gallery grid
+   - Clicking it opens your entry page
+   - All links (Colab, arXiv, code) work
+   - Code blocks render with the correct syntax highlighting
+
+6. **Open a pull request**
+
+   Push your branch and open a PR against `main` with the title `repro: <paper short name>`. In the PR description, include:
+
+   - A one-paragraph summary of the paper and what you reproduced
+   - A link to the Colab notebook (so reviewers can run it without cloning)
+   - Any discrepancies between your results and the paper's, with your best guess at why
+   - A screenshot of your gallery card and entry page
+
+</Steps>
+
+## Review process
+
+A Murano maintainer will:
+
+1. **Check that the notebook runs** on Colab or locally
+2. **Verify the numbers** against the paper's reported results
+3. **Review the gallery entry** for clarity, formatting, and citation accuracy
+4. **Merge the PR** or request changes
+
+Reviews are best-effort — simple, well-scoped reproductions usually get feedback within a week. Larger or more ambitious submissions may take longer.
+
+## Attribution
+
+Every reproduction is credited to its author in the gallery entry and in the repository's `CONTRIBUTORS.md`. If your reproduction is associated with a publication of your own, we're happy to link to it.
+
+## Questions?
+
+<LinkButton href="https://github.com/UKPLab/murano/discussions" icon="external" variant="minimal">Start a discussion</LinkButton>
+<LinkButton href="mailto:murano@ukp.tu-darmstadt.de" icon="email" variant="minimal">Email the team</LinkButton>

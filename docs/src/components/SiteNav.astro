@@ -1,0 +1,36 @@
+---
+import Default from '@astrojs/starlight/components/SocialIcons.astro';
+
+const pathname = Astro.url.pathname;
+const isRepro = pathname.startsWith('/reproductions');
+const isDocs = pathname.startsWith('/docs');
+---
+
+<nav class="site-nav">
+  <a href="/docs/getting-started/overview/" class:list={['site-nav__link', { active: isDocs }]}>Docs</a>
+  <a href="/reproductions/" class:list={['site-nav__link', { active: isRepro }]}>Reproductions</a>
+</nav>
+<Default {...Astro.props} />
+
+<style>
+  .site-nav {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-right: 0.25rem;
+  }
+
+  .site-nav__link {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--sl-color-gray-3);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .site-nav__link:hover,
+  .site-nav__link.active {
+    color: var(--sl-color-text);
+    font-weight: 600;
+  }
+</style>

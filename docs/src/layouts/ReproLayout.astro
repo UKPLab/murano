@@ -1,0 +1,322 @@
+---
+import { Image } from 'astro:assets';
+import logo from '../assets/logo.png';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+const fullTitle = `${title} | Murano`;
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    {/* Fonts */}
+    <style>
+      @import '@fontsource/inter/400.css';
+      @import '@fontsource/inter/600.css';
+      @import '@fontsource/inter/800.css';
+      @import '@fontsource/dm-mono/400.css';
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="header-nav">
+        <a href="/" class="header-logo">
+          <Image src={logo} alt="" width={24} height={24} />
+          <span>Murano</span>
+        </a>
+        <div class="header-links">
+          <a href="/docs/getting-started/overview">Docs</a>
+          <a href="/reproductions" class="active">Reproductions</a>
+          <a href="https://github.com/UKPLab/murano" target="_blank" rel="noopener">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-label="GitHub">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+          </a>
+          <button class="theme-toggle" aria-label="Toggle theme" title="Toggle theme">
+            <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+            </svg>
+            <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+          </button>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <span>Murano &middot; UKP Lab, TU Darmstadt</span>
+      <a href="https://github.com/UKPLab/murano" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+
+    {/* Copy button for code blocks */}
+    <script is:inline>
+      document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('pre').forEach(function(pre) {
+          var btn = document.createElement('button');
+          btn.className = 'copy-btn';
+          btn.textContent = 'Copy';
+          btn.addEventListener('click', function() {
+            var text = pre.querySelector('code')?.textContent ?? pre.textContent;
+            navigator.clipboard.writeText(text).then(function() {
+              btn.textContent = 'Copied!';
+              btn.classList.add('copy-btn--copied');
+              setTimeout(function() {
+                btn.textContent = 'Copy';
+                btn.classList.remove('copy-btn--copied');
+              }, 1500);
+            });
+          });
+          pre.appendChild(btn);
+        });
+      });
+    </script>
+
+    {/* Theme script — compatible with Starlight's localStorage key */}
+    <script is:inline>
+      (function() {
+        var stored = localStorage.getItem('starlight-theme');
+        var theme = (stored === 'light' || stored === 'dark')
+          ? stored
+          : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.dataset.theme = theme;
+
+        document.querySelector('.theme-toggle')?.addEventListener('click', function() {
+          var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+          document.documentElement.dataset.theme = next;
+          localStorage.setItem('starlight-theme', next);
+        });
+      })();
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  /* ── Reset ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+  /* ── Color palette (matches vitesse.css) ── */
+  :root {
+    --sl-color-bg: #eef5fc;
+    --sl-color-bg-nav: #e4edf6;
+    --sl-color-hairline: #d0d7de;
+    --sl-color-text: #18181b;
+    --sl-color-accent-low: #d4eae6;
+    --sl-color-accent: #42917e;
+    --sl-color-accent-high: #1a5c4b;
+    --sl-color-gray-2: #444;
+    --sl-color-gray-3: #6b7280;
+    --sl-color-gray-4: #9ca3af;
+    --sl-font: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --sl-font-mono: 'DM Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  }
+
+  :root[data-theme='dark'] {
+    --sl-color-bg: #0d1117;
+    --sl-color-bg-nav: #161b22;
+    --sl-color-hairline: #30363d;
+    --sl-color-text: #ffffff;
+    --sl-color-accent-low: #1a3332;
+    --sl-color-accent: #56d4b0;
+    --sl-color-accent-high: #a8edd8;
+    --sl-color-gray-2: #d1d5db;
+    --sl-color-gray-3: #9ca3af;
+    --sl-color-gray-4: #6b7280;
+  }
+
+  body {
+    font-family: var(--sl-font);
+    background: var(--sl-color-bg);
+    color: var(--sl-color-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Dot grid background ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, var(--sl-color-bg) 22px, transparent 1%) 50%,
+      linear-gradient(var(--sl-color-bg) 22px, transparent 1%) 50%,
+      #a5aeb850;
+    background-position: center center;
+    background-size: 24px 24px;
+    mask-image: linear-gradient(0deg, transparent 5%, #fff);
+  }
+
+  :root[data-theme='dark'] body::before {
+    background:
+      linear-gradient(90deg, #0d1117 22px, transparent 1%) 50%,
+      linear-gradient(#0d1117 22px, transparent 1%) 50%,
+      #2f353c;
+    background-position: center center;
+    background-size: 24px 24px;
+    mask-image: linear-gradient(0deg, transparent 5%, #000);
+  }
+
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+
+  a { color: inherit; }
+
+  /* ── Header ── */
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--sl-color-hairline);
+    background: color-mix(in srgb, var(--sl-color-bg) 80%, transparent);
+  }
+
+  .header-nav {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .header-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--sl-color-text);
+  }
+
+  .header-logo img {
+    border-radius: 4px;
+  }
+
+  .header-links {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+  }
+
+  .header-links a {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--sl-color-gray-3);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .header-links a:hover,
+  .header-links a.active {
+    color: var(--sl-color-text);
+  }
+
+  .theme-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--sl-color-gray-3);
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+  }
+
+  .theme-toggle:hover {
+    color: var(--sl-color-text);
+  }
+
+  /* Light mode: show moon, hide sun */
+  .icon-sun { display: none; }
+  .icon-moon { display: block; }
+  :root[data-theme='dark'] .icon-sun { display: block; }
+  :root[data-theme='dark'] .icon-moon { display: none; }
+
+  /* ── Footer ── */
+  .site-footer {
+    border-top: 1px solid var(--sl-color-hairline);
+    padding: 1.5rem;
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    font-size: 0.8125rem;
+    color: var(--sl-color-gray-4);
+  }
+
+  .site-footer a {
+    text-decoration: none;
+    color: var(--sl-color-gray-3);
+    transition: color 0.2s;
+  }
+
+  .site-footer a:hover {
+    color: var(--sl-color-text);
+  }
+
+  /* ── Copy button ── */
+  pre {
+    position: relative;
+  }
+
+  .copy-btn {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    font-family: var(--sl-font);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0.3rem 0.65rem;
+    border-radius: 0.3rem;
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    background: color-mix(in srgb, var(--sl-color-bg) 70%, transparent);
+    color: var(--sl-color-gray-3);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+    backdrop-filter: blur(4px);
+  }
+
+  pre:hover .copy-btn {
+    opacity: 1;
+  }
+
+  .copy-btn:hover {
+    color: var(--sl-color-text);
+  }
+
+  .copy-btn--copied {
+    color: var(--sl-color-accent) !important;
+    opacity: 1 !important;
+    border-color: var(--sl-color-accent);
+  }
+</style>

@@ -1,0 +1,393 @@
+---
+---
+
+<section class="cta-section">
+  <div class="cta-inner">
+    <details class="repro-details">
+      <summary class="repro-summary">
+        <div class="summary-content">
+          <div class="summary-text">
+            <h2 class="cta-title">Submit Your Reproduction.</h2>
+            <p class="cta-subtitle">
+              Share your Murano-powered reproduction of an interpretability paper.
+              Upload a notebook and we'll feature it in the gallery.
+            </p>
+          </div>
+          <span class="summary-btn">Submit a notebook ↓</span>
+        </div>
+      </summary>
+
+      <form class="repro-form" onsubmit="return false;">
+        <div class="form-row">
+          <div class="form-field">
+            <label for="repro-name">Your name</label>
+            <input id="repro-name" type="text" placeholder="Alice Müller" autocomplete="name" />
+          </div>
+          <div class="form-field">
+            <label for="repro-email">Email</label>
+            <input id="repro-email" type="email" placeholder="alice@example.com" autocomplete="email" />
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="repro-paper">Paper title or DOI</label>
+          <input id="repro-paper" type="text" placeholder="e.g. Representation Engineering (Zou et al., 2023)" />
+        </div>
+
+        <div class="form-field">
+          <label for="repro-desc">Short description</label>
+          <textarea id="repro-desc" rows="3" placeholder="What does your notebook reproduce? Any notes for reviewers."></textarea>
+        </div>
+
+        <div class="form-field">
+          <label for="repro-file">Notebook (.ipynb)</label>
+          <div class="file-drop" id="file-drop-zone">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span class="drop-label">Drop your <code>.ipynb</code> here, or <label for="repro-file" class="browse-link">browse</label></span>
+            <span class="drop-hint" id="file-name">No file selected</span>
+            <input id="repro-file" type="file" accept=".ipynb,application/json" />
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="cta-btn cta-btn--primary">Submit reproduction</button>
+          <span class="form-note">We review all submissions before publishing.</span>
+        </div>
+      </form>
+    </details>
+  </div>
+
+  <div class="contact-row">
+    <div class="contact-links">
+      <a href="https://github.com/UKPLab/murano" class="contact-link" target="_blank" rel="noopener">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        GitHub
+      </a>
+      <span class="contact-sep">·</span>
+      <span class="contact-text">Built at <a href="https://www.ukp.tu-darmstadt.de/" class="contact-link" target="_blank" rel="noopener">UKPLab</a>, TU Darmstadt</span>
+      <span class="contact-sep">·</span>
+      <span class="contact-text">MIT License</span>
+    </div>
+  </div>
+</section>
+
+<script>
+  const input = document.getElementById('repro-file') as HTMLInputElement;
+  const label = document.getElementById('file-name');
+  const zone  = document.getElementById('file-drop-zone');
+
+  input?.addEventListener('change', () => {
+    if (label) label.textContent = input.files?.[0]?.name ?? 'No file selected';
+  });
+
+  zone?.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone?.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone?.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer?.files[0];
+    if (file && input) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      if (label) label.textContent = file.name;
+    }
+  });
+</script>
+
+<style>
+.cta-section {
+  margin: 0 !important;
+  padding: 4.5rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3rem;
+}
+
+/* ── Main CTA block ── */
+.cta-inner {
+  width: 100%;
+  max-width: 600px;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 1rem;
+  background: var(--sl-color-bg-nav);
+  position: relative;
+  overflow: hidden;
+}
+
+.cta-inner::before {
+  content: '';
+  position: absolute;
+  inset: -60px;
+  background: radial-gradient(
+    ellipse 60% 50% at 50% 0%,
+    color-mix(in srgb, var(--sl-color-accent) 12%, transparent),
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Details / summary ── */
+.repro-details {
+  position: relative;
+  z-index: 1;
+}
+
+.repro-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 2.5rem 2.5rem;
+  user-select: none;
+}
+
+.repro-summary::-webkit-details-marker { display: none; }
+.repro-summary::marker { display: none; }
+
+.summary-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.summary-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.cta-title {
+  font-size: clamp(1.375rem, 3vw, 1.75rem);
+  font-weight: 800;
+  margin: 0 0 0.5rem;
+  color: var(--sl-color-text);
+}
+
+.cta-subtitle {
+  font-size: 0.9375rem;
+  color: var(--sl-color-gray-3);
+  margin: 0;
+  line-height: 1.65;
+}
+
+.summary-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.6rem 1.25rem;
+  border-radius: 0.375rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--sl-color-accent);
+  color: #fff;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--sl-color-accent) 40%, transparent);
+  transition: box-shadow 0.2s, transform 0.15s;
+  flex-shrink: 0;
+}
+
+.repro-summary:hover .summary-btn {
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--sl-color-accent) 50%, transparent);
+  transform: translateY(-1px);
+}
+
+.repro-details[open] .summary-btn {
+  content: 'Close ↑';
+}
+
+/* ── Form (shown when open) ── */
+.repro-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  padding: 1.5rem 2.5rem 2.5rem;
+  margin: 0 2.5rem;
+  border-top: 1px solid var(--sl-color-hairline);
+}
+
+/* ── Form ── */
+.repro-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  position: relative;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 500px) {
+  .form-row { grid-template-columns: 1fr; }
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin: 0 !important;
+}
+
+.form-field label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--sl-color-gray-2);
+  margin: 0 !important;
+}
+
+.form-field input,
+.form-field textarea {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--sl-color-hairline);
+  background: var(--sl-color-bg);
+  color: var(--sl-color-text);
+  font-size: 0.9rem;
+  font-family: var(--sl-font);
+  transition: border-color 0.2s;
+  outline: none;
+  resize: vertical;
+  margin: 0 !important;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.form-field input:focus,
+.form-field textarea:focus {
+  border-color: var(--sl-color-accent);
+}
+
+/* ── File drop zone ── */
+.file-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 1.5rem 1rem;
+  border: 1.5px dashed var(--sl-color-hairline);
+  border-radius: 0.5rem;
+  background: var(--sl-color-bg);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  text-align: center;
+}
+
+.file-drop.drag-over {
+  border-color: var(--sl-color-accent);
+  background: color-mix(in srgb, var(--sl-color-accent) 6%, var(--sl-color-bg));
+}
+
+.file-drop input[type="file"] {
+  display: none;
+}
+
+.drop-label {
+  font-size: 0.875rem;
+  color: var(--sl-color-gray-3);
+}
+
+.browse-link {
+  color: var(--sl-color-accent);
+  cursor: pointer;
+  font-weight: 600;
+  border-bottom: 1px solid color-mix(in srgb, var(--sl-color-accent) 40%, transparent);
+}
+
+.drop-hint {
+  font-size: 0.775rem;
+  color: var(--sl-color-gray-4);
+  font-family: var(--sl-font-mono);
+}
+
+/* ── Submit row ── */
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.form-note {
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-4);
+}
+
+/* ── CTA buttons ── */
+.cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.6rem 1.4rem;
+  border-radius: 0.375rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none !important;
+  border: none !important;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.cta-btn:hover {
+  transform: translateY(-1px);
+}
+
+.cta-btn--primary {
+  background: var(--sl-color-accent);
+  color: #fff;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--sl-color-accent) 40%, transparent);
+}
+
+.cta-btn--primary:hover {
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--sl-color-accent) 50%, transparent);
+}
+
+/* ── Contact / attribution row ── */
+.contact-row {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding-top: 1rem;
+  border-top: 1px solid var(--sl-color-hairline);
+}
+
+.contact-links {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 0.875rem;
+  color: var(--sl-color-gray-4);
+}
+
+.contact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--sl-color-gray-3);
+  text-decoration: none !important;
+  border-bottom: none !important;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.contact-link:hover {
+  color: var(--sl-color-accent);
+}
+
+.contact-sep {
+  color: var(--sl-color-gray-5);
+}
+
+.contact-text {
+  color: var(--sl-color-gray-4);
+}
+</style>
