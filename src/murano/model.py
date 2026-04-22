@@ -68,9 +68,13 @@ class MuranoModel:
         if device_map == "auto" and torch.cuda.is_available():
             device_map = "cuda:0"
 
-        kwargs = dict(device_map=device_map, torch_dtype=dtype, dispatch=True)
         try:
-            self._lm = LanguageModel(load_path, **kwargs)
+            self._lm = LanguageModel(
+                load_path,
+                device_map=device_map,
+                torch_dtype=dtype,
+                dispatch=True,
+            )
         except Exception as e:
             raise RuntimeError(f"Failed to load model {model_id}: {e}") from e
         self.tokenizer = self._lm.tokenizer
@@ -102,7 +106,11 @@ class MuranoModel:
         )
 
     def _layer_indices(self, layers: list[int] | str) -> list[int]:
-        return list(range(self.n_layers)) if layers == "all" else list(layers)
+        if isinstance(layers, str):
+            if layers != "all":
+                raise ValueError(f"layers as string must be 'all', got {layers!r}")
+            return list(range(self.n_layers))
+        return list(layers)
 
     def _generate_single(
         self,
@@ -116,7 +124,9 @@ class MuranoModel:
             return_tensors="pt",
             return_token_type_ids=False,
         )
-        input_len = tokens["input_ids"].shape[1]
+        input_ids = tokens["input_ids"]
+        assert isinstance(input_ids, Tensor)
+        input_len = input_ids.shape[1]
         generation_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
 
         with self._lm.generate(tokens, **generation_kwargs):
@@ -128,7 +138,9 @@ class MuranoModel:
 
         out = output_ids.value if hasattr(output_ids, "value") else output_ids
         generated = out[0, input_len:]
-        return self.tokenizer.decode(generated, skip_special_tokens=True)
+        decoded = self.tokenizer.decode(generated, skip_special_tokens=True)
+        assert isinstance(decoded, str)
+        return decoded
 
     def record(
         self,
@@ -217,9 +229,11 @@ class MuranoModel:
 
     def chat_template(self, messages: list[dict]) -> str:
         """Apply the tokenizer's chat template to a list of messages."""
-        return self.tokenizer.apply_chat_template(
+        rendered = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
+        assert isinstance(rendered, str)
+        return rendered
 
     def __repr__(self) -> str:
         return (

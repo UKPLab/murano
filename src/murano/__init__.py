@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from murano.evaluation import compliance_rate
     from murano.io import load_steering, save_ablated_model, save_results
     from murano.model import MuranoModel
+    from murano.model import MuranoModel as Model
     from murano.pipeline import Pipeline
     from murano.results import Results
     from murano.steps.base import Step

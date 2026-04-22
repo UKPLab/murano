@@ -283,9 +283,10 @@ class LabeledDataset:
 
         # Infer label_names from dataset features if not provided
         if label_names is None:
-            features = ds.features.get(label_column)
-            if hasattr(features, "names"):
-                label_names = features.names
+            features = ds.features.get(label_column) if ds.features else None
+            names = getattr(features, "names", None)
+            if names is not None:
+                label_names = names
 
         raw_texts = list(texts) if template_fn else None
         if template_fn is not None:

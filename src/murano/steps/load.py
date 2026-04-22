@@ -5,11 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from murano.artifacts import PromptBatch
+from murano.dataset import LabeledDataset, MuranoDataset
 from murano.results import Results
 from murano.steps.base import Step
 
 if TYPE_CHECKING:
-    from murano.dataset import LabeledDataset, MuranoDataset
+    pass
 
 
 class Load(Step):
@@ -38,25 +39,24 @@ class Load(Step):
         return results
 
     def _prompt_batch(self) -> PromptBatch:
-        if hasattr(self.dataset, "positive_texts"):
+        dataset = self.dataset
+        metadata = {"dataset_type": type(dataset).__name__}
+
+        if isinstance(dataset, LabeledDataset):
             return PromptBatch(
-                prompts=list(self.dataset.positive_texts),
+                prompts=list(dataset.texts),
                 raw_prompts=(
-                    list(self.dataset.raw_positive)
-                    if getattr(self.dataset, "raw_positive", None) is not None
-                    else None
+                    list(dataset.raw_texts) if dataset.raw_texts is not None else None
                 ),
-                source="dataset.positive_texts",
-                metadata={"dataset_type": type(self.dataset).__name__},
+                source="dataset.texts",
+                metadata=metadata,
             )
 
         return PromptBatch(
-            prompts=list(self.dataset.texts),
+            prompts=list(dataset.positive_texts),
             raw_prompts=(
-                list(self.dataset.raw_texts)
-                if getattr(self.dataset, "raw_texts", None) is not None
-                else None
+                list(dataset.raw_positive) if dataset.raw_positive is not None else None
             ),
-            source="dataset.texts",
-            metadata={"dataset_type": type(self.dataset).__name__},
+            source="dataset.positive_texts",
+            metadata=metadata,
         )

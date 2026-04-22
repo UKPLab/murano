@@ -142,7 +142,12 @@ class Record(Step):
             raise ValueError(f"batch_size must be >= 1, got {batch_size}")
 
         self.model = model
-        self.layers = list(range(model.n_layers)) if layers == "all" else list(layers)
+        if isinstance(layers, str):
+            if layers != "all":
+                raise ValueError(f"layers as string must be 'all', got {layers!r}")
+            self.layers: list[int] = list(range(model.n_layers))
+        else:
+            self.layers = list(layers)
         self.position = position
         self.batch_size = batch_size
 
@@ -229,6 +234,7 @@ class Record(Step):
                 return_token_type_ids=False,
             )
             attention_mask = tokens["attention_mask"]
+            assert isinstance(attention_mask, Tensor)
 
             saved = {}
             with self.model._lm.trace(tokens):
@@ -242,7 +248,12 @@ class Record(Step):
                     saved[layer].value
                     if hasattr(saved[layer], "value")
                     else saved[layer]
-                )  # [batch, seq, d_model]
+                )
+                # Some transformers versions return (hidden_states, ...) tuples
+                # from decoder layers; older (<5.0) Llama is one. Unwrap here.
+                if isinstance(output, tuple):
+                    output = output[0]
+                # output: [batch, seq, d_model]
                 selected_acts = _select_token_activations(
                     output=output,
                     attention_mask=attention_mask,

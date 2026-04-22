@@ -86,7 +86,7 @@ class SteeringVector(Step):
                 "positive and negative activations."
             )
 
-        best_layer = max(scores, key=scores.get)
+        best_layer = max(scores, key=lambda k: scores[k])
         results["steering"] = SteeringResult(
             direction_per_layer=directions,
             separation_scores=scores,

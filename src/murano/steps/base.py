@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from types import UnionType
-from typing import TypeAlias
+from typing import Mapping, TypeAlias
 
 from murano.results import Results
 
@@ -70,15 +70,15 @@ class Step(ABC):
     def expected_read_types(
         self,
         results: Results | None = None,
-        available_types: dict[str, ExpectedType] | None = None,
-    ) -> dict[str, ExpectedType]:
+        available_types: Mapping[str, ExpectedType] | None = None,
+    ) -> Mapping[str, ExpectedType]:
         return self.read_types
 
     def expected_write_types(
         self,
         results: Results | None = None,
-        available_types: dict[str, ExpectedType] | None = None,
-    ) -> dict[str, ExpectedType]:
+        available_types: Mapping[str, ExpectedType] | None = None,
+    ) -> Mapping[str, ExpectedType]:
         return self.write_types
 
     def validate(self, results: Results) -> None:

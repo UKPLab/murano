@@ -122,11 +122,11 @@ class Probe(Step):
             )
 
             if self.refit:
-                clf = clone(classifier)
+                clf: Any = clone(classifier)
                 clf.fit(X, y)
                 classifiers[layer] = clf
 
-        best_layer = max(accuracy_per_layer, key=accuracy_per_layer.get)
+        best_layer = max(accuracy_per_layer, key=lambda k: accuracy_per_layer[k])
 
         label_names = None
         dataset = results.get("dataset")
