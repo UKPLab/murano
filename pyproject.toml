@@ -1,15 +1,17 @@
 [project]
 name = "murano"
 dynamic = ["version"]
-description = "Add your description here"
+description = "Mechanistic interpretability pipelines for recording, steering, probing, and evaluation"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "nnsight>=0.4.8",
-    "plotly>=6.2.0",
     "torch>=2.7.1",
+    "transformers>=4.40,<5.0",
+    "huggingface-hub>=0.23.0",
     "datasets>=4.0.0",
     "scikit-learn>=1.3.0",
+    "tqdm>=4.66.0",
 ]
 
 [build-system]
@@ -27,6 +29,12 @@ dev = [
     "pytest>=8.3.4",
     "pytest-cov>=4.1.0",
     "ruff>=0.8.5",
+]
+
+[project.optional-dependencies]
+plot = [
+    "matplotlib>=3.5",
+    "seaborn>=0.12",
 ]
 
 [tool.hatch.version]
@@ -68,4 +76,3 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
-
