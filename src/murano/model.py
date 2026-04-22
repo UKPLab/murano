@@ -68,7 +68,7 @@ class MuranoModel:
         if device_map == "auto" and torch.cuda.is_available():
             device_map = "cuda:0"
 
-        kwargs = dict(device_map=device_map, dtype=dtype, dispatch=True)
+        kwargs = dict(device_map=device_map, torch_dtype=dtype, dispatch=True)
         try:
             self._lm = LanguageModel(load_path, **kwargs)
         except Exception as e:

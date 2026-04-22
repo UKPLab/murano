@@ -5,7 +5,6 @@ from datasets import Dataset
 import torch
 
 
-
 # Custom collate function stitches separate inputs coming from dataset
 def collate_fn(batch):
     collated = {}
