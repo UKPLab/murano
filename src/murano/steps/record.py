@@ -25,6 +25,7 @@ class ActivationStore:
         positive: {layer_idx: tensor [N, d_model]} for positive texts.
         negative: {layer_idx: tensor [N, d_model]} for negative texts.
     """
+
     positive: dict[int, Tensor]
     negative: dict[int, Tensor]
 
@@ -37,6 +38,7 @@ class LabeledActivationStore:
         activations: {layer_idx: tensor [N, d_model]} token-position activations.
         labels: tensor [N] integer labels.
     """
+
     activations: dict[int, Tensor]
     labels: Tensor
 
@@ -63,7 +65,9 @@ def _select_token_activations(
 ) -> Tensor:
     """Select per-sequence activations according to the requested position."""
     if output.dim() != 3:
-        raise ValueError(f"Expected [batch, seq, d_model] output, got {tuple(output.shape)}")
+        raise ValueError(
+            f"Expected [batch, seq, d_model] output, got {tuple(output.shape)}"
+        )
 
     batch_indices = torch.arange(output.shape[0], device=output.device)
     mask_bool = attention_mask.bool()
@@ -77,7 +81,11 @@ def _select_token_activations(
         first_pos = mask_bool.int().argmax(dim=1)
         return output[batch_indices, first_pos, :]
 
-    indices = torch.arange(seq_len, device=output.device).unsqueeze(0).expand_as(attention_mask)
+    indices = (
+        torch.arange(seq_len, device=output.device)
+        .unsqueeze(0)
+        .expand_as(attention_mask)
+    )
     masked_indices = indices.masked_fill(~mask_bool, -1)
 
     if position == "last":
@@ -134,9 +142,7 @@ class Record(Step):
             raise ValueError(f"batch_size must be >= 1, got {batch_size}")
 
         self.model = model
-        self.layers = (
-            list(range(model.n_layers)) if layers == "all" else list(layers)
-        )
+        self.layers = list(range(model.n_layers)) if layers == "all" else list(layers)
         self.position = position
         self.batch_size = batch_size
 
@@ -157,9 +163,14 @@ class Record(Step):
         if dataset_type is None:
             return {"record": (ActivationStore, LabeledActivationStore)}
 
-        candidate_types = dataset_type if isinstance(dataset_type, tuple) else (dataset_type,)
+        candidate_types = (
+            dataset_type if isinstance(dataset_type, tuple) else (dataset_type,)
+        )
         is_labeled = [issubclass(t, LabeledDataset) for t in candidate_types]
-        is_contrastive = [issubclass(t, MuranoDataset) and not issubclass(t, LabeledDataset) for t in candidate_types]
+        is_contrastive = [
+            issubclass(t, MuranoDataset) and not issubclass(t, LabeledDataset)
+            for t in candidate_types
+        ]
 
         if all(is_labeled):
             return {"record": LabeledActivationStore}
@@ -170,26 +181,34 @@ class Record(Step):
     def __call__(self, results: Results) -> Results:
         from murano.dataset import LabeledDataset
 
-        dataset = results['dataset']
+        dataset = results["dataset"]
 
         if isinstance(dataset, LabeledDataset):
             logger.info(
                 "Recording: %d labeled texts, %d layers",
-                len(dataset.texts), len(self.layers),
+                len(dataset.texts),
+                len(self.layers),
             )
             acts = self._collect(dataset.texts)
             labels_tensor = torch.tensor(dataset.labels, dtype=torch.long)
-            results['record'] = LabeledActivationStore(
-                activations=acts, labels=labels_tensor,
+            results["record"] = LabeledActivationStore(
+                activations=acts,
+                labels=labels_tensor,
             )
         else:
             logger.info(
                 "Recording: %d pos, %d neg texts, %d layers",
-                len(dataset.positive_texts), len(dataset.negative_texts), len(self.layers),
+                len(dataset.positive_texts),
+                len(dataset.negative_texts),
+                len(self.layers),
             )
-            pos_acts = self._collect(dataset.positive_texts) if dataset.positive_texts else {}
-            neg_acts = self._collect(dataset.negative_texts) if dataset.negative_texts else {}
-            results['record'] = ActivationStore(positive=pos_acts, negative=neg_acts)
+            pos_acts = (
+                self._collect(dataset.positive_texts) if dataset.positive_texts else {}
+            )
+            neg_acts = (
+                self._collect(dataset.negative_texts) if dataset.negative_texts else {}
+            )
+            results["record"] = ActivationStore(positive=pos_acts, negative=neg_acts)
 
         return results
 
@@ -199,7 +218,7 @@ class Record(Step):
         Returns:
             {layer_idx: tensor [N, d_model]} with selected-token activations.
         """
-        all_acts: dict[int, list[Tensor]] = {l: [] for l in self.layers}
+        all_acts: dict[int, list[Tensor]] = {layer: [] for layer in self.layers}
 
         for batch in _batched(texts, self.batch_size):
             tokens = self.model.tokenizer(
@@ -213,18 +232,22 @@ class Record(Step):
 
             saved = {}
             with self.model._lm.trace(tokens):
-                for l in self.layers:
+                for layer in self.layers:
                     # Save full sequence output — use .output (not .output[0],
                     # which indexes the batch dim in nnsight 0.5+)
-                    saved[l] = self.model.layer(l).output.save()
+                    saved[layer] = self.model.layer(layer).output.save()
 
-            for l in self.layers:
-                output = saved[l].value if hasattr(saved[l], 'value') else saved[l]  # [batch, seq, d_model]
+            for layer in self.layers:
+                output = (
+                    saved[layer].value
+                    if hasattr(saved[layer], "value")
+                    else saved[layer]
+                )  # [batch, seq, d_model]
                 selected_acts = _select_token_activations(
                     output=output,
                     attention_mask=attention_mask,
                     position=self.position,
                 )
-                all_acts[l].append(selected_acts.detach().cpu())
+                all_acts[layer].append(selected_acts.detach().cpu())
 
-        return {l: torch.cat(all_acts[l]) for l in self.layers}
+        return {layer: torch.cat(all_acts[layer]) for layer in self.layers}

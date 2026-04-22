@@ -3,9 +3,8 @@ from murano import LayerLocation, LogitLens, MuranoModel
 from torch.utils.data import DataLoader
 from datasets import Dataset
 import torch
-import random
 
-from murano.lenses.base_lens import BaseLens
+
 
 # Custom collate function stitches separate inputs coming from dataset
 def collate_fn(batch):
@@ -18,15 +17,21 @@ def collate_fn(batch):
             collated[key] = values  # keep as list
     return collated
 
+
 # Utility function to tokenize used in map dataset
 def process_dataset(example, tokenizer, max_length=10):
-    example["input_ids"] = tokenizer(example["text"], return_tensors="pt",
-                                     max_length=max_length)["input_ids"][0]
+    example["input_ids"] = tokenizer(
+        example["text"], return_tensors="pt", max_length=max_length
+    )["input_ids"][0]
     return example
+
 
 class BatchedMuranoModel(MuranoModel):
     def run_recording(
-        self, input: Union[str, torch.Tensor, dict], locations: List[LayerLocation], **kwargs
+        self,
+        input: Union[str, torch.Tensor, dict],
+        locations: List[LayerLocation],
+        **kwargs,
     ) -> dict:
         """
         Run the model with tracing enabled to record activations at specified locations.
@@ -39,7 +44,9 @@ class BatchedMuranoModel(MuranoModel):
         elif isinstance(input, dict):
             input_ids = input["input_ids"]
         else:
-            raise ValueError("Input must be a string, tensor, or dictionary with 'input_ids'.")
+            raise ValueError(
+                "Input must be a string, tensor, or dictionary with 'input_ids'."
+            )
 
         with self.model.trace() as tracer:
             with tracer.invoke(input_ids, max_length=10, **kwargs):
@@ -71,7 +78,7 @@ class BatchedMuranoModel(MuranoModel):
                         saved_output = hidden_states.save()
                         activations.append(saved_output)
                         layer_indices.append(layer_idx)
-        # Could be a tuple (tensor, None) if output_attentions=False 
+        # Could be a tuple (tensor, None) if output_attentions=False
         if isinstance(activations[0].value, tuple):
             activations = [act.value[0] for act in activations]
         else:
@@ -83,7 +90,7 @@ class BatchedMuranoModel(MuranoModel):
         }
 
         return artifact
-    
+
     def _stack_activations(self, obj):
         """
         Utility function that reshapes activations to
@@ -92,7 +99,9 @@ class BatchedMuranoModel(MuranoModel):
         """
         obj = self._stack_activations_recursive(obj)
         obj = obj.permute(0, 2, 1, 3, 4)
-        obj = obj.reshape(obj.shape[0] * obj.shape[1], obj.shape[2], obj.shape[3], obj.shape[4])
+        obj = obj.reshape(
+            obj.shape[0] * obj.shape[1], obj.shape[2], obj.shape[3], obj.shape[4]
+        )
         return obj
 
     def _stack_activations_recursive(self, obj):
@@ -102,20 +111,22 @@ class BatchedMuranoModel(MuranoModel):
         if isinstance(obj, dict):
             # Only recurse into the "activations" field
             if "activations" not in obj:
-                raise KeyError(f"Expected 'activations' key in dict, got keys: {list(obj.keys())}")
+                raise KeyError(
+                    f"Expected 'activations' key in dict, got keys: {list(obj.keys())}"
+                )
             return self._stack_activations_recursive(obj["activations"])
-        
+
         elif isinstance(obj, (list, tuple)):
             # Recurse and stack along new dimension
-            return torch.stack([self._stack_activations_recursive(item) for item in obj], dim=0)
-        
-        elif isinstance(obj, torch.Tensor):
+            return torch.stack(
+                [self._stack_activations_recursive(item) for item in obj], dim=0
+            )
 
+        elif isinstance(obj, torch.Tensor):
             return obj
 
         else:
             raise TypeError(f"Unsupported type in structure: {type(obj)}")
-
 
     def _get_dataloader(self, dataset: Dataset, batch_size: int = 4) -> DataLoader:
         """
@@ -128,9 +139,11 @@ class BatchedMuranoModel(MuranoModel):
             collate_fn=collate_fn,
         )
 
-    def run_task(self, dataset: Dataset, locations: List[LayerLocation], **kwargs) -> dict:
+    def run_task(
+        self, dataset: Dataset, locations: List[LayerLocation], **kwargs
+    ) -> dict:
         """
-        Run the model on a dataset with tracing enabled to record activations 
+        Run the model on a dataset with tracing enabled to record activations
         at specified locations.
         Processes the dataset in batches by calling run_recording for each batch.
         """
@@ -158,15 +171,18 @@ class BatchedMuranoModel(MuranoModel):
             "dataset": dataset,
         }
         return artifact
-        
+
 
 # Helper function to convert integers to ordinal strings
 def ordinal(n):
-    return f"{n}{'th' if 11<=n<=13 else {1:'st', 2:'nd', 3:'rd'}.get(n%10, 'th')}"
+    return (
+        f"{n}{'th' if 11 <= n <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+    )
+
 
 data = [
     {
-        "text": f"Mary is born on the {i+1} of August.",
+        "text": f"Mary is born on the {i + 1} of August.",
         "label": i % 2,
         "metadata": {"id": i, "source": "synthetic"},
         "confidence": torch.tensor(i / 15.0),
@@ -183,7 +199,9 @@ processed_dataset = toy_dataset.map(
     batched=False,
 )
 processed_dataset.set_format(type="torch")
-dataloader = DataLoader(processed_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
+dataloader = DataLoader(
+    processed_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn
+)
 
 lens = LogitLens()
 locations = [LayerLocation(layers=slice(None))]

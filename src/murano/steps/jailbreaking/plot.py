@@ -40,16 +40,26 @@ class Plot(Step):
             plot_direction_cosine_similarity,
         )
 
-        root = Path(self.output_dir) if self.output_dir else Path(results.get("output_dir", "."))
+        root = (
+            Path(self.output_dir)
+            if self.output_dir
+            else Path(results.get("output_dir", "."))
+        )
         plots_dir = root / "plots"
         plots_dir.mkdir(parents=True, exist_ok=True)
 
         if "steering" in results:
-            plot_separation_scores(results["steering"], save_path=plots_dir / "separation_scores.png")
-            plot_direction_cosine_similarity(results["steering"], save_path=plots_dir / "cosine_similarity.png")
+            plot_separation_scores(
+                results["steering"], save_path=plots_dir / "separation_scores.png"
+            )
+            plot_direction_cosine_similarity(
+                results["steering"], save_path=plots_dir / "cosine_similarity.png"
+            )
 
         if "eval" in results:
-            plot_compliance_comparison(results["eval"], save_path=plots_dir / "compliance_comparison.png")
+            plot_compliance_comparison(
+                results["eval"], save_path=plots_dir / "compliance_comparison.png"
+            )
 
         prompts = None
         if "intervene" in results:

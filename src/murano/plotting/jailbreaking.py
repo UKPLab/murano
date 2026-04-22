@@ -16,7 +16,10 @@ if TYPE_CHECKING:
 def _setup():
     """Consistent seaborn style for all plots."""
     import seaborn as sns
-    sns.set_theme(style="whitegrid", context="notebook", palette="muted", font_scale=1.1)
+
+    sns.set_theme(
+        style="whitegrid", context="notebook", palette="muted", font_scale=1.1
+    )
     return sns
 
 
@@ -33,15 +36,20 @@ def plot_separation_scores(
 ) -> None:
     """Bar chart of separation scores across layers."""
     import matplotlib.pyplot as plt
+
     sns = _setup()
 
     layers = sorted(steering.separation_scores.keys())
-    scores = [steering.separation_scores[l] for l in layers]
-    palette = [sns.color_palette("muted")[3] if l == steering.best_layer
-               else sns.color_palette("muted")[0] for l in layers]
+    scores = [steering.separation_scores[layer] for layer in layers]
+    palette = [
+        sns.color_palette("muted")[3]
+        if layer == steering.best_layer
+        else sns.color_palette("muted")[0]
+        for layer in layers
+    ]
 
     fig, ax = plt.subplots(figsize=(10, 4))
-    sns.barplot(x=[str(l) for l in layers], y=scores, palette=palette, ax=ax)
+    sns.barplot(x=[str(layer) for layer in layers], y=scores, palette=palette, ax=ax)
     ax.set_xlabel("Layer")
     ax.set_ylabel("Separation Score")
     ax.set_title("Separation Score by Layer")
@@ -57,6 +65,7 @@ def plot_compliance_comparison(
 ) -> None:
     """Side-by-side bar chart comparing clean and ablated compliance rates."""
     import matplotlib.pyplot as plt
+
     sns = _setup()
 
     labels = ["Clean", "Ablated"]
@@ -99,6 +108,7 @@ def plot_refusal_heatmap(
     import matplotlib.colors as mcolors
     import matplotlib.patches as mpatches
     import numpy as np
+
     sns = _setup()
 
     from murano.evaluation import REFUSAL_PHRASES
@@ -118,7 +128,9 @@ def plot_refusal_heatmap(
 
     prompt_labels = [p[:60] + "..." if len(p) > 60 else p for p in prompts[:n]]
 
-    cmap = mcolors.ListedColormap([sns.color_palette("muted")[2], sns.color_palette("muted")[3]])
+    cmap = mcolors.ListedColormap(
+        [sns.color_palette("muted")[2], sns.color_palette("muted")[3]]
+    )
 
     fig, ax = plt.subplots(figsize=(8, max(5, n * 0.35)))
     ax.imshow(matrix, aspect="auto", cmap=cmap, vmin=0, vmax=1)
@@ -146,23 +158,32 @@ def plot_direction_cosine_similarity(
 ) -> None:
     """Heatmap of cosine similarities between direction vectors at different layers."""
     import matplotlib.pyplot as plt
-    import numpy as np
     import torch
+
     sns = _setup()
 
     layers = sorted(steering.direction_per_layer.keys())
-    n = len(layers)
 
-    dirs = torch.stack([steering.direction_per_layer[l].float() for l in layers])
+    dirs = torch.stack(
+        [steering.direction_per_layer[layer].float() for layer in layers]
+    )
     dirs_norm = dirs / dirs.norm(dim=1, keepdim=True).clamp(min=1e-8)
     sim_matrix = (dirs_norm @ dirs_norm.T).cpu().numpy()
 
     fig, ax = plt.subplots(figsize=(7, 6))
-    sns.heatmap(sim_matrix, ax=ax, cmap="RdBu_r", vmin=-1, vmax=1, square=True,
-                linewidths=0, linecolor="none",
-                xticklabels=[str(l) for l in layers],
-                yticklabels=[str(l) for l in layers],
-                cbar_kws={"label": "Cosine Similarity", "shrink": 0.8})
+    sns.heatmap(
+        sim_matrix,
+        ax=ax,
+        cmap="RdBu_r",
+        vmin=-1,
+        vmax=1,
+        square=True,
+        linewidths=0,
+        linecolor="none",
+        xticklabels=[str(layer) for layer in layers],
+        yticklabels=[str(layer) for layer in layers],
+        cbar_kws={"label": "Cosine Similarity", "shrink": 0.8},
+    )
     ax.set_xlabel("Layer")
     ax.set_ylabel("Layer")
     ax.set_title("Direction Cosine Similarity Across Layers")

@@ -63,7 +63,9 @@ class ProjectionOperator:
             normalized_rows.append((direction / norm).float().cpu())
 
         if not normalized_rows:
-            raise ValueError("ProjectionOperator requires at least one non-zero direction")
+            raise ValueError(
+                "ProjectionOperator requires at least one non-zero direction"
+            )
 
         basis = torch.stack(normalized_rows).T  # [d_model, n_dirs]
         basis, _ = torch.linalg.qr(basis, mode="reduced")
@@ -145,8 +147,7 @@ def ablate_model_weights(model: MuranoModel, proj_op: ProjectionOperator) -> int
 def save_weights(model: MuranoModel) -> dict[str, Tensor]:
     """Save a copy of all model weights for later restoration."""
     return {
-        name: param.data.clone()
-        for name, param in model._lm.model.named_parameters()
+        name: param.data.clone() for name, param in model._lm.model.named_parameters()
     }
 
 
@@ -236,7 +237,7 @@ class WeightAblation(Step):
 
     def __call__(self, results: Results) -> Results:
         prompt_batch = results["prompts"]
-        steering = results['steering']
+        steering = results["steering"]
         prompts = prompt_batch.prompts
 
         # Use the best layer's direction for the projection
@@ -256,6 +257,7 @@ class WeightAblation(Step):
 
             if self.save_dir:
                 from murano.io import save_ablated_model
+
                 save_ablated_model(self.model, self.save_dir)
 
             modified_gens = []
@@ -279,8 +281,8 @@ class WeightAblation(Step):
                 **prompt_batch.metadata,
             },
         )
-        results['weight_ablation'] = result
-        results['intervene'] = InterveneResult(
+        results["weight_ablation"] = result
+        results["intervene"] = InterveneResult(
             clean_generations=clean_gens,
             modified_generations=modified_gens,
             prompts=result.prompts,

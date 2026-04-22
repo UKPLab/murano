@@ -6,7 +6,6 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
 from numpy import ndarray
 
 from murano.logging import logger
@@ -26,6 +25,7 @@ class ProbeResult:
         classifiers: {layer_idx: fitted sklearn classifier} (only if refit=True).
         label_names: Human-readable label names (passed through from dataset).
     """
+
     accuracy_per_layer: dict[int, float]
     cv_scores: dict[int, ndarray]
     best_layer: int
@@ -71,7 +71,7 @@ class Probe(Step):
         from sklearn.model_selection import cross_val_score
         from sklearn.base import clone
 
-        store = results['record']
+        store = results["record"]
         if not isinstance(store, LabeledActivationStore):
             raise TypeError(
                 f"Probe requires LabeledActivationStore in results['record'], "
@@ -80,7 +80,8 @@ class Probe(Step):
             )
 
         classifier = self._classifier_template or LogisticRegression(
-            max_iter=1000, solver="lbfgs",
+            max_iter=1000,
+            solver="lbfgs",
         )
 
         labels = store.labels.numpy()
@@ -104,14 +105,20 @@ class Probe(Step):
             y = labels
 
             scores = cross_val_score(
-                clone(classifier), X, y, cv=self.cv, scoring="accuracy",
+                clone(classifier),
+                X,
+                y,
+                cv=self.cv,
+                scoring="accuracy",
             )
             accuracy_per_layer[layer] = float(scores.mean())
             cv_scores[layer] = scores
 
             logger.info(
                 "Layer %d: accuracy=%.4f (+/- %.4f)",
-                layer, scores.mean(), scores.std(),
+                layer,
+                scores.mean(),
+                scores.std(),
             )
 
             if self.refit:
@@ -126,7 +133,7 @@ class Probe(Step):
         if dataset is not None and hasattr(dataset, "label_names"):
             label_names = dataset.label_names
 
-        results['probe'] = ProbeResult(
+        results["probe"] = ProbeResult(
             accuracy_per_layer=accuracy_per_layer,
             cv_scores=cv_scores,
             best_layer=best_layer,
@@ -135,6 +142,7 @@ class Probe(Step):
         )
         logger.info(
             "Best layer: %d (accuracy=%.4f)",
-            best_layer, accuracy_per_layer[best_layer],
+            best_layer,
+            accuracy_per_layer[best_layer],
         )
         return results

@@ -136,9 +136,7 @@ class Intervene(Step):
     ):
         self.model = model
         self.fn = fn
-        self.layers = (
-            list(range(model.n_layers)) if layers == "all" else list(layers)
-        )
+        self.layers = list(range(model.n_layers)) if layers == "all" else list(layers)
         self.gen_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
 
     def __call__(self, results: Results) -> Results:
@@ -151,7 +149,7 @@ class Intervene(Step):
             clean_gens.append(self._generate_clean(prompt))
             modified_gens.append(self._generate_ablated(prompt))
 
-        results['intervene'] = InterveneResult(
+        results["intervene"] = InterveneResult(
             clean_generations=clean_gens,
             modified_generations=modified_gens,
             prompts=(

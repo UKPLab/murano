@@ -8,7 +8,6 @@ import math
 
 import pytest
 import torch
-from torch import Tensor
 
 from murano.artifacts import MetricResult, PromptBatch
 from murano.results import Results
@@ -29,8 +28,11 @@ from murano.steps.intervene import (
     ablate_direction,
     steer_direction,
 )
-from murano.steps.weight_ablation import ProjectionOperator, WeightAblationResult
-from murano.steps.jailbreaking.evaluate import ComplianceRate, EvalResult, REFUSAL_PHRASES
+from murano.steps.weight_ablation import ProjectionOperator
+from murano.steps.jailbreaking.evaluate import (
+    ComplianceRate,
+    EvalResult,
+)
 from murano.dataset import MuranoDataset, LabeledDataset
 from murano.steps.probe import Probe, ProbeResult
 
@@ -58,12 +60,10 @@ def activation_store(n_examples, n_layers, d_model):
     """Synthetic ActivationStore with random activations."""
     # Add a slight mean shift to positive so steering vector is non-degenerate
     positive = {
-        l: torch.randn(n_examples, d_model) + 0.5
-        for l in range(n_layers)
+        layer: torch.randn(n_examples, d_model) + 0.5 for layer in range(n_layers)
     }
     negative = {
-        l: torch.randn(n_examples, d_model) - 0.5
-        for l in range(n_layers)
+        layer: torch.randn(n_examples, d_model) - 0.5 for layer in range(n_layers)
     }
     return ActivationStore(positive=positive, negative=negative)
 
@@ -95,9 +95,13 @@ class TestStepProtocol:
     def test_step_has_reads_writes(self):
         """Every Step subclass must declare reads and writes."""
         from murano.steps import (
-            Load, Record, Save, SteeringVector,
-            Intervene, WeightAblation, ComplianceRate, Plot,
+            Load,
+            Save,
+            SteeringVector,
+            ComplianceRate,
+            Plot,
         )
+
         for cls in [Load, Save, SteeringVector, ComplianceRate, Plot]:
             assert hasattr(cls, "reads"), f"{cls.__name__} missing reads"
             assert hasattr(cls, "writes"), f"{cls.__name__} missing writes"
@@ -106,9 +110,11 @@ class TestStepProtocol:
 
     def test_step_validate_catches_missing_key(self):
         """Step.validate raises KeyError when required key is missing."""
+
         class NeedsRecord(Step):
             reads = ["record"]
             writes = ["output"]
+
             def __call__(self, results):
                 return results
 
@@ -118,9 +124,11 @@ class TestStepProtocol:
 
     def test_step_validate_passes_when_key_present(self):
         """Step.validate succeeds when required key exists."""
+
         class NeedsRecord(Step):
             reads = ["record"]
             writes = ["output"]
+
             def __call__(self, results):
                 return results
 
@@ -131,6 +139,7 @@ class TestStepProtocol:
 
     def test_step_validate_catches_type_mismatch(self):
         """Step.validate raises TypeError when a required artifact has the wrong type."""
+
         class NeedsActivationStore(Step):
             reads = ["record"]
             writes = ["output"]
@@ -153,10 +162,12 @@ class TestPipelineValidation:
 
     def test_validate_correct_chain(self, contrastive_dataset):
         """Valid step chain passes validation."""
-        pipe = Pipeline([
-            Load(contrastive_dataset),
-            SteeringVector(),  # reads record — but Load writes dataset, not record
-        ])
+        pipe = Pipeline(
+            [
+                Load(contrastive_dataset),
+                SteeringVector(),  # reads record — but Load writes dataset, not record
+            ]
+        )
         # This should fail because SteeringVector reads 'record' which Load doesn't write
         with pytest.raises(KeyError, match="record"):
             pipe.validate()
@@ -171,11 +182,13 @@ class TestPipelineValidation:
         class DummyModel:
             n_layers = 1
 
-        pipe = Pipeline([
-            Load(contrastive_dataset),
-            Record(DummyModel(), layers=[0], position="mean"),
-            Probe(cv=2),
-        ])
+        pipe = Pipeline(
+            [
+                Load(contrastive_dataset),
+                Record(DummyModel(), layers=[0], position="mean"),
+                Probe(cv=2),
+            ]
+        )
 
         with pytest.raises(TypeError, match="LabeledActivationStore"):
             pipe.validate()
@@ -184,11 +197,13 @@ class TestPipelineValidation:
         class DummyModel:
             n_layers = 1
 
-        pipe = Pipeline([
-            Load(labeled_dataset),
-            Record(DummyModel(), layers=[0], position="first"),
-            SteeringVector(),
-        ])
+        pipe = Pipeline(
+            [
+                Load(labeled_dataset),
+                Record(DummyModel(), layers=[0], position="first"),
+                SteeringVector(),
+            ]
+        )
 
         with pytest.raises(TypeError, match="ActivationStore"):
             pipe.validate()
@@ -197,11 +212,13 @@ class TestPipelineValidation:
         class DummyModel:
             n_layers = 1
 
-        pipe = Pipeline([
-            Load(labeled_dataset),
-            Record(DummyModel(), layers=[0], position=0),
-            Probe(cv=2),
-        ])
+        pipe = Pipeline(
+            [
+                Load(labeled_dataset),
+                Record(DummyModel(), layers=[0], position=0),
+                Probe(cv=2),
+            ]
+        )
 
         keys = pipe.validate()
         assert "probe" in keys
@@ -236,7 +253,9 @@ class TestLoad:
         class DummyModel:
             n_layers = 2
 
-        with pytest.raises(ValueError, match="position must be 'last', 'first', 'mean'"):
+        with pytest.raises(
+            ValueError, match="position must be 'last', 'first', 'mean'"
+        ):
             Record(DummyModel(), position="middle")
 
 
@@ -247,21 +266,27 @@ class TestLoadPrompts:
         assert results["prompts"].prompts == ["a", "b"]
 
     def test_load_prompts_accepts_prompt_batch(self):
-        prompt_batch = PromptBatch(prompts=["hi"], raw_prompts=["raw hi"], source="manual")
+        prompt_batch = PromptBatch(
+            prompts=["hi"], raw_prompts=["raw hi"], source="manual"
+        )
         results = LoadPrompts(prompt_batch)(Results())
         assert results["prompts"] is prompt_batch
 
 
 class TestRecordTokenSelection:
     def test_selects_first_last_mean_and_indexed_tokens(self):
-        output = torch.tensor([
-            [[1.0, 10.0], [2.0, 20.0], [3.0, 30.0], [0.0, 0.0]],
-            [[0.0, 0.0], [4.0, 40.0], [5.0, 50.0], [6.0, 60.0]],
-        ])
-        attention_mask = torch.tensor([
-            [1, 1, 1, 0],
-            [0, 1, 1, 1],
-        ])
+        output = torch.tensor(
+            [
+                [[1.0, 10.0], [2.0, 20.0], [3.0, 30.0], [0.0, 0.0]],
+                [[0.0, 0.0], [4.0, 40.0], [5.0, 50.0], [6.0, 60.0]],
+            ]
+        )
+        attention_mask = torch.tensor(
+            [
+                [1, 1, 1, 0],
+                [0, 1, 1, 1],
+            ]
+        )
 
         assert torch.equal(
             _select_token_activations(output, attention_mask, "first"),
@@ -286,10 +311,12 @@ class TestRecordTokenSelection:
 
     def test_indexed_position_rejects_out_of_bounds(self):
         output = torch.randn(2, 3, 4)
-        attention_mask = torch.tensor([
-            [1, 1, 0],
-            [0, 1, 1],
-        ])
+        attention_mask = torch.tensor(
+            [
+                [1, 1, 0],
+                [0, 1, 1],
+            ]
+        )
 
         with pytest.raises(ValueError, match="out of bounds"):
             _select_token_activations(output, attention_mask, 2)
@@ -323,14 +350,14 @@ class TestSteeringVector:
         results = SteeringVector(normalize=True)(results_with_activations)
         for layer, direction in results["steering"].direction_per_layer.items():
             norm = direction.norm().item()
-            assert abs(norm - 1.0) < 1e-5, (
-                f"Layer {layer}: norm={norm}, expected 1.0"
-            )
+            assert abs(norm - 1.0) < 1e-5, f"Layer {layer}: norm={norm}, expected 1.0"
 
     def test_directions_unnormalized(self, results_with_activations):
         results = SteeringVector(normalize=False)(results_with_activations)
         # At least one direction should not have unit norm
-        norms = [d.norm().item() for d in results["steering"].direction_per_layer.values()]
+        norms = [
+            d.norm().item() for d in results["steering"].direction_per_layer.values()
+        ]
         assert not all(abs(n - 1.0) < 1e-5 for n in norms)
 
     def test_separation_scores(self, results_with_activations, n_layers):
@@ -369,7 +396,7 @@ class TestInterventionFunctions:
 
     @pytest.mark.parametrize("batch_size,seq_len", [(1, 1), (4, 10), (8, 32)])
     def test_ablate_preserves_shape(self, batch_size, seq_len, d_model, n_layers):
-        directions = {l: torch.randn(d_model) for l in range(n_layers)}
+        directions = {layer: torch.randn(d_model) for layer in range(n_layers)}
         fn = ablate_direction(directions)
 
         activation = torch.randn(batch_size, seq_len, d_model)
@@ -379,7 +406,7 @@ class TestInterventionFunctions:
 
     @pytest.mark.parametrize("batch_size,seq_len", [(1, 1), (4, 10), (8, 32)])
     def test_steer_preserves_shape(self, batch_size, seq_len, d_model, n_layers):
-        directions = {l: torch.randn(d_model) for l in range(n_layers)}
+        directions = {layer: torch.randn(d_model) for layer in range(n_layers)}
         fn = steer_direction(directions, alpha=1.5)
 
         activation = torch.randn(batch_size, seq_len, d_model)
@@ -449,7 +476,9 @@ class TestProjectionOperator:
         P2 = proj_op.P @ proj_op.P
         assert torch.allclose(proj_op.P, P2, atol=1e-5)
 
-    @pytest.mark.parametrize("in_features,out_features", [(64, 64), (64, 256), (256, 64)])
+    @pytest.mark.parametrize(
+        "in_features,out_features", [(64, 64), (64, 256), (256, 64)]
+    )
     def test_project_read_shape(self, in_features, out_features):
         direction = torch.randn(in_features)
         proj_op = ProjectionOperator(direction)
@@ -457,7 +486,9 @@ class TestProjectionOperator:
         result = proj_op.project_read(W)
         assert result.shape == W.shape
 
-    @pytest.mark.parametrize("in_features,out_features", [(64, 64), (64, 256), (256, 64)])
+    @pytest.mark.parametrize(
+        "in_features,out_features", [(64, 64), (64, 256), (256, 64)]
+    )
     def test_project_write_shape(self, in_features, out_features):
         direction = torch.randn(in_features)
         proj_op = ProjectionOperator(direction)
@@ -643,11 +674,13 @@ def labeled_activation_store(n_examples, n_layers, d_model):
     """Synthetic LabeledActivationStore with well-separated classes."""
     n_per_class = max(n_examples, 5)  # ensure enough for CV
     activations = {
-        l: torch.cat([
-            torch.randn(n_per_class, d_model) + 2.0,
-            torch.randn(n_per_class, d_model) - 2.0,
-        ])
-        for l in range(n_layers)
+        layer: torch.cat(
+            [
+                torch.randn(n_per_class, d_model) + 2.0,
+                torch.randn(n_per_class, d_model) - 2.0,
+            ]
+        )
+        for layer in range(n_layers)
     }
     labels = torch.tensor([0] * n_per_class + [1] * n_per_class)
     return LabeledActivationStore(activations=activations, labels=labels)
@@ -664,7 +697,8 @@ class TestLabeledDataset:
 
     def test_label_names(self):
         ds = LabeledDataset(
-            texts=["a", "b"], labels=[0, 1],
+            texts=["a", "b"],
+            labels=[0, 1],
             label_names=["neg", "pos"],
         )
         assert ds.label_names == ["neg", "pos"]
@@ -687,8 +721,8 @@ class TestLabeledActivationStore:
         store = labeled_activation_store
         assert len(store.activations) == n_layers
         n_total = store.labels.shape[0]
-        for l in range(n_layers):
-            assert store.activations[l].shape == (n_total, d_model)
+        for layer in range(n_layers):
+            assert store.activations[layer].shape == (n_total, d_model)
 
     def test_labels_shape(self, labeled_activation_store):
         store = labeled_activation_store
@@ -708,21 +742,27 @@ class TestProbe:
         results = Probe(cv=2)(r)
         assert isinstance(results["probe"], ProbeResult)
 
-    def test_accuracy_per_layer_keys(self, labeled_activation_store, labeled_dataset, n_layers):
+    def test_accuracy_per_layer_keys(
+        self, labeled_activation_store, labeled_dataset, n_layers
+    ):
         r = Results()
         r["dataset"] = labeled_dataset
         r["record"] = labeled_activation_store
         results = Probe(cv=2)(r)
         assert len(results["probe"].accuracy_per_layer) == n_layers
 
-    def test_best_layer_valid(self, labeled_activation_store, labeled_dataset, n_layers):
+    def test_best_layer_valid(
+        self, labeled_activation_store, labeled_dataset, n_layers
+    ):
         r = Results()
         r["dataset"] = labeled_dataset
         r["record"] = labeled_activation_store
         results = Probe(cv=2)(r)
         assert results["probe"].best_layer in range(n_layers)
 
-    def test_best_layer_has_highest_accuracy(self, labeled_activation_store, labeled_dataset):
+    def test_best_layer_has_highest_accuracy(
+        self, labeled_activation_store, labeled_dataset
+    ):
         r = Results()
         r["dataset"] = labeled_dataset
         r["record"] = labeled_activation_store
@@ -731,7 +771,9 @@ class TestProbe:
         best_acc = probe.accuracy_per_layer[probe.best_layer]
         assert best_acc == max(probe.accuracy_per_layer.values())
 
-    def test_separable_data_high_accuracy(self, labeled_activation_store, labeled_dataset):
+    def test_separable_data_high_accuracy(
+        self, labeled_activation_store, labeled_dataset
+    ):
         """With well-separated classes (offset +/-2), accuracy should be high."""
         r = Results()
         r["dataset"] = labeled_dataset
@@ -740,14 +782,18 @@ class TestProbe:
         best_acc = max(results["probe"].accuracy_per_layer.values())
         assert best_acc > 0.7
 
-    def test_refit_stores_classifiers(self, labeled_activation_store, labeled_dataset, n_layers):
+    def test_refit_stores_classifiers(
+        self, labeled_activation_store, labeled_dataset, n_layers
+    ):
         r = Results()
         r["dataset"] = labeled_dataset
         r["record"] = labeled_activation_store
         results = Probe(cv=2, refit=True)(r)
         assert len(results["probe"].classifiers) == n_layers
 
-    def test_no_refit_empty_classifiers(self, labeled_activation_store, labeled_dataset):
+    def test_no_refit_empty_classifiers(
+        self, labeled_activation_store, labeled_dataset
+    ):
         r = Results()
         r["dataset"] = labeled_dataset
         r["record"] = labeled_activation_store
@@ -763,7 +809,9 @@ class TestProbe:
         for layer in range(n_layers):
             assert len(results["probe"].cv_scores[layer]) == cv
 
-    def test_label_names_passed_through(self, labeled_activation_store, labeled_dataset):
+    def test_label_names_passed_through(
+        self, labeled_activation_store, labeled_dataset
+    ):
         r = Results()
         r["dataset"] = labeled_dataset
         r["record"] = labeled_activation_store
@@ -772,6 +820,7 @@ class TestProbe:
 
     def test_custom_classifier(self, labeled_activation_store, labeled_dataset):
         from sklearn.linear_model import RidgeClassifier
+
         r = Results()
         r["dataset"] = labeled_dataset
         r["record"] = labeled_activation_store

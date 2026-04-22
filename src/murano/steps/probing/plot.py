@@ -33,7 +33,11 @@ class ProbePlot(Step):
             plot_confusion_matrix,
         )
 
-        root = Path(self.output_dir) if self.output_dir else Path(results.get("output_dir", "."))
+        root = (
+            Path(self.output_dir)
+            if self.output_dir
+            else Path(results.get("output_dir", "."))
+        )
         plots_dir = root / "plots"
         plots_dir.mkdir(parents=True, exist_ok=True)
 

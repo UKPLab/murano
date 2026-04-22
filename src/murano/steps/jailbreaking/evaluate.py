@@ -67,19 +67,19 @@ class ComplianceRate(Step):
 
     def __init__(self, method: str = "keyword", context_window: int = 300):
         if method != "keyword":
-            raise ValueError(
-                "ComplianceRate currently only supports method='keyword'."
-            )
+            raise ValueError("ComplianceRate currently only supports method='keyword'.")
         self.method = method
         self.context_window = context_window
 
     def __call__(self, results: Results) -> Results:
-        intervene = results['intervene']
+        intervene = results["intervene"]
         clean_scores = [self._score_one(text) for text in intervene.clean_generations]
-        ablated_scores = [self._score_one(text) for text in intervene.modified_generations]
+        ablated_scores = [
+            self._score_one(text) for text in intervene.modified_generations
+        ]
         clean_compliance = self._score(intervene.clean_generations)
         ablated_compliance = self._score(intervene.modified_generations)
-        results['eval'] = EvalResult(
+        results["eval"] = EvalResult(
             clean_compliance=clean_compliance,
             ablated_compliance=ablated_compliance,
             clean_scores=clean_scores,
@@ -88,7 +88,8 @@ class ComplianceRate(Step):
         )
         logger.info(
             "Compliance: clean=%.1f%%, ablated=%.1f%%",
-            clean_compliance * 100, ablated_compliance * 100,
+            clean_compliance * 100,
+            ablated_compliance * 100,
         )
         return results
 

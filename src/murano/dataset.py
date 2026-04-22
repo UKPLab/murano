@@ -9,6 +9,7 @@ def _load_dataset_cached(name, config, split):
     """Load a HF dataset, trying offline cache first to avoid API rate limits."""
     import os
     from datasets import load_dataset
+
     old = os.environ.get("HF_DATASETS_OFFLINE")
     try:
         os.environ["HF_DATASETS_OFFLINE"] = "1"
@@ -41,7 +42,6 @@ def _load_hub_column(
     Returns:
         List of strings from the specified column.
     """
-    from datasets import load_dataset
 
     if isinstance(source, tuple):
         if len(source) == 3:
@@ -50,13 +50,17 @@ def _load_hub_column(
             name, column = source
             config = None
         else:
-            raise ValueError(f"Expected tuple of (name, column) or (name, config, column), got {source}")
+            raise ValueError(
+                f"Expected tuple of (name, column) or (name, config, column), got {source}"
+            )
     else:
         name = source
         config = None
 
     if column is None:
-        raise ValueError("column must be specified either in the tuple or as a separate argument")
+        raise ValueError(
+            "column must be specified either in the tuple or as a separate argument"
+        )
 
     ds = _load_dataset_cached(name, config, split)
     try:
@@ -133,8 +137,12 @@ class MuranoDataset:
         raw_neg = list(neg_texts)
 
         if template_fn is not None:
-            pos_texts = [template_fn([{"role": "user", "content": t}]) for t in pos_texts]
-            neg_texts = [template_fn([{"role": "user", "content": t}]) for t in neg_texts]
+            pos_texts = [
+                template_fn([{"role": "user", "content": t}]) for t in pos_texts
+            ]
+            neg_texts = [
+                template_fn([{"role": "user", "content": t}]) for t in neg_texts
+            ]
 
         train_ds = cls(
             positive_texts=pos_texts[:n_train],
@@ -172,12 +180,8 @@ class MuranoDataset:
         raw_pos = list(positive)
         raw_neg = list(negative)
         if template_fn is not None:
-            positive = [
-                template_fn([{"role": "user", "content": t}]) for t in positive
-            ]
-            negative = [
-                template_fn([{"role": "user", "content": t}]) for t in negative
-            ]
+            positive = [template_fn([{"role": "user", "content": t}]) for t in positive]
+            negative = [template_fn([{"role": "user", "content": t}]) for t in negative]
             return cls(
                 positive_texts=list(positive),
                 negative_texts=list(negative),
@@ -285,9 +289,7 @@ class LabeledDataset:
 
         raw_texts = list(texts) if template_fn else None
         if template_fn is not None:
-            texts = [
-                template_fn([{"role": "user", "content": t}]) for t in texts
-            ]
+            texts = [template_fn([{"role": "user", "content": t}]) for t in texts]
 
         return cls(
             texts=texts,
@@ -314,9 +316,7 @@ class LabeledDataset:
         """
         raw_texts = list(texts) if template_fn else None
         if template_fn is not None:
-            texts = [
-                template_fn([{"role": "user", "content": t}]) for t in texts
-            ]
+            texts = [template_fn([{"role": "user", "content": t}]) for t in texts]
         return cls(
             texts=texts,
             labels=labels,

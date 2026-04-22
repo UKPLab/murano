@@ -24,25 +24,29 @@ def main() -> None:
         negative=harmless_prompts,
         template_fn=model.chat_template,
     )
-    steering_results = Pipeline([
-        Load(train_dataset),
-        Record(model, layers="all", position="last"),
-        SteeringVector(normalize=True),
-    ]).run()
+    steering_results = Pipeline(
+        [
+            Load(train_dataset),
+            Record(model, layers="all", position="last"),
+            SteeringVector(normalize=True),
+        ]
+    ).run()
 
     eval_dataset = MuranoDataset.contrastive(
         positive=harmful_prompts,
         negative=[],
         template_fn=model.chat_template,
     )
-    eval_results = Pipeline([
-        Load(eval_dataset),
-        Intervene(
-            model,
-            ablate_direction(steering_results["steering"].direction_per_layer),
-        ),
-        ComplianceRate(),
-    ]).run()
+    eval_results = Pipeline(
+        [
+            Load(eval_dataset),
+            Intervene(
+                model,
+                ablate_direction(steering_results["steering"].direction_per_layer),
+            ),
+            ComplianceRate(),
+        ]
+    ).run()
 
     print("Clean compliance:", eval_results["eval"].clean_compliance)
     print("Ablated compliance:", eval_results["eval"].ablated_compliance)

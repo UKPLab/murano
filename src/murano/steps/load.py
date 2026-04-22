@@ -33,7 +33,7 @@ class Load(Step):
         }
 
     def __call__(self, results: Results) -> Results:
-        results['dataset'] = self.dataset
+        results["dataset"] = self.dataset
         results["prompts"] = self._prompt_batch()
         return results
 

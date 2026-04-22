@@ -16,7 +16,10 @@ if TYPE_CHECKING:
 def _setup():
     """Consistent seaborn style for all plots."""
     import seaborn as sns
-    sns.set_theme(style="whitegrid", context="notebook", palette="muted", font_scale=1.1)
+
+    sns.set_theme(
+        style="whitegrid", context="notebook", palette="muted", font_scale=1.1
+    )
     return sns
 
 
@@ -33,22 +36,27 @@ def plot_probe_accuracy(
 ) -> None:
     """Bar chart of probe accuracy across layers with CV error bars."""
     import matplotlib.pyplot as plt
+
     sns = _setup()
 
     layers = sorted(probe.accuracy_per_layer.keys())
-    means = [probe.accuracy_per_layer[l] for l in layers]
-    stds = [probe.cv_scores[l].std() for l in layers]
+    means = [probe.accuracy_per_layer[layer] for layer in layers]
+    stds = [probe.cv_scores[layer].std() for layer in layers]
     palette = [
-        sns.color_palette("muted")[3] if l == probe.best_layer
+        sns.color_palette("muted")[3]
+        if layer == probe.best_layer
         else sns.color_palette("muted")[0]
-        for l in layers
+        for layer in layers
     ]
 
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.bar(
-        [str(l) for l in layers], means,
-        yerr=stds, capsize=3,
-        color=palette, edgecolor="white",
+        [str(layer) for layer in layers],
+        means,
+        yerr=stds,
+        capsize=3,
+        color=palette,
+        edgecolor="white",
     )
     ax.set_xlabel("Layer")
     ax.set_ylabel("Accuracy")
@@ -68,6 +76,7 @@ def plot_confusion_matrix(
     """Confusion matrix at the best layer using the refitted classifier."""
     import matplotlib.pyplot as plt
     from sklearn.metrics import confusion_matrix as cm_func
+
     sns = _setup()
 
     best = probe.best_layer
@@ -84,9 +93,15 @@ def plot_confusion_matrix(
 
     fig, ax = plt.subplots(figsize=(6, 5))
     sns.heatmap(
-        matrix, annot=True, fmt="d", cmap="Blues",
-        xticklabels=labels, yticklabels=labels,
-        square=True, linewidths=0, linecolor="none",
+        matrix,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=labels,
+        yticklabels=labels,
+        square=True,
+        linewidths=0,
+        linecolor="none",
         ax=ax,
     )
     ax.set_xlabel("Predicted")

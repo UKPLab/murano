@@ -43,5 +43,5 @@ class Save(Step):
             output_dir=self.output_dir,
             model_id=self.model_id,
         )
-        results['output_dir'] = out_dir
+        results["output_dir"] = out_dir
         return results

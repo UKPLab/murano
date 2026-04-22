@@ -3,13 +3,19 @@ import numpy as np
 import torch
 from datasets import Dataset
 
+
 # TODO: make Location sortable
 class Location:
     """
     Location specifies a slice of model activations to extract or analyze.
     """
-    def __init__(self, layers: Union[int, List[int]], modules: Union[str, List[str]] = "mlp",
-                 token_pos: Union[int, List[int]] = None):
+
+    def __init__(
+        self,
+        layers: Union[int, List[int]],
+        modules: Union[str, List[str]] = "mlp",
+        token_pos: Union[int, List[int]] = None,
+    ):
         self.layers = layers if isinstance(layers, list) else [layers]
         self.modules = modules if isinstance(modules, list) else [modules]
         if isinstance(token_pos, list) or token_pos is None:
@@ -20,7 +26,7 @@ class Location:
 
     def __repr__(self):
         return f"(layers={self.layers}, modules={self.modules}, token_pos={self.token_pos})"
-    
+
     def get_slice_idx(self, _slice):
         """
         Convert a subset of a Location (slice) into indices for numpy array slicing.
@@ -29,7 +35,7 @@ class Location:
             raise ValueError(f"Slice {_slice} is not included within location {self}.")
 
         # Get indices for slicing activations based on slice Location
-        layer_idx = [self.layers.index(l) for l in _slice.layers]
+        layer_idx = [self.layers.index(layer) for layer in _slice.layers]
         module_idx = [self.modules.index(m) for m in _slice.modules]
         token_idx = [self.token_pos.index(p) for p in _slice.token_pos]
         return (slice(None), layer_idx, module_idx, token_idx, slice(None))
@@ -38,9 +44,11 @@ class Location:
         """
         Check if the slice is contained within this location.
         """
-        return (all(l in self.layers for l in slice.layers) and
-                all(m in self.modules for m in slice.modules) and
-                all(p in self.token_pos for p in slice.token_pos))
+        return (
+            all(layer in self.layers for layer in slice.layers)
+            and all(m in self.modules for m in slice.modules)
+            and all(p in self.token_pos for p in slice.token_pos)
+        )
 
 
 # TODO: remove
@@ -53,10 +61,14 @@ class ActivationDataset:
     ActivationDataset stores model activations and associated metadata.
     Internally uses NumPy for storage.
     """
-    def __init__(self, activations: Union[np.ndarray, torch.Tensor],
-                 location: Location,
-                 global_metadata: dict, 
-                 dataset: Dataset):
+
+    def __init__(
+        self,
+        activations: Union[np.ndarray, torch.Tensor],
+        location: Location,
+        global_metadata: dict,
+        dataset: Dataset,
+    ):
         """
         Initializes the ActivationDataset with activations and metadata.
         Accepts activations as either numpy arrays or torch tensors (auto-converted to numpy).
@@ -65,7 +77,7 @@ class ActivationDataset:
         self.location = location
         self.global_metadata = global_metadata
         self.dataset = dataset
-        
+
         # Infer key activation dimensions
         ref_activation = self.activations.shape
         self.num_examples = ref_activation[0]
@@ -80,8 +92,8 @@ class ActivationDataset:
     def __getitem__(self, key):
         """
         Supports both Location-based slicing and dictionary-style string access.
-        
-        Expected indexing order for Location: 
+
+        Expected indexing order for Location:
             [examples, layers, modules, tokens, hidden_dim]
         """
         if isinstance(key, str):
@@ -100,14 +112,16 @@ class ActivationDataset:
             # Location-based slicing
             idx = self.location.get_slice_idx(key)
             return self.activations[idx].squeeze()
-    
+
     def _to_numpy(self, activations: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
         if isinstance(activations, torch.Tensor):
             return activations.detach().cpu().numpy()
         elif isinstance(activations, np.ndarray):
             return activations
         else:
-            raise TypeError(f"Activations must be a numpy array or torch tensor, got {type(activations)}.")
+            raise TypeError(
+                f"Activations must be a numpy array or torch tensor, got {type(activations)}."
+            )
 
 
 # Intervention utility functions
@@ -179,16 +193,16 @@ def steering_vector_to_activation_dataset(
         layers_dim = len(location.layers)
     else:
         layers_dim = 1
-    
+
     modules_dim = len(location.modules) if location.modules else 1
-    
+
     if isinstance(location.token_pos, list):
         token_pos_dim = len(location.token_pos)
     elif location.token_pos is not None:
         token_pos_dim = 1
     else:
         token_pos_dim = 1
-    
+
     dims = [layers_dim, modules_dim, token_pos_dim]
     for i, dim in enumerate(dims, 1):
         if sv_array.shape[i] != dim:
@@ -205,7 +219,7 @@ def steering_vector_to_activation_dataset(
 def create_intervention_hook(intervention_activation: torch.Tensor, location: Location):
     """
     Create a forward hook function that applies intervention at each forward pass.
-    
+
     The hook fires at each generation step. At each step:
     - seq_len = current sequence length (prompt + tokens generated so far)
     - User controls where intervention is applied via Location.token_pos:
@@ -213,23 +227,24 @@ def create_intervention_hook(intervention_activation: torch.Tensor, location: Lo
       * [-1] → apply to last token (changes as tokens are generated)
       * [0] → apply to first token
       * [0, -1] → apply to first and last tokens
-    
+
     Args:
         intervention_activation: The activation tensor to add (shape: [batch, hidden] or [batch, seq, hidden])
         location: Location object specifying where to apply the intervention
-    
+
     Returns:
         A hook function that can be registered with register_forward_hook()
     """
+
     def hook_fn(module, args, output):
         output_tensor = (output[0] if isinstance(output, tuple) else output).clone()
         seq_len = output_tensor.shape[1]
-        
+
         # Normalize intervention activation shape to [batch, seq, hidden]
         act = intervention_activation
         while act.ndim > 3:
             act = act.squeeze(0)
-        
+
         if act.ndim == 2:
             # [batch, hidden] -> broadcast over sequence
             act_full = act.unsqueeze(1).expand(-1, seq_len, -1)
@@ -243,13 +258,17 @@ def create_intervention_hook(intervention_activation: torch.Tensor, location: Lo
                 # Fallback: use first position and broadcast
                 act_full = act[:, :1, :].expand(-1, seq_len, -1)
         else:
-            raise ValueError(f"Unexpected intervention activation shape: {intervention_activation.shape}")
-        
+            raise ValueError(
+                f"Unexpected intervention activation shape: {intervention_activation.shape}"
+            )
+
         # Apply intervention based on Location.token_pos
         token_pos = location.token_pos
-        
+
         # Check if applying to all tokens
-        if token_pos is None or (isinstance(token_pos, list) and len(token_pos) == 1 and token_pos[0] is None):
+        if token_pos is None or (
+            isinstance(token_pos, list) and len(token_pos) == 1 and token_pos[0] is None
+        ):
             # Apply to all tokens in current sequence
             output_tensor[:] = output_tensor[:] + act_full
         elif isinstance(token_pos, (list, tuple)) and len(token_pos) > 0:
@@ -260,9 +279,18 @@ def create_intervention_hook(intervention_activation: torch.Tensor, location: Lo
                     pos_idx = pos if pos >= 0 else seq_len + pos
                     pos_idx = max(0, min(pos_idx, seq_len - 1))
                     # Apply intervention at this position
-                    output_tensor[:, pos_idx, :] = output_tensor[:, pos_idx, :] + act_full[:, pos_idx, :]
+                    output_tensor[:, pos_idx, :] = (
+                        output_tensor[:, pos_idx, :] + act_full[:, pos_idx, :]
+                    )
         else:
-            raise ValueError(f"Invalid token_pos in Location: {token_pos}. Must be None, [None], or a list of integers.")
-        
-        return (output_tensor,) + output[1:] if isinstance(output, tuple) else output_tensor
+            raise ValueError(
+                f"Invalid token_pos in Location: {token_pos}. Must be None, [None], or a list of integers."
+            )
+
+        return (
+            (output_tensor,) + output[1:]
+            if isinstance(output, tuple)
+            else output_tensor
+        )
+
     return hook_fn

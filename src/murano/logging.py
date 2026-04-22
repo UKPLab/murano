@@ -19,8 +19,11 @@ def setup_logging(level: int = logging.INFO) -> None:
     if not has_console_handler:
         handler = logging.StreamHandler()
         handler._murano_console_handler = True
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s [%(levelname)s] murano: %(message)s", datefmt="%H:%M:%S",
-        ))
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] murano: %(message)s",
+                datefmt="%H:%M:%S",
+            )
+        )
         logger.addHandler(handler)
     logger.setLevel(level)

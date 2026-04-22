@@ -22,11 +22,14 @@ ArtifactSerializer = Callable[[str, Any, Path, Any, dict[str, Any]], None]
 def save_steering(steering_result: Any, path: Path) -> None:
     """Save a SteeringResult to a .pt file."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({
-        "direction_per_layer": steering_result.direction_per_layer,
-        "separation_scores": steering_result.separation_scores,
-        "best_layer": steering_result.best_layer,
-    }, path)
+    torch.save(
+        {
+            "direction_per_layer": steering_result.direction_per_layer,
+            "separation_scores": steering_result.separation_scores,
+            "best_layer": steering_result.best_layer,
+        },
+        path,
+    )
     logger.info("Saved steering result to %s", path)
 
 
@@ -40,6 +43,7 @@ def load_steering(path: str | Path) -> Any:
         SteeringResult ready for use with model.generate(ablate=...).
     """
     from murano.steps.train import SteeringResult
+
     data = torch.load(path, weights_only=False)
     return SteeringResult(
         direction_per_layer=data["direction_per_layer"],
@@ -48,12 +52,16 @@ def load_steering(path: str | Path) -> Any:
     )
 
 
-def save_generations(intervene_result: Any, path: Path, prompts: list[str] | None = None) -> None:
+def save_generations(
+    intervene_result: Any, path: Path, prompts: list[str] | None = None
+) -> None:
     """Save an InterveneResult to a JSON file, paired per prompt."""
     path.parent.mkdir(parents=True, exist_ok=True)
     baseline_label = getattr(intervene_result, "baseline_label", "clean")
     modified_label = getattr(intervene_result, "modified_label", "modified")
-    prompts = prompts if prompts is not None else getattr(intervene_result, "prompts", None)
+    prompts = (
+        prompts if prompts is not None else getattr(intervene_result, "prompts", None)
+    )
     n = len(intervene_result.clean_generations)
     data = []
     for i in range(n):
@@ -113,7 +121,9 @@ def save_probe(probe_result: Any, path: Path) -> None:
     """Save a ProbeResult to a JSON file (without classifiers)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
-        "accuracy_per_layer": {str(k): v for k, v in probe_result.accuracy_per_layer.items()},
+        "accuracy_per_layer": {
+            str(k): v for k, v in probe_result.accuracy_per_layer.items()
+        },
         "cv_scores": {str(k): v.tolist() for k, v in probe_result.cv_scores.items()},
         "best_layer": probe_result.best_layer,
         "label_names": probe_result.label_names,
@@ -179,14 +189,22 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
 
     registry: list[tuple[type, ArtifactSerializer]] = []
 
-    def serialize_prompts(key: str, prompts: PromptBatch, out: Path, _results: Any, metadata: dict[str, Any]) -> None:
+    def serialize_prompts(
+        key: str,
+        prompts: PromptBatch,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
         save_prompts(prompts, out / "prompts" / f"{key}.json")
         metadata["prompts"] = {
             "source": prompts.source,
             "n_prompts": len(prompts),
         }
 
-    def serialize_steering(key: str, steering: Any, out: Path, _results: Any, metadata: dict[str, Any]) -> None:
+    def serialize_steering(
+        key: str, steering: Any, out: Path, _results: Any, metadata: dict[str, Any]
+    ) -> None:
         filename = "steering.pt" if key == "steering" else f"{key}.pt"
         save_steering(steering, out / "direction" / filename)
         metadata[key] = {
@@ -221,7 +239,13 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "metadata": comparison.metadata,
         }
 
-    def serialize_metric(key: str, metric: MetricResult, out: Path, _results: Any, metadata: dict[str, Any]) -> None:
+    def serialize_metric(
+        key: str,
+        metric: MetricResult,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
         filename = "eval.json" if key == "eval" else f"{key}.json"
         folder = "evaluation" if key == "eval" else "metrics"
         save_eval(metric, out / folder / filename)
@@ -240,7 +264,9 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
                 "modified_score": metric.modified_score,
             }
 
-    def serialize_probe(key: str, probe: Any, out: Path, _results: Any, metadata: dict[str, Any]) -> None:
+    def serialize_probe(
+        key: str, probe: Any, out: Path, _results: Any, metadata: dict[str, Any]
+    ) -> None:
         filename = "probe.json" if key == "probe" else f"{key}.json"
         save_probe(probe, out / "probe" / filename)
         metadata[key] = {
@@ -304,6 +330,7 @@ def save_results(
     if "dataset" in results:
         ds = results["dataset"]
         from murano.dataset import LabeledDataset
+
         if isinstance(ds, LabeledDataset):
             metadata["dataset"] = {
                 "type": "labeled",

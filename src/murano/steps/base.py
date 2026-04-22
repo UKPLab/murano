@@ -65,8 +65,7 @@ class Step(ABC):
     write_types: dict[str, ExpectedType] = {}
 
     @abstractmethod
-    def __call__(self, results: Results) -> Results:
-        ...
+    def __call__(self, results: Results) -> Results: ...
 
     def expected_read_types(
         self,

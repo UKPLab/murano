@@ -27,6 +27,7 @@ def _ensure_downloaded(model_id: str) -> str:
         return str(local_path)
 
     from huggingface_hub import snapshot_download
+
     try:
         return snapshot_download(model_id, local_files_only=True)
     except Exception:
@@ -77,7 +78,9 @@ class MuranoModel:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.n_layers = self._lm.config.num_hidden_layers
         self.d_model = self._lm.config.hidden_size
-        logger.info("Loaded %s (%d layers, d=%d)", model_id, self.n_layers, self.d_model)
+        logger.info(
+            "Loaded %s (%d layers, d=%d)", model_id, self.n_layers, self.d_model
+        )
 
     def layer(self, idx: int):
         """Returns the nnsight module proxy for a decoder layer."""
@@ -219,4 +222,6 @@ class MuranoModel:
         )
 
     def __repr__(self) -> str:
-        return f"MuranoModel({self.model_id!r}, layers={self.n_layers}, d={self.d_model})"
+        return (
+            f"MuranoModel({self.model_id!r}, layers={self.n_layers}, d={self.d_model})"
+        )

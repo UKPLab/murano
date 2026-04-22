@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import torch
 from torch import Tensor
 
 from murano.logging import logger
@@ -22,6 +21,7 @@ class SteeringResult:
         separation_scores: {layer_idx: float} how well the direction separates classes.
         best_layer: Layer index with highest separation score.
     """
+
     direction_per_layer: dict[int, Tensor]
     separation_scores: dict[int, float]
     best_layer: int
@@ -45,14 +45,13 @@ class SteeringVector(Step):
     def __init__(self, method: str = "contrastive_mean_diff", normalize: bool = True):
         if method != "contrastive_mean_diff":
             raise ValueError(
-                "SteeringVector currently only supports "
-                "method='contrastive_mean_diff'."
+                "SteeringVector currently only supports method='contrastive_mean_diff'."
             )
         self.method = method
         self.normalize = normalize
 
     def __call__(self, results: Results) -> Results:
-        store = results['record']
+        store = results["record"]
         directions: dict[int, Tensor] = {}
         scores: dict[int, float] = {}
 
@@ -72,7 +71,9 @@ class SteeringVector(Step):
             if self.normalize:
                 norm = direction.norm()
                 if norm < 1e-10:
-                    logger.warning("Near-zero direction at layer %d, skipping normalization", layer)
+                    logger.warning(
+                        "Near-zero direction at layer %d, skipping normalization", layer
+                    )
                 else:
                     direction = direction / norm
 
@@ -86,7 +87,7 @@ class SteeringVector(Step):
             )
 
         best_layer = max(scores, key=scores.get)
-        results['steering'] = SteeringResult(
+        results["steering"] = SteeringResult(
             direction_per_layer=directions,
             separation_scores=scores,
             best_layer=best_layer,

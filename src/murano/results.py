@@ -61,6 +61,7 @@ class Results:
             Path to the run directory.
         """
         from murano.io import save_results
+
         return save_results(
             self,
             output_dir=output_dir,
