@@ -80,8 +80,11 @@ class MuranoModel:
         self.tokenizer = self._lm.tokenizer
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.n_layers = self._lm.config.num_hidden_layers
-        self.d_model = self._lm.config.hidden_size
+        config = self._lm.config
+        if config is None:
+            raise RuntimeError(f"Loaded model {model_id} has no config.")
+        self.n_layers = config.num_hidden_layers
+        self.d_model = config.hidden_size
         logger.info(
             "Loaded %s (%d layers, d=%d)", model_id, self.n_layers, self.d_model
         )
@@ -133,12 +136,13 @@ class MuranoModel:
             if fn is not None:
                 for layer_idx in self._layer_indices(layers):
                     h = self.layer(layer_idx).output
-                    self.layer(layer_idx).output = fn(h, layer_idx)
+                    self.layer(layer_idx).output = fn(h, layer_idx)  # pyright: ignore[reportArgumentType]
             output_ids = self._lm.generator.output.save()
 
         out = output_ids.value if hasattr(output_ids, "value") else output_ids
         generated = out[0, input_len:]
-        decoded = self.tokenizer.decode(generated, skip_special_tokens=True)
+        # nnsight returns a proxy; tokenizer.decode accepts it at runtime.
+        decoded = self.tokenizer.decode(generated, skip_special_tokens=True)  # pyright: ignore[reportArgumentType]
         assert isinstance(decoded, str)
         return decoded
 

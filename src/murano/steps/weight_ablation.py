@@ -11,7 +11,7 @@ Write matrices (output to residual stream): W_new = P @ W
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch import Tensor
@@ -99,7 +99,10 @@ def ablate_model_weights(model: MuranoModel, proj_op: ProjectionOperator) -> int
     Returns:
         Number of weight matrices modified.
     """
-    hf_model = model._lm.model
+    # hf_model is typed as an nnsight Envoy union; at runtime it exposes
+    # the plain transformer parameters we mutate below. Cast to Any so the
+    # attribute / dtype checks don't fight with nnsight's proxy types.
+    hf_model: Any = model._lm.model
     n_modified = 0
 
     with torch.no_grad():
@@ -146,15 +149,15 @@ def ablate_model_weights(model: MuranoModel, proj_op: ProjectionOperator) -> int
 
 def save_weights(model: MuranoModel) -> dict[str, Tensor]:
     """Save a copy of all model weights for later restoration."""
-    return {
-        name: param.data.clone() for name, param in model._lm.model.named_parameters()
-    }
+    hf_model: Any = model._lm.model
+    return {name: param.data.clone() for name, param in hf_model.named_parameters()}
 
 
 def restore_weights(model: MuranoModel, saved: dict[str, Tensor]) -> None:
     """Restore model weights from a saved copy."""
+    hf_model: Any = model._lm.model
     with torch.no_grad():
-        for name, param in model._lm.model.named_parameters():
+        for name, param in hf_model.named_parameters():
             param.data.copy_(saved[name])
 
 

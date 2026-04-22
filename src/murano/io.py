@@ -111,8 +111,11 @@ def save_ablated_model(model: MuranoModel, save_dir: str | Path) -> Path:
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    model._lm.model.save_pretrained(save_dir)
-    model.tokenizer.save_pretrained(save_dir)
+    # nnsight Envoy forwards .save_pretrained to the underlying HF model at runtime;
+    # its static type signature doesn't reflect that.
+    hf_model: Any = model._lm.model
+    hf_model.save_pretrained(str(save_dir))
+    model.tokenizer.save_pretrained(str(save_dir))
     logger.info("Saved ablated model to %s", save_dir)
     return save_dir
 

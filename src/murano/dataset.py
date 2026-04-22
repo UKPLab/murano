@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from datasets import Dataset as _HFDataset
 
 
-def _load_dataset_cached(name, config, split):
-    """Load a HF dataset, trying offline cache first to avoid API rate limits."""
+def _load_dataset_cached(name, config, split) -> "_HFDataset":
+    """Load a HF dataset, trying offline cache first to avoid API rate limits.
+
+    Returns a single ``datasets.Dataset`` (never a DatasetDict or streaming variant).
+    """
     import os
-    from datasets import load_dataset
+    from datasets import Dataset, load_dataset
 
     old = os.environ.get("HF_DATASETS_OFFLINE")
+    ds = None
     try:
         os.environ["HF_DATASETS_OFFLINE"] = "1"
-        return load_dataset(name, config, split=split)
+        ds = load_dataset(name, config, split=split)
     except Exception:
         pass
     finally:
@@ -21,7 +28,13 @@ def _load_dataset_cached(name, config, split):
             os.environ.pop("HF_DATASETS_OFFLINE", None)
         else:
             os.environ["HF_DATASETS_OFFLINE"] = old
-    return load_dataset(name, config, split=split)
+    if ds is None:
+        ds = load_dataset(name, config, split=split)
+    if not isinstance(ds, Dataset):
+        raise TypeError(
+            f"Expected a single Dataset for split={split!r}, got {type(ds).__name__}."
+        )
+    return ds
 
 
 def _load_hub_column(
