@@ -33,8 +33,8 @@ dev = [
 
 [project.optional-dependencies]
 plot = [
-    "matplotlib>=3.5",
-    "seaborn>=0.12",
+    "matplotlib>=3.9",
+    "seaborn>=0.13",
 ]
 
 [tool.hatch.version]
