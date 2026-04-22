@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
     "nnsight>=0.4.8",
     "torch>=2.7.1",
-    "transformers>=4.40,<5.0",
+    "transformers>=4.46,<5.0",
     "huggingface-hub>=0.23.0",
     "datasets>=4.0.0",
     "scikit-learn>=1.5.0",
