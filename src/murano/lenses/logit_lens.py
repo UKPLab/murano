@@ -1,12 +1,8 @@
 from typing import Any
 
-import plotly.express as px
-import plotly.io as pio
 import torch
 
 from .base_lens import BaseLens
-
-pio.renderers.default = "browser"
 
 
 class LogitLens(BaseLens):
@@ -49,6 +45,11 @@ class LogitLens(BaseLens):
         return artifact
 
     def visualize(self, artifact: dict) -> Any:
+        import plotly.express as px  # pyright: ignore[reportMissingImports]
+        import plotly.io as pio  # pyright: ignore[reportMissingImports]
+
+        pio.renderers.default = "browser"
+
         max_probs = artifact["max_probs"].detach().cpu().numpy().squeeze(axis=1)
         words = artifact["predicted_words"]
         input_words = artifact["input_words"]

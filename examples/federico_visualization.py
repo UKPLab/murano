@@ -4,18 +4,13 @@ from murano import Location
 from torch.utils.data import DataLoader
 from datasets import Dataset
 import torch
-import random
 import os
 import numpy as np
-import torch
 import pandas as pd
 import plotly.express as px
-from typing import Union, List
 from sklearn.preprocessing import Normalizer
-from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 
-from murano.lenses.base_lens import BaseLens
 
 # Custom collate function stitches separate inputs coming from dataset
 def collate_fn(batch):
@@ -28,10 +23,12 @@ def collate_fn(batch):
             collated[key] = values  # keep as list
     return collated
 
+
 # Utility function to tokenize used in map dataset
 def process_dataset(example, tokenizer, max_length=10):
-    example["input_ids"] = tokenizer(example["text"], return_tensors="pt",
-                                     max_length=max_length)["input_ids"][0]
+    example["input_ids"] = tokenizer(
+        example["text"], return_tensors="pt", max_length=max_length
+    )["input_ids"][0]
     return example
 
 
@@ -39,8 +36,13 @@ class Location:
     """
     Location specifies a slice of model activations to extract or analyze.
     """
-    def __init__(self, layers: Union[int, List[int]], modules: Union[str, List[str]] = "mlp",
-                 token_pos: Union[int, List[int]] = None):
+
+    def __init__(
+        self,
+        layers: Union[int, List[int]],
+        modules: Union[str, List[str]] = "mlp",
+        token_pos: Union[int, List[int]] = None,
+    ):
         self.layers = layers if isinstance(layers, list) else [layers]
         self.modules = modules if isinstance(modules, list) else [modules]
         self.token_pos = token_pos if isinstance(token_pos, list) else [token_pos]
@@ -48,7 +50,7 @@ class Location:
 
     def __repr__(self):
         return f"(layers={self.layers}, modules={self.modules}, token_pos={self.token_pos})"
-    
+
     def get_slice_idx(self, _slice):
         """
         Convert a subset of a Location (slice) into indices for numpy array slicing.
@@ -57,7 +59,7 @@ class Location:
             raise ValueError(f"Slice {_slice} is not included within location {self}.")
 
         # Get indices for slicing activations based on slice Location
-        layer_idx = [self.layers.index(l) for l in _slice.layers]
+        layer_idx = [self.layers.index(layer) for layer in _slice.layers]
         module_idx = [self.modules.index(m) for m in _slice.modules]
         token_idx = [self.token_pos.index(p) for p in _slice.token_pos]
         return (slice(None), layer_idx, module_idx, token_idx, slice(None))
@@ -66,9 +68,11 @@ class Location:
         """
         Check if the slice is contained within this location.
         """
-        return (all(l in self.layers for l in slice.layers) and
-                all(m in self.modules for m in slice.modules) and
-                all(p in self.token_pos for p in slice.token_pos))
+        return (
+            all(layer in self.layers for layer in slice.layers)
+            and all(m in self.modules for m in slice.modules)
+            and all(p in self.token_pos for p in slice.token_pos)
+        )
 
 
 class ActivationDataset:
@@ -77,10 +81,13 @@ class ActivationDataset:
     Internally uses NumPy for storage.
     """
 
-    def __init__(self, activations: Union[np.ndarray, torch.Tensor],
-                 location: Location,
-                 global_metadata: dict, 
-                 dataset: Dataset):
+    def __init__(
+        self,
+        activations: Union[np.ndarray, torch.Tensor],
+        location: Location,
+        global_metadata: dict,
+        dataset: Dataset,
+    ):
         """
         Initializes the ActivationDataset with activations and metadata.
         Accepts activations as either numpy arrays or torch tensors (auto-converted to numpy).
@@ -89,7 +96,7 @@ class ActivationDataset:
         self.location = location
         self.global_metadata = global_metadata
         self.dataset = dataset
-        
+
         # Infer key activation dimensions
         ref_activation = self.activations.shape
         self.num_examples = ref_activation[0]
@@ -103,7 +110,7 @@ class ActivationDataset:
 
     def __getitem__(self, slice: Location):
         """
-        Expected indexing order: 
+        Expected indexing order:
             [examples, layers, modules, tokens, hidden_dim]
         Layers, modules, tokens may be strings or lists of strings.
         """
@@ -116,7 +123,10 @@ class ActivationDataset:
         elif isinstance(activations, np.ndarray):
             return activations
         else:
-            raise TypeError(f"Activations must be a numpy array or torch tensor, got {type(activations)}.")
+            raise TypeError(
+                f"Activations must be a numpy array or torch tensor, got {type(activations)}."
+            )
+
 
 # TODO: create base class
 class PlotterLens:
@@ -130,12 +140,21 @@ class PlotterLens:
         label_columns: Optional column names from dataset to use as supervised labels.
     """
 
-    def __init__(self, reducer, save_path: str, label_columns: Union[str, List[str]] = None):
+    def __init__(
+        self, reducer, save_path: str, label_columns: Union[str, List[str]] = None
+    ):
         self.reducer = reducer
         self.save_path = save_path
-        self.label_columns = [label_columns] if isinstance(label_columns, str) else label_columns
+        self.label_columns = (
+            [label_columns] if isinstance(label_columns, str) else label_columns
+        )
 
-    def observe(self, artifact: ActivationDataset, location, title: str = "Activation Visualization"):
+    def observe(
+        self,
+        artifact: ActivationDataset,
+        location,
+        title: str = "Activation Visualization",
+    ):
         """
         Observe activations by applying dimensionality reduction and plotting.
 
@@ -165,7 +184,9 @@ class PlotterLens:
             reduced = self.reducer.fit_transform(X)
 
         # Build result DataFrame
-        reduced_df = pd.DataFrame(reduced, columns=[f"Component {i+1}" for i in range(reduced.shape[1])])
+        reduced_df = pd.DataFrame(
+            reduced, columns=[f"Component {i + 1}" for i in range(reduced.shape[1])]
+        )
         reduced_df = pd.concat([reduced_df, df], axis=1)
 
         # Choose coloring column
@@ -197,7 +218,6 @@ class PlotterLens:
         return fig
 
 
-
 class BatchedMuranoModel(MuranoModel):
     def run_recording(
         self, input: Union[str, torch.Tensor, dict], location: Location, **kwargs
@@ -212,11 +232,12 @@ class BatchedMuranoModel(MuranoModel):
         elif isinstance(input, dict):
             input_ids = input["input_ids"]
         else:
-            raise ValueError("Input must be a string, tensor, or dictionary with 'input_ids'.")
+            raise ValueError(
+                "Input must be a string, tensor, or dictionary with 'input_ids'."
+            )
 
         with self.model.trace() as tracer:
             with tracer.invoke(input_ids, max_length=10, **kwargs):
-                
                 # Perform nested indexing of modules and layers
                 layers_list = list(self.model.transformer.h)
 
@@ -225,22 +246,30 @@ class BatchedMuranoModel(MuranoModel):
                     for module in location.modules:
                         if module == "output":
                             layer_module = layers_list[layer]
-                            hidden_states = layer_module.output[0][ :, location.token_pos, :] if location.token_pos is not None else layer_module.output[0]
+                            hidden_states = (
+                                layer_module.output[0][:, location.token_pos, :]
+                                if location.token_pos is not None
+                                else layer_module.output[0]
+                            )
                         else:
                             layer_module = getattr(layers_list[layer], module)
-                            hidden_states = layer_module.output[ :, location.token_pos, :] if location.token_pos is not None else layer_module.output
+                            hidden_states = (
+                                layer_module.output[:, location.token_pos, :]
+                                if location.token_pos is not None
+                                else layer_module.output
+                            )
 
                         module_activation = hidden_states.save()
                         layer_activation.append(module_activation)
                     activations.append(layer_activation)
 
         artifact = {
-            "activations": activations, # nested list of shape: (num_layers, num_modules, batch_size, seq_len, hidden_dim)
+            "activations": activations,  # nested list of shape: (num_layers, num_modules, batch_size, seq_len, hidden_dim)
             "input_ids": input_ids,  # type: ignore
         }
 
         return artifact
-    
+
     def _stack_activations(self, obj, location: Location) -> torch.Tensor:
         """
         Utility function that reshapes activations to
@@ -250,13 +279,29 @@ class BatchedMuranoModel(MuranoModel):
         obj = self._stack_activations_recursive(obj)
         print(f"Stacked activations shape before reshape: {obj.shape}")
         # Put batch and number of batches as first two dimensions
-        obj = obj.permute(0, 3, 1, 2, 4, 5) # (num_batches, num_layers, num_modules, batch_size, seq_len, hidden_dim)
-        obj = obj.reshape(obj.shape[0] * obj.shape[1], obj.shape[2], obj.shape[3], obj.shape[4], obj.shape[5])
-         # (num_examples, num_layers, num_modules, seq_len, hidden_dim)
-        assert obj.shape[1] == len(location.layers), f"Expected {len(location.layers)} layers, got {obj.shape[1]}"
-        assert obj.shape[2] == len(location.modules), f"Expected {len(location.modules)} modules, got {obj.shape[2]}"
-        assert obj.shape[3] == len(location.token_pos), f"Expected {len(location.token_pos)} positions, got {obj.shape[3]}"
-        assert obj.shape[4] == self.model.config.hidden_size, f"Expected {self.model.config.hidden_size} hidden size, got {obj.shape[4]}"
+        obj = obj.permute(
+            0, 3, 1, 2, 4, 5
+        )  # (num_batches, num_layers, num_modules, batch_size, seq_len, hidden_dim)
+        obj = obj.reshape(
+            obj.shape[0] * obj.shape[1],
+            obj.shape[2],
+            obj.shape[3],
+            obj.shape[4],
+            obj.shape[5],
+        )
+        # (num_examples, num_layers, num_modules, seq_len, hidden_dim)
+        assert obj.shape[1] == len(location.layers), (
+            f"Expected {len(location.layers)} layers, got {obj.shape[1]}"
+        )
+        assert obj.shape[2] == len(location.modules), (
+            f"Expected {len(location.modules)} modules, got {obj.shape[2]}"
+        )
+        assert obj.shape[3] == len(location.token_pos), (
+            f"Expected {len(location.token_pos)} positions, got {obj.shape[3]}"
+        )
+        assert obj.shape[4] == self.model.config.hidden_size, (
+            f"Expected {self.model.config.hidden_size} hidden size, got {obj.shape[4]}"
+        )
         assert obj.dim() == 5, f"Expected 5 dimensions, got {obj.dim()}"
         return obj
 
@@ -267,22 +312,25 @@ class BatchedMuranoModel(MuranoModel):
         if isinstance(obj, dict):
             # Only recurse into the "activations" field
             if "activations" not in obj:
-                raise KeyError(f"Expected 'activations' key in dict, got keys: {list(obj.keys())}")
+                raise KeyError(
+                    f"Expected 'activations' key in dict, got keys: {list(obj.keys())}"
+                )
             return self._stack_activations_recursive(obj["activations"])
-        
+
         elif isinstance(obj, (list, tuple)):
             # Recurse and stack along new dimension
-            return torch.stack([self._stack_activations_recursive(item) for item in obj], dim=0)
-        
+            return torch.stack(
+                [self._stack_activations_recursive(item) for item in obj], dim=0
+            )
+
         elif isinstance(obj, torch.Tensor):
             return obj
-        
-        elif hasattr(obj, 'value') and isinstance(obj.value, torch.Tensor):
+
+        elif hasattr(obj, "value") and isinstance(obj.value, torch.Tensor):
             return obj.value
-        
+
         else:
             raise TypeError(f"Unsupported type in structure: {type(obj)}")
-
 
     def _get_dataloader(self, dataset: Dataset, batch_size: int = 4) -> DataLoader:
         """
@@ -296,9 +344,11 @@ class BatchedMuranoModel(MuranoModel):
         )
 
     # TODO: move this in the pipeline logic. MuranoModel should not know about datasets.
-    def run_task(self, dataset: Dataset, location: List[LayerLocation], **kwargs) -> dict:
+    def run_task(
+        self, dataset: Dataset, location: List[LayerLocation], **kwargs
+    ) -> dict:
         """
-        Run the model on a dataset with tracing enabled to record activations 
+        Run the model on a dataset with tracing enabled to record activations
         at specified location.
         Processes the dataset in batches by calling run_recording for each batch.
         """
@@ -324,30 +374,35 @@ class BatchedMuranoModel(MuranoModel):
             activations=activations,
             location=location,
             global_metadata=global_metadata,
-            dataset=dataset
+            dataset=dataset,
         )
         return artifact
-        
+
 
 # Helper function to convert integers to ordinal strings
 def ordinal(n):
-    return f"{n}{'th' if 11<=n<=13 else {1:'st', 2:'nd', 3:'rd'}.get(n%10, 'th')}"
+    return (
+        f"{n}{'th' if 11 <= n <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+    )
+
 
 if __name__ == "__main__":
     model = BatchedMuranoModel.from_pretrained("gpt2")
     tokenizer = model.model.tokenizer
 
     # Load as pandas dataframe
-    df = pd.read_csv('examples/dates.csv')
+    df = pd.read_csv("examples/dates.csv")
     # Add day of year int column
-    df['month'] = pd.to_datetime(df['date']).dt.month_name()
+    df["month"] = pd.to_datetime(df["date"]).dt.month_name()
     toy_dataset = Dataset.from_pandas(df)
     processed_dataset = toy_dataset.map(
         lambda x: process_dataset(x, tokenizer),
         batched=False,
     )
     processed_dataset.set_format(type="torch")
-    dataloader = DataLoader(processed_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
+    dataloader = DataLoader(
+        processed_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn
+    )
 
     lens = LogitLens()
     location = Location(layers=[2, 6, 11], modules=["output", "mlp"], token_pos=-1)

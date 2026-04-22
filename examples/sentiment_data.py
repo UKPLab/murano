@@ -110,4 +110,3 @@ NEGATIVE_SAMPLES = [
     "I feel so cursed and bitter.",
     "This is pure misery.",
 ]
-
