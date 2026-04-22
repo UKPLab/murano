@@ -1,4 +1,4 @@
-name: Main branch checks
+name: Checks
 
 on:
   push:
@@ -7,6 +7,9 @@ on:
       - "v*.*.*"
     tags:
       - "v*.*.*"
+  pull_request:
+    branches:
+      - main
 
 jobs:
   checks:
