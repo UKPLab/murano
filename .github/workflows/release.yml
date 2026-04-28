@@ -30,7 +30,7 @@ jobs:
           cp "$wheel" dist/murano-latest.whl
 
       - name: Publish wheels to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*.whl
