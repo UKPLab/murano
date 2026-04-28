@@ -17,29 +17,41 @@ if TYPE_CHECKING:
     from murano.model import MuranoModel
 
 
+# Key type for activation dictionaries.
+# When a single module is targeted, keys are plain layer indices (int).
+# When multiple modules are targeted, keys are (layer_idx, module_name) tuples.
+ActivationKey = int | tuple[int, str]
+
+
 @dataclass
 class ActivationStore:
-    """Stores per-layer activations for contrastive dataset splits.
+    """Stores per-layer/module activations for contrastive dataset splits.
 
     Attributes:
-        positive: {layer_idx: tensor [N, d_model]} for positive texts.
-        negative: {layer_idx: tensor [N, d_model]} for negative texts.
+        positive: {key: tensor [N, d_model]} for positive texts.
+                  Keys are ``int`` (layer index) when a single module is
+                  targeted, or ``(int, str)`` (layer, module_name) when
+                  multiple modules are targeted.
+        negative: {key: tensor [N, d_model]} for negative texts.
     """
 
-    positive: dict[int, Tensor]
-    negative: dict[int, Tensor]
+    positive: dict[ActivationKey, Tensor]
+    negative: dict[ActivationKey, Tensor]
 
 
 @dataclass
 class LabeledActivationStore:
-    """Stores per-layer activations with associated labels for probing.
+    """Stores per-layer/module activations with associated labels for probing.
 
     Attributes:
-        activations: {layer_idx: tensor [N, d_model]} token-position activations.
+        activations: {key: tensor [N, d_model]} token-position activations.
+                     Keys are ``int`` (layer index) when a single module is
+                     targeted, or ``(int, str)`` (layer, module_name) when
+                     multiple modules are targeted.
         labels: tensor [N] integer labels.
     """
 
-    activations: dict[int, Tensor]
+    activations: dict[ActivationKey, Tensor]
     labels: Tensor
 
 
@@ -142,6 +154,7 @@ class Record(Step):
         self,
         model: MuranoModel,
         layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
         position: str | int = "last",
         batch_size: int = 8,
     ):
@@ -159,6 +172,7 @@ class Record(Step):
             self.layers: list[int] = list(range(model.n_layers))
         else:
             self.layers = list(layers)
+        self.modules: list[str] = [modules] if isinstance(modules, str) else modules
         self.position = position
         self.batch_size = batch_size
 
@@ -236,13 +250,22 @@ class Record(Step):
 
         return results
 
-    def _collect(self, texts: list[str]) -> dict[int, Tensor]:
-        """Run texts through model and capture activations per layer.
+    def _collect(self, texts: list[str]) -> dict[ActivationKey, Tensor]:
+        """Run texts through model and capture activations per layer/module.
 
         Returns:
-            {layer_idx: tensor [N, d_model]} with selected-token activations.
+            {key: tensor [N, d_model]} with selected-token activations.
+            Keys are ``int`` (layer index) when a single module is targeted,
+            or ``(int, str)`` (layer, module_name) when multiple modules
+            are targeted.
         """
-        all_acts: dict[int, list[Tensor]] = {layer: [] for layer in self.layers}
+        all_acts: dict[ActivationKey, list[Tensor]] = {}
+        for layer in self.layers:
+            for mod_str in self.modules:
+                key: ActivationKey = (
+                    layer if len(self.modules) == 1 else (layer, mod_str)
+                )
+                all_acts[key] = []
 
         for batch in _batched(texts, self.batch_size):
             tokens = self.model.tokenizer(
@@ -258,26 +281,32 @@ class Record(Step):
             saved = {}
             with self.model._lm.trace(tokens):
                 for layer in self.layers:
-                    # Save full sequence output: use .output (not .output[0],
-                    # which indexes the batch dim in nnsight 0.5+).
-                    saved[layer] = self.model.layer(layer).output.save()
+                    for mod_str in self.modules:
+                        mod_proxy = self.model._resolve_module(
+                            self.model.layer(layer), mod_str
+                        )
+                        saved[(layer, mod_str)] = mod_proxy.output.save()
 
             for layer in self.layers:
-                output = (
-                    saved[layer].value
-                    if hasattr(saved[layer], "value")
-                    else saved[layer]
-                )
-                # Some transformers versions return (hidden_states, ...) tuples
-                # from decoder layers; older (<5.0) Llama is one. Unwrap here.
-                if isinstance(output, tuple):
-                    output = output[0]
-                # output: [batch, seq, d_model]
-                selected_acts = _select_token_activations(
-                    output=output,
-                    attention_mask=attention_mask,
-                    position=self.position,
-                )
-                all_acts[layer].append(selected_acts.detach().cpu())
+                for mod_str in self.modules:
+                    key: ActivationKey = (
+                        layer if len(self.modules) == 1 else (layer, mod_str)
+                    )
+                    output = (
+                        saved[(layer, mod_str)].value
+                        if hasattr(saved[(layer, mod_str)], "value")
+                        else saved[(layer, mod_str)]
+                    )
+                    # Some transformers versions return (hidden_states, ...) tuples
+                    # from decoder layers; older (<5.0) Llama is one. Unwrap here.
+                    if isinstance(output, tuple):
+                        output = output[0]
+                    # output: [batch, seq, d_model]
+                    selected_acts = _select_token_activations(
+                        output=output,
+                        attention_mask=attention_mask,
+                        position=self.position,
+                    )
+                    all_acts[key].append(selected_acts.detach().cpu())
 
-        return {layer: torch.cat(all_acts[layer]) for layer in self.layers}
+        return {key: torch.cat(all_acts[key]) for key in all_acts}

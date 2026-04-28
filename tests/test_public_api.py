@@ -23,7 +23,9 @@ def test_compliance_rate_matches_keyword_detector():
 def test_model_generate_supports_single_and_batch(monkeypatch):
     model = object.__new__(MuranoModel)
 
-    def fake_generate_single(text, fn=None, layers="all", gen_kwargs=None):
+    def fake_generate_single(
+        text, fn=None, layers="all", modules="residual", gen_kwargs=None
+    ):
         prefix = "modified" if fn is not None else "clean"
         return f"{prefix}:{text}"
 
@@ -36,7 +38,9 @@ def test_model_generate_supports_single_and_batch(monkeypatch):
 def test_model_generate_supports_ablate(monkeypatch):
     model = object.__new__(MuranoModel)
 
-    def fake_generate_single(text, fn=None, layers="all", gen_kwargs=None):
+    def fake_generate_single(
+        text, fn=None, layers="all", modules="residual", gen_kwargs=None
+    ):
         assert fn is not None
         return f"done:{text}"
 

@@ -98,13 +98,13 @@ class MuranoModel:
             return [text], True
         return list(text), False
 
-    def _coerce_directions(self, direction_like: Any) -> dict[int, Tensor]:
+    def _coerce_directions(self, direction_like: Any) -> dict:
         if hasattr(direction_like, "direction_per_layer"):
             return direction_like.direction_per_layer
         if isinstance(direction_like, dict):
             return direction_like
         raise TypeError(
-            "Expected a SteeringResult or {layer: tensor} mapping for the "
+            "Expected a SteeringResult or {key: tensor} mapping for the "
             "intervention directions."
         )
 
@@ -115,11 +115,34 @@ class MuranoModel:
             return list(range(self.n_layers))
         return list(layers)
 
+    @staticmethod
+    def _resolve_module(layer_proxy, mod_str: str):
+        """Resolve a submodule from a layer proxy by name.
+
+        Handles ``"residual"`` (returns the layer proxy itself),
+        direct children (e.g. ``"mlp"``), and dotted paths
+        (e.g. ``"mlp.gate_proj"``).
+
+        Args:
+            layer_proxy: nnsight proxy for a decoder layer.
+            mod_str: Module name to resolve.
+
+        Returns:
+            nnsight proxy for the requested submodule.
+        """
+        if mod_str == "residual":
+            return layer_proxy
+        current = layer_proxy
+        for part in mod_str.split("."):
+            current = getattr(current, part)
+        return current
+
     def _generate_single(
         self,
         text: str,
-        fn: Callable[[Tensor, int], Tensor] | None = None,
+        fn: Callable[[Tensor, int | tuple[int, str]], Tensor] | None = None,
         layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
         gen_kwargs: dict[str, Any] | None = None,
     ) -> str:
         tokens = self.tokenizer(
@@ -132,11 +155,18 @@ class MuranoModel:
         input_len = input_ids.shape[1]
         generation_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
 
+        module_list = [modules] if isinstance(modules, str) else modules
+
         with self._lm.generate(tokens, **generation_kwargs):
             if fn is not None:
                 for layer_idx in self._layer_indices(layers):
-                    h = self.layer(layer_idx).output
-                    self.layer(layer_idx).output = fn(h, layer_idx)  # pyright: ignore[reportArgumentType]
+                    for mod_str in module_list:
+                        mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
+                        h = mod_proxy.output
+                        key: int | tuple[int, str] = (
+                            layer_idx if len(module_list) == 1 else (layer_idx, mod_str)
+                        )
+                        mod_proxy.output = fn(h, key)  # pyright: ignore[reportArgumentType]
             output_ids = self._lm.generator.output.save()
 
         out = output_ids.value if hasattr(output_ids, "value") else output_ids
@@ -150,6 +180,7 @@ class MuranoModel:
         self,
         text: str | Sequence[str],
         layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
         position: str | int = "last",
         batch_size: int = 8,
     ) -> ActivationStore:
@@ -176,6 +207,7 @@ class MuranoModel:
         results = Record(
             self,
             layers=layers,
+            modules=modules,
             position=position,
             batch_size=batch_size,
         )(results)
@@ -186,6 +218,7 @@ class MuranoModel:
         positive: Sequence[str],
         negative: Sequence[str],
         layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
         position: str | int = "last",
         batch_size: int = 8,
         normalize: bool = True,
@@ -218,6 +251,7 @@ class MuranoModel:
         results = Record(
             self,
             layers=layers,
+            modules=modules,
             position=position,
             batch_size=batch_size,
         )(results)
@@ -230,6 +264,7 @@ class MuranoModel:
         ablate: Any | None = None,
         steer: tuple[Any, float] | None = None,
         layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
         gen_kwargs: dict[str, Any] | None = None,
     ) -> str | list[str]:
         """Generate text, optionally with activation-space steering or ablation.
@@ -270,6 +305,7 @@ class MuranoModel:
                 prompt,
                 fn=fn,
                 layers=layers,
+                modules=modules,
                 gen_kwargs=gen_kwargs,
             )
             for prompt in prompts

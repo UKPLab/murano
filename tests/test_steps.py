@@ -446,13 +446,13 @@ class TestInterventionFunctions:
         fn = ablate_direction(directions)
 
         activation = torch.randn(2, 5, d_model)
-        result = fn(activation, layer=99)  # layer not in directions
+        result = fn(activation, 99)  # layer not in directions
         assert torch.equal(result, activation)
 
     def test_zero_direction_is_skipped(self, d_model):
         fn = ablate_direction({0: torch.zeros(d_model)})
         activation = torch.randn(2, 5, d_model)
-        result = fn(activation, layer=0)
+        result = fn(activation, 0)
         assert torch.equal(result, activation)
 
 
