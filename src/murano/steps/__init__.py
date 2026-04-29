@@ -12,6 +12,11 @@ from murano.steps.evaluate import GenerationMetric
 from murano.steps.probe import Probe
 from murano.steps.jailbreaking import ComplianceRate, Plot
 from murano.steps.probing import ProbePlot
+from murano.steps.metrics import (
+    CrossEntropyLossStep,
+    AccuracyStep,
+    ComparisonComputationStep,
+)
 
 __all__ = [
     "Step",
@@ -27,4 +32,7 @@ __all__ = [
     "ComplianceRate",
     "Plot",
     "ProbePlot",
+    "CrossEntropyLossStep",
+    "AccuracyStep",
+    "ComparisonComputationStep",
 ]
