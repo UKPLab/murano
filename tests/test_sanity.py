@@ -16,8 +16,8 @@ _CROSS_ARCH_MODELS = [
         id="gpt2",
     ),
     pytest.param(
-        "hf-internal-testing/tiny-random-MistralForCausalLM",
-        id="mistral",
+        "HuggingFaceM4/tiny-random-Llama3ForCausalLM",
+        id="llama3",
     ),
 ]
 

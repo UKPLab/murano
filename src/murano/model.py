@@ -91,7 +91,7 @@ class MuranoModel:
 
     def layer(self, idx: int):
         """Return the nnterp module proxy for a decoder layer."""
-        return self._lm.layers[idx]
+        return self._lm.layers[idx]  # pyright: ignore[reportIndexIssue,reportArgumentType]
 
     def _coerce_texts(self, text: str | Sequence[str]) -> tuple[list[str], bool]:
         if isinstance(text, str):
