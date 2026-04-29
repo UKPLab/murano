@@ -19,7 +19,7 @@ from murano.steps.intervene import (
     steer_direction,
     ActivationKey,
 )
-from murano.dataset import MuranoDataset, LabeledDataset
+from murano.dataset import LabeledDataset
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────
@@ -221,7 +221,9 @@ class TestSteeringVectorModules:
         r["record"] = multi_module_store
         results = SteeringVector()(r)
         scores = results["steering"].separation_scores
-        expected_keys = {(layer, mod) for layer in range(n_layers) for mod in ["residual", "mlp"]}
+        expected_keys = {
+            (layer, mod) for layer in range(n_layers) for mod in ["residual", "mlp"]
+        }
         assert set(scores.keys()) == expected_keys
 
     def test_multi_module_best_layer_is_tuple(self, multi_module_store):
