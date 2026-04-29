@@ -11,7 +11,6 @@ Demonstrates:
 from __future__ import annotations
 
 import os
-from typing import List, Union
 
 import pandas as pd
 import plotly.express as px
@@ -23,7 +22,6 @@ from murano import MuranoModel, Pipeline
 from murano.dataset import MuranoDataset
 from murano.steps.load import Load
 from murano.steps.record import ActivationStore, Record
-from murano.steps.train import SteeringVector
 
 
 class PlotterLens:

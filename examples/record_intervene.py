@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from murano import MuranoModel, Pipeline
 from murano.dataset import MuranoDataset
-from murano.steps.intervene import InterveneResult, steer_direction
+from murano.steps.intervene import InterveneResult, Intervene, steer_direction
 from murano.steps.load import Load
 from murano.steps.record import Record
 from murano.steps.train import SteeringResult, SteeringVector
