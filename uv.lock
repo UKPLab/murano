@@ -1478,7 +1478,7 @@ requires-dist = [
     { name = "seaborn", marker = "extra == 'plot'", specifier = ">=0.13" },
     { name = "torch", specifier = ">=2.7.1" },
     { name = "tqdm", specifier = ">=4.66.0" },
-    { name = "transformers", specifier = ">=4.46,<5.0" },
+    { name = "transformers", specifier = ">=4.57.6,<5.0" },
 ]
 provides-extras = ["plot"]
 
