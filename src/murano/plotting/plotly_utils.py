@@ -9,7 +9,6 @@ Python data or tensors so they can be used independently of the pipeline.
 
 from __future__ import annotations
 
-from typing import Any
 
 import plotly.graph_objects as go
 

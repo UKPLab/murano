@@ -75,7 +75,9 @@ class TestCrossEntropyLossStep:
             f"Expected per-token loss shape {targets.shape}, got {loss.shape}"
         )
 
-    def test_loss_matches_pytorch_reference(self, results_with_logits, logits_and_targets):
+    def test_loss_matches_pytorch_reference(
+        self, results_with_logits, logits_and_targets
+    ):
         """Computed loss must match a direct PyTorch F.cross_entropy call."""
         logits, targets = logits_and_targets
         step = CrossEntropyLossStep(reduction="mean")
@@ -145,7 +147,9 @@ class TestAccuracyStep:
         assert isinstance(acc, float), "accuracy should be a plain Python float"
         assert 0.0 <= acc <= 1.0, f"accuracy {acc} is out of [0, 1]"
 
-    def test_accuracy_matches_manual_calculation(self, results_with_logits, logits_and_targets):
+    def test_accuracy_matches_manual_calculation(
+        self, results_with_logits, logits_and_targets
+    ):
         """Verify accuracy equals the fraction of argmax matches."""
         logits, targets = logits_and_targets
 
