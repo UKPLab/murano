@@ -201,3 +201,33 @@ main {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* --- Theme toggle: circular reveal via View Transitions API --- */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Going to dark: old (light) snapshot shrinks away on top */
+:root[data-theme='dark']::view-transition-old(root) {
+  z-index: 2147483646;
+  animation: theme-circle-shrink 0.45s ease-in both;
+}
+:root[data-theme='dark']::view-transition-new(root) { z-index: 1; }
+
+/* Going to light: new (light) snapshot grows in on top */
+:root:not([data-theme='dark'])::view-transition-old(root) { z-index: 1; }
+:root:not([data-theme='dark'])::view-transition-new(root) {
+  z-index: 2147483646;
+  animation: theme-circle-grow 0.45s ease-in both;
+}
+
+@keyframes theme-circle-grow {
+  from { clip-path: circle(0 at var(--theme-x, 50%) var(--theme-y, 50%)); }
+  to   { clip-path: circle(var(--theme-r, 150vmax) at var(--theme-x, 50%) var(--theme-y, 50%)); }
+}
+@keyframes theme-circle-shrink {
+  from { clip-path: circle(var(--theme-r, 150vmax) at var(--theme-x, 50%) var(--theme-y, 50%)); }
+  to   { clip-path: circle(0 at var(--theme-x, 50%) var(--theme-y, 50%)); }
+}

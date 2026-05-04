@@ -7,8 +7,8 @@ const isDocs = pathname.startsWith('/docs');
 ---
 
 <nav class="site-nav">
-  <a href="/docs/getting-started/overview/" class:list={['site-nav__link', { active: isDocs }]}>Docs</a>
-  <a href="/reproductions/" class:list={['site-nav__link', { active: isRepro }]}>Reproductions</a>
+  <a href="/docs/getting-started/overview/" data-text="Docs" class:list={['site-nav__link', { active: isDocs }]}>Docs</a>
+  <a href="/reproductions/" data-text="Reproduction Gallery" class:list={['site-nav__link', { active: isRepro }]}>Reproduction Gallery</a>
 </nav>
 <Default {...Astro.props} />
 
@@ -21,6 +21,7 @@ const isDocs = pathname.startsWith('/docs');
   }
 
   .site-nav__link {
+    position: relative;
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--sl-color-gray-3);
@@ -28,7 +29,17 @@ const isDocs = pathname.startsWith('/docs');
     transition: color 0.2s;
   }
 
-  .site-nav__link:hover,
+  /* Reserve the width of the bold variant so hover/active don't cause layout shift. */
+  .site-nav__link::before {
+    content: attr(data-text);
+    display: block;
+    font-weight: 600;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+  }
+
+  .site-nav__link:hover { color: var(--sl-color-text); }
   .site-nav__link.active {
     color: var(--sl-color-text);
     font-weight: 600;

@@ -11,7 +11,7 @@ export default defineConfig({
 				SocialIcons: './src/components/SiteNav.astro',
 			},
 			title: 'Murano',
-			logo: { src: './src/assets/logo.png' },
+			logo: { light: './src/assets/logo-light.png', dark: './src/assets/logo-dark.png' },
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/UKPLab/murano' }],
 			expressiveCode: {
 				themes: ['github-light', 'github-dark'],

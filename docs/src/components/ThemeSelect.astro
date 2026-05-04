@@ -87,9 +87,21 @@
 		constructor() {
 			super();
 			onThemeChange(loadTheme());
-			this.querySelector('button')?.addEventListener('click', () => {
+			this.querySelector('button')?.addEventListener('click', (event) => {
 				const current = document.documentElement.dataset.theme;
-				onThemeChange(current === 'dark' ? 'light' : 'dark');
+				const next: Theme = current === 'dark' ? 'light' : 'dark';
+				const ev = event as MouseEvent;
+				const x = ev.clientX, y = ev.clientY;
+				const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+				const root = document.documentElement;
+				root.style.setProperty('--theme-x', `${x}px`);
+				root.style.setProperty('--theme-y', `${y}px`);
+				root.style.setProperty('--theme-r', `${r}px`);
+				if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+					onThemeChange(next);
+					return;
+				}
+				document.startViewTransition(() => onThemeChange(next));
 			});
 		}
 	}
