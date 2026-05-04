@@ -23,6 +23,9 @@ MODULES = [
     ("murano.dataset", "dataset"),
     ("murano.artifacts", "artifacts"),
     ("murano.results", "results"),
+    ("murano.evaluation", "evaluation"),
+    ("murano.io", "io"),
+    ("murano.steps.base", "steps/base"),
     ("murano.steps.record", "steps/record"),
     ("murano.steps.intervene", "steps/intervene"),
     ("murano.steps.train", "steps/train"),
@@ -30,6 +33,15 @@ MODULES = [
     ("murano.steps.evaluate", "steps/evaluate"),
     ("murano.steps.load", "steps/load"),
     ("murano.steps.save", "steps/save"),
+    ("murano.steps.prompts", "steps/prompts"),
+    ("murano.steps.weight_ablation", "steps/weight_ablation"),
+    ("murano.steps.jailbreaking.evaluate", "steps/jailbreaking/evaluate"),
+    ("murano.steps.jailbreaking.plot", "steps/jailbreaking/plot"),
+    ("murano.steps.probing.plot", "steps/probing/plot"),
+    ("murano.lenses.base_lens", "lenses/base_lens"),
+    ("murano.lenses.logit_lens", "lenses/logit_lens"),
+    ("murano.plotting.jailbreaking", "plotting/jailbreaking"),
+    ("murano.plotting.probing", "plotting/probing"),
 ]
 
 

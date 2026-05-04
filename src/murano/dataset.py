@@ -343,6 +343,9 @@ class LabeledDataset:
             labels: Integer labels.
             label_names: Optional label name list.
             template_fn: Optional chat template function.
+
+        Returns:
+            LabeledDataset wrapping the supplied texts and labels.
         """
         raw_texts = list(texts) if template_fn else None
         if template_fn is not None:

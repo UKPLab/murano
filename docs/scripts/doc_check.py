@@ -66,11 +66,32 @@ class Report:
         return [i for i in self.issues if i.kind == "warning"]
 
 
+SECTION_HEADERS = (
+    "Args:",
+    "Arguments:",
+    "Parameters:",
+    "Returns:",
+    "Return:",
+    "Yields:",
+    "Raises:",
+    "Attributes:",
+    "Example:",
+    "Examples:",
+    "Note:",
+    "Warning:",
+)
+
+
 def _has_section(docstring: str, header: str) -> bool:
     for line in docstring.splitlines():
         if line.strip().lower().startswith(header.lower()):
             return True
     return False
+
+
+def _has_any_section(docstring: str) -> bool:
+    """Return True if the docstring uses any standard Napoleon section header."""
+    return any(_has_section(docstring, h) for h in SECTION_HEADERS)
 
 
 def _non_self_params(func: griffe.Function) -> list[griffe.Parameter]:
@@ -94,12 +115,17 @@ def check_function(func: griffe.Function, module: str, report: Report, parent_cl
         report.add(module, full_name, "error", "Missing docstring")
         return
 
+    # Summary-only docstrings (no Napoleon sections) are typical for override
+    # one-liners and trivial getters; trust the author and skip Args/Returns
+    # warnings. Once the author writes any section, they're being thorough,
+    # so missing Args/Returns is genuinely a gap.
+    if not _has_any_section(doc):
+        return
+
     params = _non_self_params(func)
-    if len(params) > 0 and not _has_section(doc, "Args:"):
-        # Allow single-line docstrings for simple getters/one-param functions
-        if len(params) >= 2:
-            report.add(module, full_name, "warning",
-                       f"Has {len(params)} parameters but no Args section")
+    if len(params) >= 2 and not _has_section(doc, "Args:"):
+        report.add(module, full_name, "warning",
+                   f"Has {len(params)} parameters but no Args section")
 
     if func.returns and str(func.returns) not in ("None", ""):
         if not _has_section(doc, "Returns:") and not _has_section(doc, "Return:"):
@@ -121,7 +147,11 @@ def check_class(cls: griffe.Class, module: str, report: Report):
     if init and isinstance(init, griffe.Function):
         params = _non_self_params(init)
         if len(params) >= 2:
-            has_args = _has_section(doc, "Args:") or _has_section(doc, "Parameters:")
+            has_args = (
+                _has_section(doc, "Args:")
+                or _has_section(doc, "Parameters:")
+                or _has_section(doc, "Attributes:")
+            )
             init_doc = init.docstring.value.strip() if init.docstring else ""
             has_init_args = _has_section(init_doc, "Args:") if init_doc else False
             if not has_args and not has_init_args:

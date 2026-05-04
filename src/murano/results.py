@@ -32,14 +32,28 @@ class Results:
         return key in self._data
 
     def keys(self):
+        """Return a view of the stored result keys."""
         return self._data.keys()
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Safe key access with a default value."""
+        """Safe key access with a default value.
+
+        Args:
+            key: Result key to look up.
+            default: Value returned when ``key`` is not present.
+
+        Returns:
+            The stored value, or ``default`` if no value is stored under ``key``.
+        """
         return self._data.get(key, default)
 
     def copy(self) -> Results:
-        """Shallow copy for fan-out pipelines."""
+        """Return a shallow copy for fan-out pipelines.
+
+        Returns:
+            A new Results object whose internal mapping is a shallow copy of
+            the original; values themselves are not duplicated.
+        """
         r = Results()
         r._data = self._data.copy()
         return r
