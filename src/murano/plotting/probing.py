@@ -34,7 +34,14 @@ def plot_probe_accuracy(
     probe: ProbeResult,
     save_path: str | Path | None = None,
 ) -> None:
-    """Bar chart of probe accuracy across layers with CV error bars."""
+    """Plot per-layer probe accuracy with cross-validation error bars.
+
+    Highlights the best-scoring layer in a distinct colour.
+
+    Args:
+        probe: ProbeResult containing per-layer accuracy and CV fold scores.
+        save_path: If provided, write the figure to this path.
+    """
     import matplotlib.pyplot as plt
 
     sns = _setup()
@@ -73,7 +80,16 @@ def plot_confusion_matrix(
     store: LabeledActivationStore,
     save_path: str | Path | None = None,
 ) -> None:
-    """Confusion matrix at the best layer using the refitted classifier."""
+    """Plot a confusion matrix at the best layer using the refitted classifier.
+
+    No-op if ``probe.classifiers`` does not contain the best layer (e.g.
+    when the Probe step ran without ``refit=True``).
+
+    Args:
+        probe: ProbeResult with refitted classifiers.
+        store: LabeledActivationStore containing activations and labels.
+        save_path: If provided, write the figure to this path.
+    """
     import matplotlib.pyplot as plt
     from sklearn.metrics import confusion_matrix as cm_func
 

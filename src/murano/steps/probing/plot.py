@@ -10,7 +10,7 @@ from murano.steps.base import Step
 
 
 class ProbePlot(Step):
-    """Generates and saves probing visualizations.
+    """Generate and save probing visualizations.
 
     Reads from results (uses whatever is available):
         results['probe']: ProbeResult

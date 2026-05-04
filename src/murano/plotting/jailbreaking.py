@@ -34,7 +34,15 @@ def plot_separation_scores(
     steering: SteeringResult,
     save_path: str | Path | None = None,
 ) -> None:
-    """Bar chart of separation scores across layers."""
+    """Plot separation scores across layers as a bar chart.
+
+    Highlights the best-scoring layer in a distinct colour.
+
+    Args:
+        steering: SteeringResult containing per-layer separation scores.
+        save_path: If provided, write the figure to this path; the parent
+            directory is created if missing.
+    """
     import matplotlib.pyplot as plt
 
     sns = _setup()
@@ -63,7 +71,13 @@ def plot_compliance_comparison(
     eval_result: EvalResult,
     save_path: str | Path | None = None,
 ) -> None:
-    """Side-by-side bar chart comparing clean and ablated compliance rates."""
+    """Plot clean vs ablated compliance rates as side-by-side bars.
+
+    Args:
+        eval_result: EvalResult with ``clean_compliance`` and
+            ``ablated_compliance`` attributes.
+        save_path: If provided, write the figure to this path.
+    """
     import matplotlib.pyplot as plt
 
     sns = _setup()
@@ -103,7 +117,21 @@ def plot_refusal_heatmap(
     save_path: str | Path | None = None,
     max_prompts: int = 30,
 ) -> None:
-    """Heatmap showing refusal per prompt (green=compliant, red=refusal)."""
+    """Plot a per-prompt refusal heatmap (compliant vs refusal).
+
+    Two columns per row: clean and modified generations. Refusal is detected
+    by phrase match in the leading window of each generation.
+
+    Args:
+        prompts: Original prompts used for generation.
+        clean_generations: Baseline generations, paired with ``prompts``.
+        modified_generations: Post-intervention generations, paired with
+            ``prompts``.
+        refusal_phrases: Phrases that signal a refusal. Defaults to
+            ``murano.evaluation.REFUSAL_PHRASES`` when None.
+        save_path: If provided, write the figure to this path.
+        max_prompts: Truncate the plot to the first ``max_prompts`` rows.
+    """
     import matplotlib.pyplot as plt
     import matplotlib.colors as mcolors
     import matplotlib.patches as mpatches
@@ -156,7 +184,12 @@ def plot_direction_cosine_similarity(
     steering: SteeringResult,
     save_path: str | Path | None = None,
 ) -> None:
-    """Heatmap of cosine similarities between direction vectors at different layers."""
+    """Plot a heatmap of cosine similarities between per-layer directions.
+
+    Args:
+        steering: SteeringResult with one direction vector per layer.
+        save_path: If provided, write the figure to this path.
+    """
     import matplotlib.pyplot as plt
     import torch
 

@@ -1,4 +1,4 @@
-"""Probe step — trains linear classifiers on recorded activations."""
+"""Probe step: trains linear classifiers on recorded activations."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class ProbeResult:
 
 
 class Probe(Step):
-    """Trains a linear probe per layer via cross-validation.
+    """Train a linear probe per layer via cross-validation.
 
     Reads from results:
         results['record']: LabeledActivationStore

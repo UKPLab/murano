@@ -1,4 +1,4 @@
-"""Plot step — generates and saves standard visualizations.
+"""Plot step: generates and saves standard visualizations.
 
 This step is jailbreaking-specific: it generates refusal-related plots.
 """
@@ -13,7 +13,7 @@ from murano.steps.base import Step
 
 
 class Plot(Step):
-    """Generates and saves all plots into a ``plots/`` subdirectory.
+    """Generate and save all plots into a ``plots/`` subdirectory.
 
     Reads from results (uses whatever is available):
         results['steering']: SteeringResult

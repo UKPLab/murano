@@ -1,4 +1,4 @@
-"""Load step — puts a dataset into the results."""
+"""Load step: puts a dataset into the results."""
 
 from __future__ import annotations
 
@@ -14,11 +14,15 @@ if TYPE_CHECKING:
 
 
 class Load(Step):
-    """Loads a dataset into the pipeline results.
+    """Load a dataset into the pipeline results.
 
     Writes to results:
         results['dataset']: MuranoDataset or LabeledDataset
         results['prompts']: PromptBatch derived from the dataset texts
+
+    Args:
+        dataset: Contrastive or labeled dataset to make available to
+            downstream steps.
     """
 
     reads = []

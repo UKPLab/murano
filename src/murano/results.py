@@ -1,4 +1,4 @@
-"""Results container — the shared state passed between pipeline steps."""
+"""Results container: the shared state passed between pipeline steps."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Pipeline — declarative composition of steps."""
+"""Pipeline: declarative composition of steps."""
 
 from __future__ import annotations
 

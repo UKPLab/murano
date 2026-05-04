@@ -1,4 +1,4 @@
-"""Intervene step — applies activation-space interventions during generation."""
+"""Intervene step: applies activation-space interventions during generation."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _normalize_directions(directions: dict[int, Tensor]) -> dict[int, Tensor]:
 
 
 def ablate_direction(directions: dict[int, Tensor]) -> Callable:
-    """Returns an intervention function that projects out a direction.
+    """Return an intervention function that projects out a direction.
 
     Removes the component along the direction from the residual stream.
 
@@ -80,7 +80,7 @@ def ablate_direction(directions: dict[int, Tensor]) -> Callable:
 
 
 def steer_direction(directions: dict[int, Tensor], alpha: float) -> Callable:
-    """Returns an intervention function that adds a scaled direction.
+    """Return an intervention function that adds a scaled direction.
 
     Adds alpha * direction to the residual stream at each layer.
 
@@ -103,7 +103,7 @@ def steer_direction(directions: dict[int, Tensor], alpha: float) -> Callable:
 
 
 class Intervene(Step):
-    """Applies an intervention function during model generation.
+    """Apply an intervention function during model generation.
 
     Generates both clean (no intervention) and modified outputs for comparison.
 

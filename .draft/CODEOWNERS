@@ -1,0 +1,113 @@
+# CODEOWNERS for Murano
+#
+# Defines which team members must review changes to specific areas of the codebase.
+# When a PR touches a matching path, GitHub auto-requests review from the owner(s).
+# Any one of the listed owners approving satisfies the code-owner-review requirement.
+#
+# Syntax: <pattern> <owner1> <owner2> ...
+# Docs:   https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Team (from GitHub access, 2026-04-22):
+#
+# Active owners (in CODEOWNERS below):
+#   @alirezabayatmk   Alireza Bayat               Lead. Circuit discovery focus.
+#   @adham137         Adham Yasser                Working student. Broad reviewer across the codebase.
+#   @reckart          Richard Eckart de Castilho  Software engineering advisor. Reviews architecture and craft.
+#   @phusroyal        Phu Gia Hoang               SAE / probing / lenses.
+#   @frankniujc       Jingcheng Niu               Supervisor / lead researcher. Docs owner.
+#
+# Present but not yet in CODEOWNERS:
+#   @Subha0009        Subhabrata                  Supervisor / lead researcher. Strategic, not code-level review.
+#   @HanifiAkdag      Hanifi Akdag                New student. Future mech-interp work; no current murano role.
+#
+# On extended absence — TBA on return:
+#   @akatief          Federico Tiblias            Previous tech lead. Status TBA.
+#   @tamohannes       Hovhannes Tamoyan           Status TBA. Authored SAE PR #16 (port source).
+#
+# Inactive — excluded from ownership:
+#   @jonasrohw        Jonas Rohweder              Left the team.
+#   @ibigoula         Irina Bigoulaeva            No murano role.
+
+# -----------------------------------------------------------------------------
+# Default owner (fallback when no other rule matches)
+# -----------------------------------------------------------------------------
+*                                           @alirezabayatmk
+
+# -----------------------------------------------------------------------------
+# Core abstractions — changes here ripple across the whole framework.
+# Lead + SE review + broad working reviewer.
+# -----------------------------------------------------------------------------
+/src/murano/model.py                        @alirezabayatmk @reckart @adham137
+/src/murano/pipeline.py                     @alirezabayatmk @reckart @adham137
+/src/murano/results.py                      @alirezabayatmk @reckart @adham137
+/src/murano/artifacts.py                    @alirezabayatmk @reckart @adham137
+/src/murano/__init__.py                     @alirezabayatmk @reckart
+
+# -----------------------------------------------------------------------------
+# Data & I/O
+# -----------------------------------------------------------------------------
+/src/murano/dataset.py                      @alirezabayatmk @adham137
+/src/murano/io.py                           @alirezabayatmk @adham137
+
+# -----------------------------------------------------------------------------
+# Evaluation
+# -----------------------------------------------------------------------------
+/src/murano/evaluation.py                   @alirezabayatmk @adham137
+
+# -----------------------------------------------------------------------------
+# Steps (individual pipeline operations)
+# -----------------------------------------------------------------------------
+/src/murano/steps/                          @alirezabayatmk @adham137
+
+# -----------------------------------------------------------------------------
+# Lenses (logit lens, tuned lens, probing, SAE)
+# -----------------------------------------------------------------------------
+/src/murano/lenses/                         @alirezabayatmk @phusroyal
+
+# -----------------------------------------------------------------------------
+# Plotting — falls through to default owner
+# -----------------------------------------------------------------------------
+# /src/murano/plotting/                     (no specialist owner yet)
+
+# -----------------------------------------------------------------------------
+# Logging — falls through to default owner
+# -----------------------------------------------------------------------------
+# /src/murano/logging.py                    (no specialist owner yet)
+
+# -----------------------------------------------------------------------------
+# Tests
+# -----------------------------------------------------------------------------
+/tests/                                     @alirezabayatmk @adham137
+
+# -----------------------------------------------------------------------------
+# Examples — falls through to default owner
+# -----------------------------------------------------------------------------
+# /examples/                                (no specialist owner yet)
+
+# -----------------------------------------------------------------------------
+# CI, tooling, and build configuration — lead + SE review.
+# -----------------------------------------------------------------------------
+/.github/                                   @alirezabayatmk @reckart
+/.github/workflows/                         @alirezabayatmk @reckart
+/.github/CODEOWNERS                         @alirezabayatmk
+/pyproject.toml                             @alirezabayatmk @reckart
+/uv.lock                                    @alirezabayatmk
+/.pre-commit-config.yaml                    @alirezabayatmk @reckart
+/.coveragerc                                @alirezabayatmk @reckart
+/.gitignore                                 @alirezabayatmk
+
+# -----------------------------------------------------------------------------
+# Documentation
+# -----------------------------------------------------------------------------
+/README.md                                  @alirezabayatmk @frankniujc
+/docs/                                      @alirezabayatmk @frankniujc
+
+# -----------------------------------------------------------------------------
+# Project-level files
+# -----------------------------------------------------------------------------
+/CONTRIBUTING.md                            @alirezabayatmk
+/CODE_OF_CONDUCT.md                         @alirezabayatmk
+/SECURITY.md                                @alirezabayatmk
+/CHANGELOG.md                               @alirezabayatmk
+/LICENSE                                    @alirezabayatmk
+/NOTICE.txt                                 @alirezabayatmk

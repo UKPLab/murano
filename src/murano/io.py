@@ -1,4 +1,4 @@
-"""I/O utilities — saving and loading Murano results."""
+"""I/O utilities: saving and loading Murano results."""
 
 from __future__ import annotations
 
@@ -21,7 +21,12 @@ ArtifactSerializer = Callable[[str, Any, Path, Any, dict[str, Any]], None]
 
 
 def save_steering(steering_result: Any, path: Path) -> None:
-    """Save a SteeringResult to a .pt file."""
+    """Save a SteeringResult to a .pt file.
+
+    Args:
+        steering_result: SteeringResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
@@ -56,7 +61,16 @@ def load_steering(path: str | Path) -> Any:
 def save_generations(
     intervene_result: Any, path: Path, prompts: list[str] | None = None
 ) -> None:
-    """Save an InterveneResult to a JSON file, paired per prompt."""
+    """Save an InterveneResult to a JSON file, paired per prompt.
+
+    Args:
+        intervene_result: GenerationComparison-compatible artifact with
+            ``clean_generations`` and ``modified_generations`` lists.
+        path: Output path for the JSON file. Parent directory is created
+            if missing.
+        prompts: Prompts to pair each entry with. Falls back to
+            ``intervene_result.prompts`` when None.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     baseline_label = getattr(intervene_result, "baseline_label", "clean")
     modified_label = getattr(intervene_result, "modified_label", "modified")
@@ -77,7 +91,12 @@ def save_generations(
 
 
 def save_eval(eval_result: Any, path: Path) -> None:
-    """Save an EvalResult to a JSON file."""
+    """Save an EvalResult to a JSON file.
+
+    Args:
+        eval_result: MetricResult or EvalResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "metric_name": getattr(eval_result, "metric_name", "metric"),
@@ -122,7 +141,15 @@ def save_ablated_model(model: MuranoModel, save_dir: str | Path) -> Path:
 
 
 def save_probe(probe_result: Any, path: Path) -> None:
-    """Save a ProbeResult to a JSON file (without classifiers)."""
+    """Save a ProbeResult to a JSON file (without classifiers).
+
+    Fitted classifier objects are not serialized; only per-layer accuracy,
+    CV scores, and metadata are persisted.
+
+    Args:
+        probe_result: ProbeResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "accuracy_per_layer": {
@@ -137,7 +164,12 @@ def save_probe(probe_result: Any, path: Path) -> None:
 
 
 def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
-    """Save a PromptBatch to JSON."""
+    """Save a PromptBatch to JSON.
+
+    Args:
+        prompt_batch: Prompts plus optional raw versions and metadata.
+        path: Output path. Parent directory is created if missing.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "source": prompt_batch.source,
@@ -150,7 +182,15 @@ def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
 
 
 def save_metadata(metadata: dict, path: Path) -> None:
-    """Save pipeline metadata to a JSON file."""
+    """Save pipeline metadata to a JSON file.
+
+    ``murano_version`` and ``timestamp`` keys are filled in if absent.
+
+    Args:
+        metadata: Metadata dict to serialize. Mutated in place to add the
+            two default keys above.
+        path: Output path for the JSON file.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     metadata.setdefault("murano_version", __version__)
     metadata.setdefault("timestamp", datetime.now().isoformat())
@@ -185,6 +225,18 @@ def register_artifact_serializer(
     artifact_type: type,
     serializer: ArtifactSerializer,
 ) -> None:
+    """Append a (type, serializer) pair to a serializer registry.
+
+    Used by the Save step to dispatch each result-dict value to the right
+    serializer based on its type.
+
+    Args:
+        registry: Mutable list of (type, serializer) pairs.
+        artifact_type: Class to dispatch on. ``isinstance`` is used at lookup
+            time, so subclasses match.
+        serializer: Callable that writes the artifact to disk. Signature:
+            ``(key, artifact, out_dir, results, metadata) -> None``.
+    """
     registry.append((artifact_type, serializer))
 
 

@@ -1,4 +1,4 @@
-"""Weight-level ablation — projects out directions from model weights.
+"""Weight-level ablation: projects out directions from model weights.
 
 Implements the approach from Arditi et al. 2024: instead of hooking activations
 during generation, directly modify weight matrices using an orthogonal projection
@@ -74,13 +74,13 @@ class ProjectionOperator:
         self.d_model = basis.shape[0]
 
     def project_read(self, W_data: Tensor) -> Tensor:
-        """W @ P — for read matrices (embed, q/k/v, gate_proj, up_proj)."""
+        """Apply ``W @ P`` for read matrices (embed, q/k/v, gate_proj, up_proj)."""
         orig_device = W_data.device
         W = W_data.cpu().float()
         return (W @ self.P).to(W_data.dtype).to(orig_device)
 
     def project_write(self, W_data: Tensor) -> Tensor:
-        """P @ W — for write matrices (o_proj, down_proj)."""
+        """Apply ``P @ W`` for write matrices (o_proj, down_proj)."""
         orig_device = W_data.device
         W = W_data.cpu().float()
         return (self.P @ W).to(W_data.dtype).to(orig_device)
@@ -192,7 +192,7 @@ class WeightAblationResult(GenerationComparison):
 
 
 class WeightAblation(Step):
-    """Ablates a direction from model weights, then generates.
+    """Ablate a direction from model weights, then generate.
 
     Unlike activation-level ablation (Intervene step), this modifies the actual
     weight matrices using orthogonal projection P = I - dd^T. This removes the

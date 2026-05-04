@@ -1,4 +1,4 @@
-"""Train step — computes directions from recorded activations."""
+"""Train step: computes directions from recorded activations."""
 
 from __future__ import annotations
 
@@ -28,13 +28,21 @@ class SteeringResult:
 
 
 class SteeringVector(Step):
-    """Finds a steering direction via contrastive mean difference.
+    """Find a steering direction via contrastive mean difference.
 
     Reads from results:
         results['record']: ActivationStore (must have .positive and .negative)
 
     Writes to results:
         results['steering']: SteeringResult
+
+    Args:
+        method: Estimation method. Currently only ``"contrastive_mean_diff"``
+            is supported.
+        normalize: If True, normalize each per-layer direction to unit norm.
+
+    Raises:
+        ValueError: If ``method`` is not a supported value.
     """
 
     reads = ["record"]
