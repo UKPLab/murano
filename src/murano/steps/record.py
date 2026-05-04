@@ -163,11 +163,19 @@ class Record(Step):
         self.batch_size = batch_size
 
     def expected_read_types(self, results=None, available_types=None):
+        """Return ``{"dataset": (MuranoDataset, LabeledDataset)}``."""
         from murano.dataset import LabeledDataset, MuranoDataset
 
         return {"dataset": (MuranoDataset, LabeledDataset)}
 
     def expected_write_types(self, results=None, available_types=None):
+        """Return the write type for ``record``, narrowed by the upstream dataset type.
+
+        The output store type mirrors the input dataset type:
+        ``MuranoDataset`` produces ``ActivationStore``; ``LabeledDataset``
+        produces ``LabeledActivationStore``. Falls back to the union when
+        the dataset type is not yet known.
+        """
         from murano.dataset import LabeledDataset, MuranoDataset
 
         dataset_type = None

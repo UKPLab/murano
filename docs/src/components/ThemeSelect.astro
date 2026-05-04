@@ -1,0 +1,109 @@
+---
+// Custom theme toggle: sun/moon icons matching frankniujc.github.io
+---
+
+<starlight-theme-select>
+	<button aria-label="Toggle theme" title="Toggle theme">
+		<!-- Sun icon: shown in dark mode, click to go light -->
+		<svg class="theme-icon sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<circle cx="12" cy="12" r="4"/>
+			<path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+		</svg>
+		<!-- Moon icon: shown in light mode, click to go dark -->
+		<svg class="theme-icon moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+		</svg>
+	</button>
+</starlight-theme-select>
+
+<style>
+	starlight-theme-select button {
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: var(--sl-color-text-accent);
+		padding: 0.25rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 0.25rem;
+		transition: opacity 0.2s ease;
+		opacity: 0.75;
+	}
+	starlight-theme-select button:hover {
+		opacity: 1;
+	}
+	.theme-icon {
+		width: 1.25rem;
+		height: 1.25rem;
+	}
+
+	/* Default (light mode): show moon, hide sun */
+	.sun { display: none; }
+	.moon { display: block; }
+
+	/* Dark mode: show sun, hide moon */
+	:root[data-theme='dark'] .sun { display: block; }
+	:root[data-theme='dark'] .moon { display: none; }
+</style>
+
+{/* Inlined to avoid FOUC. Uses global scope from `ThemeProvider.astro` */}
+<script is:inline>
+	StarlightThemeProvider.updatePickers();
+</script>
+
+<script>
+	type Theme = 'auto' | 'dark' | 'light';
+
+	const storageKey = 'starlight-theme';
+
+	const parseTheme = (theme: unknown): Theme =>
+		theme === 'auto' || theme === 'dark' || theme === 'light' ? theme : 'auto';
+
+	const loadTheme = (): Theme =>
+		parseTheme(typeof localStorage !== 'undefined' && localStorage.getItem(storageKey));
+
+	function storeTheme(theme: Theme): void {
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(storageKey, theme === 'light' || theme === 'dark' ? theme : '');
+		}
+	}
+
+	const getPreferredColorScheme = (): Theme =>
+		matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+
+	function onThemeChange(theme: Theme): void {
+		StarlightThemeProvider.updatePickers(theme);
+		document.documentElement.dataset.theme =
+			theme === 'auto' ? getPreferredColorScheme() : theme;
+		storeTheme(theme);
+	}
+
+	matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+		if (loadTheme() === 'auto') onThemeChange('auto');
+	});
+
+	class StarlightThemeSelect extends HTMLElement {
+		constructor() {
+			super();
+			onThemeChange(loadTheme());
+			this.querySelector('button')?.addEventListener('click', (event) => {
+				const current = document.documentElement.dataset.theme;
+				const next: Theme = current === 'dark' ? 'light' : 'dark';
+				const ev = event as MouseEvent;
+				const x = ev.clientX, y = ev.clientY;
+				const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+				const root = document.documentElement;
+				root.style.setProperty('--theme-x', `${x}px`);
+				root.style.setProperty('--theme-y', `${y}px`);
+				root.style.setProperty('--theme-r', `${r}px`);
+				if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+					onThemeChange(next);
+					return;
+				}
+				document.startViewTransition(() => onThemeChange(next));
+			});
+		}
+	}
+	customElements.define('starlight-theme-select', StarlightThemeSelect);
+</script>

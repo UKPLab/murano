@@ -1,0 +1,5 @@
+dist/
+node_modules/
+.astro/
+src/content/docs/docs/reference/
+doc_report.md

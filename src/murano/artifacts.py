@@ -28,7 +28,18 @@ class PromptBatch:
 
 @dataclass
 class GenerationComparison:
-    """Paired baseline vs modified generations for the same prompts."""
+    """Paired baseline vs modified generations for the same prompts.
+
+    Attributes:
+        baseline_generations: Generations from the unmodified pipeline.
+        modified_generations: Generations from the post-intervention pipeline,
+            paired by index with ``baseline_generations``.
+        prompts: Prompts used for generation, paired by index. May be None
+            when the upstream step did not record them.
+        baseline_label: Display label for the baseline column.
+        modified_label: Display label for the modified column.
+        metadata: Arbitrary comparison-level metadata.
+    """
 
     baseline_generations: list[str]
     modified_generations: list[str]
@@ -53,7 +64,20 @@ class GenerationComparison:
 
 @dataclass
 class MetricResult:
-    """Aggregate metric comparing baseline vs modified generations."""
+    """Aggregate metric comparing baseline vs modified generations.
+
+    Attributes:
+        metric_name: Identifier of the metric (e.g., ``"compliance_rate"``).
+        baseline_score: Aggregate score on the baseline generations.
+        modified_score: Aggregate score on the modified generations.
+        baseline_scores: Per-item scores on the baseline generations, when
+            the metric exposes them.
+        modified_scores: Per-item scores on the modified generations, when
+            the metric exposes them.
+        baseline_label: Display label for the baseline column.
+        modified_label: Display label for the modified column.
+        metadata: Arbitrary metric-level metadata (method name, parameters).
+    """
 
     metric_name: str
     baseline_score: float

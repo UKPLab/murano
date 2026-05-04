@@ -72,6 +72,20 @@ class Step(ABC):
         results: Results | None = None,
         available_types: Mapping[str, ExpectedType] | None = None,
     ) -> Mapping[str, ExpectedType]:
+        """Return the expected types for keys this step reads.
+
+        Default implementation returns the static ``read_types`` class attribute.
+        Override this when the expected types depend on instance state or on
+        the types written by upstream steps.
+
+        Args:
+            results: Live Results object, when called by ``validate``.
+            available_types: Type map accumulated by the Pipeline so far,
+                when called during dry-run validation.
+
+        Returns:
+            Mapping from read-key to one or more allowed types.
+        """
         return self.read_types
 
     def expected_write_types(
@@ -79,6 +93,20 @@ class Step(ABC):
         results: Results | None = None,
         available_types: Mapping[str, ExpectedType] | None = None,
     ) -> Mapping[str, ExpectedType]:
+        """Return the expected types for keys this step writes.
+
+        Default implementation returns the static ``write_types`` class
+        attribute. Override this when the written type depends on instance
+        state (e.g., on the type passed to the constructor).
+
+        Args:
+            results: Live Results object, when known.
+            available_types: Type map accumulated by the Pipeline so far,
+                when called during dry-run validation.
+
+        Returns:
+            Mapping from write-key to the type(s) this step will produce.
+        """
         return self.write_types
 
     def validate(self, results: Results) -> None:

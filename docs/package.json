@@ -1,0 +1,19 @@
+{
+  "name": "docs",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev --host",
+    "start": "astro dev --host",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.38.2",
+    "@fontsource/dm-mono": "^5.2.7",
+    "@fontsource/inter": "^5.2.8",
+    "astro": "^6.0.1",
+    "sharp": "^0.34.2"
+  }
+}

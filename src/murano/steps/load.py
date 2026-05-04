@@ -32,6 +32,7 @@ class Load(Step):
         self.dataset = dataset
 
     def expected_write_types(self, results=None, available_types=None):
+        """Return ``{"dataset": <constructor dataset's type>, "prompts": PromptBatch}``."""
         return {
             "dataset": type(self.dataset),
             "prompts": PromptBatch,

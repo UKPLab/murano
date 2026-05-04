@@ -1,0 +1,131 @@
+---
+interface Props {
+  title: string;
+  href: string;
+  venue: string;
+  authors: string;
+  description: string;
+  tags?: string[];
+  paper?: string;
+  code?: string;
+}
+
+const { title, href, venue, authors, description, tags = [], paper, code } = Astro.props;
+---
+
+<a href={href} class="rc">
+  <div class="rc-top">
+    <div class="rc-meta">
+      <span class="rc-venue">{venue}</span>
+      {tags.map(t => <span class="rc-tag">{t}</span>)}
+    </div>
+    <h3 class="rc-title">{title}</h3>
+    <p class="rc-authors">{authors}</p>
+    <p class="rc-desc">{description}</p>
+  </div>
+  <div class="rc-footer">
+    <span class="rc-go">View reproduction →</span>
+    <div class="rc-links">
+      {paper && <span class="rc-link">Paper ↗</span>}
+      {code && <span class="rc-link">Code ↗</span>}
+    </div>
+  </div>
+</a>
+
+<style>
+.rc {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.75rem;
+  background: var(--sl-color-bg-nav);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.rc:hover {
+  border-color: var(--sl-color-accent);
+  box-shadow: 0 4px 24px color-mix(in srgb, var(--sl-color-accent) 10%, transparent);
+}
+
+.rc-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rc-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rc-venue {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--sl-font-mono);
+  color: var(--sl-color-accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rc-tag {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2rem;
+  border: 1px solid var(--sl-color-hairline);
+  color: var(--sl-color-gray-3);
+}
+
+.rc-title {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.rc-authors {
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-4);
+  margin: 0;
+}
+
+.rc-desc {
+  font-size: 0.875rem;
+  color: var(--sl-color-gray-3);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.rc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--sl-color-hairline);
+  flex-wrap: wrap;
+}
+
+.rc-go {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--sl-color-accent);
+}
+
+.rc-links {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.rc-link {
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-4);
+}
+</style>

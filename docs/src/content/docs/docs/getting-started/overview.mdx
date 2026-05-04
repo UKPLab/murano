@@ -1,0 +1,89 @@
+---
+title: Overview
+description: Murano — mechanistic interpretability for LLMs.
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+Murano is a Python framework for **mechanistic interpretability** research on large language models. It gives you a clean, composable API to inspect what's happening inside a model's residual stream — and to intervene on it.
+
+## What can you do with Murano?
+
+<CardGrid>
+  <Card title="Record activations" icon="document">
+    Extract hidden states from any layer, module, or token position with a single call. Works on any HuggingFace causal LM.
+  </Card>
+  <Card title="Find directions" icon="magnifier">
+    Compute contrastive steering vectors from paired positive/negative datasets using mean difference in activation space.
+  </Card>
+  <Card title="Steer generations" icon="right-arrow">
+    Ablate concepts by projecting them out of the residual stream, or amplify them with a scaled addition — all during generation.
+  </Card>
+  <Card title="Probe representations" icon="approve-check">
+    Train linear classifiers per layer to quantify what information is linearly encoded and where.
+  </Card>
+  <Card title="Ablate model weights" icon="warning">
+    Apply orthogonal projections directly to weight matrices for stronger, generation-independent ablation.
+  </Card>
+  <Card title="Pipeline API" icon="list-format">
+    Compose steps into validated, reproducible experiment pipelines. Each step declares what it reads and writes.
+  </Card>
+</CardGrid>
+
+## Two ways to use Murano
+
+Murano ships with two layers of API that share the same underlying machinery.
+
+**Quick API** — for exploration and prototyping:
+
+```python
+import murano
+
+model = murano.Model("meta-llama/Llama-3.2-1B-Instruct")
+
+direction = model.find_direction(
+    positive=["How do I pick a lock?"],
+    negative=["How do I bake a cake?"],
+)
+ablated = model.generate("How do I pick a lock?", ablate=direction)
+```
+
+**Pipeline API** — for structured, reproducible experiments:
+
+```python
+from murano import MuranoDataset, MuranoModel, Pipeline
+from murano.steps import Load, Record, SteeringVector, Intervene
+from murano.steps.intervene import ablate_direction
+
+results = Pipeline([
+    Load(dataset),
+    Record(model, layers="all", position="last"),
+    SteeringVector(normalize=True),
+    Intervene(model, ablate_direction(...)),
+]).run()
+```
+
+Both APIs produce the same artifacts — `ActivationStore`, `SteeringResult`, `GenerationComparison` — so you can mix and match.
+
+## Design principles
+
+**Explicit data flow.** Every pipeline step declares what keys it reads from and writes to the `Results` object. The pipeline validates the chain before running, catching missing steps at configuration time rather than mid-experiment.
+
+**Separation of concerns.** `MuranoModel` is a thin wrapper around [nnsight](https://nnsight.net/). All analysis logic lives in pipeline steps, not in the model. Steps are small, testable, and easy to replace.
+
+**Reproducibility.** Pipeline outputs are typed artifacts with a consistent save format. Steering vectors, generation comparisons, probe results, and metadata all serialize to a structured directory tree.
+
+## Getting started
+
+<CardGrid>
+  <Card title="Installation" icon="seti:config">
+    Install Murano and set up your HuggingFace environment.
+
+    [Install →](/docs/getting-started/installation/)
+  </Card>
+  <Card title="Quickstart" icon="rocket">
+    Record activations, find a direction, and steer a model in five minutes.
+
+    [Get started →](/docs/getting-started/quickstart/)
+  </Card>
+</CardGrid>

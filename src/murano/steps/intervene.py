@@ -125,6 +125,7 @@ class Intervene(Step):
     write_types = {"intervene": InterveneResult}
 
     def expected_read_types(self, results=None, available_types=None):
+        """Return ``{"prompts": PromptBatch}``."""
         return {"prompts": PromptBatch}
 
     def __init__(

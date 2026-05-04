@@ -24,6 +24,18 @@ class Pipeline:
         self.steps = steps
 
     def run(self, results: Results | None = None) -> Results:
+        """Execute every step in order, returning the final Results.
+
+        Each step that inherits from Step is validated against the running
+        Results before it runs.
+
+        Args:
+            results: Starting Results object. A fresh empty Results is
+                created when None.
+
+        Returns:
+            The Results object after the last step has run.
+        """
         results = results or Results()
         for step in self.steps:
             name = type(step).__name__

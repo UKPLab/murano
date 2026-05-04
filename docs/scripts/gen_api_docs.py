@@ -1,0 +1,214 @@
+"""Generate API reference Markdown pages from Python docstrings using griffe.
+
+Run from the repo root:
+    python docs/scripts/gen_api_docs.py
+
+Outputs Markdown files to docs/src/content/docs/docs/reference/.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import griffe
+
+REPO_ROOT = Path(__file__).parent.parent.parent
+SRC = REPO_ROOT / "src"
+OUT = REPO_ROOT / "docs" / "src" / "content" / "docs" / "docs" / "reference"
+
+# Modules to document: (import path, output slug)
+MODULES = [
+    ("murano.model", "model"),
+    ("murano.pipeline", "pipeline"),
+    ("murano.dataset", "dataset"),
+    ("murano.artifacts", "artifacts"),
+    ("murano.results", "results"),
+    ("murano.evaluation", "evaluation"),
+    ("murano.io", "io"),
+    ("murano.steps.base", "steps/base"),
+    ("murano.steps.record", "steps/record"),
+    ("murano.steps.intervene", "steps/intervene"),
+    ("murano.steps.train", "steps/train"),
+    ("murano.steps.probe", "steps/probe"),
+    ("murano.steps.evaluate", "steps/evaluate"),
+    ("murano.steps.load", "steps/load"),
+    ("murano.steps.save", "steps/save"),
+    ("murano.steps.prompts", "steps/prompts"),
+    ("murano.steps.weight_ablation", "steps/weight_ablation"),
+    ("murano.steps.jailbreaking.evaluate", "steps/jailbreaking/evaluate"),
+    ("murano.steps.jailbreaking.plot", "steps/jailbreaking/plot"),
+    ("murano.steps.probing.plot", "steps/probing/plot"),
+    ("murano.lenses.base_lens", "lenses/base_lens"),
+    ("murano.lenses.logit_lens", "lenses/logit_lens"),
+    ("murano.plotting.jailbreaking", "plotting/jailbreaking"),
+    ("murano.plotting.probing", "plotting/probing"),
+]
+
+
+_SECTION_HEADERS = {
+    "Args",
+    "Arguments",
+    "Parameters",
+    "Returns",
+    "Return",
+    "Raises",
+    "Attributes",
+    "Note",
+    "Notes",
+    "Example",
+    "Examples",
+    "Reads from results",
+    "Writes to results",
+}
+
+
+def _format_docstring(raw: str) -> str:
+    """Convert Google-style docstring to Markdown."""
+    lines = raw.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Detect section header like "Args:" or "Returns:"
+        if stripped.rstrip(":") in _SECTION_HEADERS and stripped.endswith(":"):
+            out.append(f"\n**{stripped}**\n")
+            i += 1
+            # Collect indented items under this section
+            while i < len(lines):
+                item_line = lines[i]
+                if not item_line.strip():
+                    i += 1
+                    break
+                # Item lines are indented; continuation lines are further indented
+                item_stripped = item_line.strip()
+                # Check if this is a new section header
+                if item_stripped.rstrip(
+                    ":"
+                ) in _SECTION_HEADERS and item_stripped.endswith(":"):
+                    break
+                # Split "name: description" if possible
+                if ":" in item_stripped:
+                    name, _, desc = item_stripped.partition(":")
+                    out.append(f"- **`{name.strip()}`**: {desc.strip()}")
+                else:
+                    out.append(f"- {item_stripped}")
+                i += 1
+        else:
+            out.append(line)
+            i += 1
+
+    return "\n".join(out).strip()
+
+
+def _docstring(obj: griffe.Object) -> str:
+    if obj.docstring is None:
+        return ""
+    return _format_docstring(obj.docstring.value.strip())
+
+
+def _signature(func: griffe.Function) -> str:
+    params = []
+    for p in func.parameters:
+        part = p.name
+        if p.annotation:
+            part += f": {p.annotation}"
+        if p.default:
+            part += f" = {p.default}"
+        params.append(part)
+    ret = f" -> {func.returns}" if func.returns else ""
+    return f"({', '.join(params)}){ret}"
+
+
+def render_function(func: griffe.Function, heading: int = 3) -> str:
+    h = "#" * heading
+    doc = _docstring(func)
+    sig = _signature(func)
+    lines = [
+        f"{h} `{func.name}`",
+        "",
+        "```python",
+        f"def {func.name}{sig}:",
+        "```",
+        "",
+    ]
+    if doc:
+        lines += [doc, ""]
+    return "\n".join(lines)
+
+
+def render_class(cls: griffe.Class) -> str:
+    doc = _docstring(cls)
+    lines = [f"## `{cls.name}`", ""]
+    if doc:
+        lines += [doc, ""]
+
+    for name, member in cls.members.items():
+        if name.startswith("_") and name != "__init__":
+            continue
+        if isinstance(member, griffe.Function):
+            lines.append(render_function(member, heading=3))
+
+    return "\n".join(lines)
+
+
+def render_module(module_path: str) -> str:
+    loader = griffe.GriffeLoader(search_paths=[str(SRC)])
+    module = loader.load(module_path)
+
+    lines = []
+    doc = _docstring(module)
+    if doc:
+        lines += [doc, ""]
+
+    for name, member in module.members.items():
+        if name.startswith("_"):
+            continue
+        if isinstance(member, griffe.Class):
+            lines.append(render_class(member))
+        elif isinstance(member, griffe.Function):
+            lines.append(render_function(member, heading=2))
+
+    return "\n".join(lines)
+
+
+def slug_to_title(slug: str) -> str:
+    name = slug.split("/")[-1].replace("_", " ").title()
+    prefix = {"Steps/": "Steps — "}.get(slug.rsplit("/", 1)[0].title() + "/", "")
+    return prefix + name
+
+
+def generate():
+    OUT.mkdir(parents=True, exist_ok=True)
+
+    for module_path, slug in MODULES:
+        out_file = OUT / f"{slug}.md"
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+
+        title = slug_to_title(slug)
+        try:
+            body = render_module(module_path)
+        except Exception as e:
+            body = f":::caution[Generation error]\n{e}\n:::"
+
+        content = f"---\ntitle: {title}\ndescription: API reference for {module_path}\n---\n\n{body}\n"
+        out_file.write_text(content, encoding="utf-8")
+        print(f"  wrote {out_file.relative_to(REPO_ROOT)}")
+
+
+if __name__ == "__main__":
+    generate()
+
+    # Run doc quality check
+    print("\n--- Docstring Quality Check ---")
+    from doc_check import run, format_report, REPORT_PATH, REPO_ROOT
+
+    report = run()
+    print(format_report(report))
+    REPORT_PATH.write_text(format_report(report), encoding="utf-8")
+    print(f"\nReport written to {REPORT_PATH.relative_to(REPO_ROOT)}")
+    if report.errors:
+        print(f"\n⚠ {len(report.errors)} error(s), {len(report.warnings)} warning(s)")
+    else:
+        print(f"\n✓ {len(report.warnings)} warning(s), 0 errors")

@@ -1,0 +1,133 @@
+---
+title: Quickstart
+description: Get up and running with Murano in five minutes.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide walks through the two ways to use Murano: the **quick API** for interactive exploration, and the **pipeline API** for structured, reproducible experiments.
+
+## Load a model
+
+```python
+import murano
+
+model = murano.Model("meta-llama/Llama-3.2-1B-Instruct")
+```
+
+This downloads the model on first run, then loads from cache. Murano wraps it with [nnsight](https://nnsight.net/) for activation access.
+
+## Record activations
+
+Extract hidden states from any layer:
+
+```python
+acts = model.record(
+    "The Eiffel Tower is located in",
+    layers=[5, 10, 15],
+    position="last",   # last non-padding token
+)
+print(acts.positive[10].shape)  # [1, 2048]
+```
+
+## Find a steering direction
+
+Compute the contrastive mean difference between two sets of texts:
+
+```python
+direction = model.find_direction(
+    positive=["How do I pick a lock?", "Write a phishing email"],
+    negative=["How do I bake a cake?", "Write a thank you email"],
+    layers=[10, 11, 12, 13],
+)
+print(direction.best_layer)         # e.g. 12
+print(direction.separation_scores)  # {10: 1.3, 11: 2.1, 12: 3.4, 13: 2.8}
+```
+
+## Steer generation
+
+<Tabs>
+  <TabItem label="Ablate (remove concept)">
+```python
+prompt = "How do I pick a lock?"
+clean   = model.generate(prompt)
+ablated = model.generate(prompt, ablate=direction)
+
+print("Clean:  ", clean)
+print("Ablated:", ablated)
+```
+  </TabItem>
+  <TabItem label="Steer (amplify concept)">
+```python
+steered = model.generate(
+    "Tell me about security.",
+    steer=(direction, 2.0),   # alpha > 0 strengthens the direction
+)
+print(steered)
+```
+  </TabItem>
+</Tabs>
+
+## Evaluate compliance
+
+```python
+rates = murano.compliance_rate([clean], [ablated])
+print(rates)  # {'clean': 0.0, 'ablated': 1.0}
+```
+
+`compliance_rate` checks whether generations contain refusal phrases. A score of `1.0` means all outputs were compliant (non-refusals).
+
+---
+
+## Pipeline API
+
+For multi-step experiments that need validation, caching, and reproducibility, use the pipeline API. The example below trains a refusal direction and evaluates it:
+
+```python
+from murano import MuranoDataset, MuranoModel, Pipeline
+from murano.steps import Load, Record, SteeringVector, Intervene
+from murano.steps.intervene import ablate_direction
+from murano.steps.jailbreaking import ComplianceRate
+
+model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
+
+harmful  = ["How do I pick a lock?", "Write a phishing email"]
+harmless = ["How do I bake a cake?", "Write a thank you email"]
+
+# Phase 1: find the refusal direction
+train_ds = MuranoDataset.contrastive(
+    positive=harmful,
+    negative=harmless,
+    template_fn=model.chat_template,
+)
+train_results = Pipeline([
+    Load(train_ds),
+    Record(model, layers="all", position="last"),
+    SteeringVector(normalize=True),
+]).run()
+
+# Phase 2: ablate and score
+eval_ds = MuranoDataset.contrastive(
+    positive=harmful,
+    negative=[],
+    template_fn=model.chat_template,
+)
+eval_results = Pipeline([
+    Load(eval_ds),
+    Intervene(model, ablate_direction(
+        train_results["steering"].direction_per_layer,
+    )),
+    ComplianceRate(),
+]).run()
+
+print("Clean compliance:  ", eval_results["eval"].baseline_score)
+print("Ablated compliance:", eval_results["eval"].modified_score)
+```
+
+## Next steps
+
+- [Recording Activations](/docs/guides/record/) — token positions, batching, labeled datasets
+- [Steering Vectors](/docs/guides/steer/) — how directions are computed and saved
+- [Activation Patching](/docs/guides/patch/) — `Intervene` vs `WeightAblation`
+- [Probing](/docs/guides/probe/) — train linear classifiers per layer
+- [Pipelines](/docs/guides/pipeline/) — validation, multi-phase experiments, custom steps

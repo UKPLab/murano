@@ -11,7 +11,22 @@ from murano.steps.base import Step
 
 
 class GenerationMetric(Step):
-    """Scores baseline vs modified generations with a user-provided metric."""
+    """Score baseline vs modified generations with a user-provided metric.
+
+    Reads from results:
+        results['intervene']: GenerationComparison
+
+    Writes to results:
+        results['metric']: MetricResult
+
+    Args:
+        metric_name: Identifier written to ``MetricResult.metric_name``.
+        score_fn: Aggregate scoring function applied to a list of generations.
+        item_score_fn: Optional per-item scorer; results populate
+            ``MetricResult.baseline_scores`` / ``modified_scores``.
+        input_key: Results key to read the GenerationComparison from.
+        output_key: Results key under which to write the MetricResult.
+    """
 
     reads = ["intervene"]
     writes = ["metric"]
@@ -33,9 +48,11 @@ class GenerationMetric(Step):
         self.writes = [output_key]
 
     def expected_read_types(self, results=None, available_types=None):
+        """Return ``{input_key: GenerationComparison}``."""
         return {self.input_key: GenerationComparison}
 
     def expected_write_types(self, results=None, available_types=None):
+        """Return ``{output_key: MetricResult}``."""
         return {self.output_key: MetricResult}
 
     def __call__(self, results: Results) -> Results:
