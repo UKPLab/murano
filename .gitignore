@@ -137,4 +137,5 @@ dmypy.json
 # Project files
 sketch*
 murano/sketch*
-.vscode*.draft/
+.vscode*
+.draft/
