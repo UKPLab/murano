@@ -1,4 +1,4 @@
-"""Evaluate step — measures compliance rate after intervention.
+"""Evaluate step: measures compliance rate after intervention.
 
 This step is jailbreaking-specific: it detects refusal phrases in model
 generations. Generic evaluation steps (accuracy, KL div, etc.) belong
@@ -51,13 +51,21 @@ class EvalResult(MetricResult):
 
 
 class ComplianceRate(Step):
-    """Measures compliance rate by detecting refusal phrases.
+    """Measure compliance rate by detecting refusal phrases.
 
     Reads from results:
         results['intervene']: GenerationComparison-compatible artifact
 
     Writes to results:
         results['eval']: EvalResult
+
+    Args:
+        method: Detection method. Currently only ``"keyword"`` is supported.
+        context_window: Number of leading characters of each generation to
+            scan for a refusal phrase.
+
+    Raises:
+        ValueError: If ``method`` is not a supported value.
     """
 
     reads = ["intervene"]

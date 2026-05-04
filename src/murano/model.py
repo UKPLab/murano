@@ -1,4 +1,4 @@
-"""MuranoModel — nnsight-based model wrapper."""
+"""MuranoModel: nnsight-based model wrapper."""
 
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ class MuranoModel:
         )
 
     def layer(self, idx: int):
-        """Returns the nnsight module proxy for a decoder layer."""
+        """Return the nnsight module proxy for a decoder layer."""
         return self._lm.model.layers[idx]
 
     def _coerce_texts(self, text: str | Sequence[str]) -> tuple[list[str], bool]:
@@ -153,7 +153,19 @@ class MuranoModel:
         position: str | int = "last",
         batch_size: int = 8,
     ) -> ActivationStore:
-        """Record activations on one or more texts."""
+        """Record activations on one or more texts.
+
+        Args:
+            text: Single string or sequence of strings to record from.
+            layers: Layer indices to record at, or ``"all"`` for every layer.
+            position: Token position to record. One of ``"last"``, ``"first"``,
+                ``"mean"``, or an integer index.
+            batch_size: Forward-pass batch size.
+
+        Returns:
+            ActivationStore with per-layer activations under ``positive``;
+            ``negative`` is empty since this is a single-class call.
+        """
         from murano.dataset import MuranoDataset
         from murano.results import Results
         from murano.steps.record import Record
@@ -178,7 +190,21 @@ class MuranoModel:
         batch_size: int = 8,
         normalize: bool = True,
     ) -> SteeringResult:
-        """Find a contrastive steering direction between two text sets."""
+        """Find a contrastive steering direction between two text sets.
+
+        Args:
+            positive: Texts in the positive class.
+            negative: Texts in the negative class.
+            layers: Layer indices to record at, or ``"all"`` for every layer.
+            position: Token position to record. One of ``"last"``, ``"first"``,
+                ``"mean"``, or an integer index.
+            batch_size: Forward-pass batch size.
+            normalize: If True, normalize each per-layer direction to unit norm.
+
+        Returns:
+            SteeringResult with one direction per layer plus the best-scoring
+            layer.
+        """
         from murano.dataset import MuranoDataset
         from murano.results import Results
         from murano.steps.record import Record
@@ -206,7 +232,26 @@ class MuranoModel:
         layers: list[int] | str = "all",
         gen_kwargs: dict[str, Any] | None = None,
     ) -> str | list[str]:
-        """Generate text, optionally with activation-space steering or ablation."""
+        """Generate text, optionally with activation-space steering or ablation.
+
+        Args:
+            text: Single prompt or sequence of prompts.
+            ablate: SteeringResult or ``{layer: tensor}`` mapping; if given, the
+                direction is projected out of the residual stream at each
+                target layer during generation.
+            steer: ``(direction_like, alpha)`` tuple; if given, ``alpha *
+                direction`` is added to the residual stream at each target
+                layer. Pass either ``ablate`` or ``steer``, not both.
+            layers: Layer indices to apply the intervention at, or ``"all"``.
+            gen_kwargs: Forwarded to the underlying generation call. Defaults
+                to ``{"max_new_tokens": 256, "do_sample": False}``.
+
+        Returns:
+            A single string when ``text`` is a single string, otherwise a list.
+
+        Raises:
+            ValueError: If both ``ablate`` and ``steer`` are passed.
+        """
         from murano.steps.intervene import ablate_direction, steer_direction
 
         if ablate is not None and steer is not None:
@@ -232,7 +277,14 @@ class MuranoModel:
         return outputs[0] if is_single else outputs
 
     def chat_template(self, messages: list[dict]) -> str:
-        """Apply the tokenizer's chat template to a list of messages."""
+        """Apply the tokenizer's chat template to a list of messages.
+
+        Args:
+            messages: List of message dicts with ``role`` and ``content`` keys.
+
+        Returns:
+            The rendered prompt string with a generation prompt appended.
+        """
         rendered = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )

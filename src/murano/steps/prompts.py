@@ -8,7 +8,15 @@ from murano.steps.base import Step
 
 
 class LoadPrompts(Step):
-    """Loads prompts directly into pipeline results."""
+    """Load prompts directly into pipeline results.
+
+    Args:
+        prompts: PromptBatch instance, or a list of prompt strings to wrap.
+        raw_prompts: Optional pre-template prompt strings, paired with
+            ``prompts`` by index. Only used when ``prompts`` is a list.
+        source: Free-form provenance label written into the resulting
+            PromptBatch metadata. Only used when ``prompts`` is a list.
+    """
 
     reads = []
     writes = ["prompts"]

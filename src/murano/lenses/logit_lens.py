@@ -1,3 +1,5 @@
+"""Logit lens for tracking how token predictions evolve across layers."""
+
 from typing import Any
 
 import torch
@@ -6,10 +8,31 @@ from .base_lens import BaseLens
 
 
 class LogitLens(BaseLens):
+    """Project per-layer activations through the model's final norm and unembedding.
+
+    Yields per-layer next-token probability distributions, useful for tracking
+    how token predictions evolve across the depth of the network.
+
+    Note:
+        ``process`` currently hardcodes GPT-2 attribute paths
+        (``model.transformer.ln_f``, ``model.lm_head``). Cross-architecture
+        support is tracked in issue #51.
+    """
+
     def __init__(self):
         super().__init__(name="LogitLens")
 
     def process(self, artifact: dict) -> dict:
+        """Compute per-layer probability distributions from recorded activations.
+
+        Args:
+            artifact: Dict containing ``model``, ``activations``, and
+                ``input_ids`` keys produced by an upstream recorder.
+
+        Returns:
+            The same artifact with ``max_probs``, ``predicted_tokens``,
+            ``predicted_words``, ``input_words``, and ``all_probs`` added.
+        """
         model = artifact["model"]
         activations = artifact["activations"]
 
@@ -45,6 +68,11 @@ class LogitLens(BaseLens):
         return artifact
 
     def visualize(self, artifact: dict) -> Any:
+        """Render a heatmap of per-layer next-token probabilities.
+
+        Args:
+            artifact: Output of ``process``.
+        """
         import plotly.express as px  # pyright: ignore[reportMissingImports]
         import plotly.io as pio  # pyright: ignore[reportMissingImports]
 

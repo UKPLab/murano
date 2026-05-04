@@ -1,4 +1,4 @@
-"""Murano — mechanistic interpretability pipeline."""
+"""Murano: mechanistic interpretability pipeline."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Step protocol — the contract every pipeline step must follow."""
+"""Step protocol: the contract every pipeline step must follow."""
 
 from __future__ import annotations
 

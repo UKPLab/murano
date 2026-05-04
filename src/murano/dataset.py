@@ -1,4 +1,4 @@
-"""MuranoDataset — dataset representations for pipeline steps."""
+"""MuranoDataset: dataset representations for pipeline steps."""
 
 from __future__ import annotations
 
@@ -54,6 +54,11 @@ def _load_hub_column(
 
     Returns:
         List of strings from the specified column.
+
+    Raises:
+        ValueError: If ``source`` is a tuple of unexpected length, if
+            ``column`` cannot be inferred, or if the column is missing
+            from the loaded dataset.
     """
 
     if isinstance(source, tuple):
@@ -133,6 +138,10 @@ class MuranoDataset:
 
         Returns:
             Tuple of (train_dataset, eval_dataset).
+
+        Raises:
+            ValueError: If ``positive`` or ``negative`` is a malformed source
+                tuple, or the named column is missing from the loaded dataset.
 
         Example:
             train_ds, eval_ds = MuranoDataset.from_hub(
@@ -221,6 +230,9 @@ class LabeledDataset:
         labels: List of integer labels (0-indexed).
         label_names: Optional mapping from int to human-readable name.
         raw_texts: Original texts before chat template (None if no template).
+
+    Raises:
+        ValueError: If ``texts`` and ``labels`` have different lengths.
     """
 
     def __init__(
@@ -264,6 +276,10 @@ class LabeledDataset:
 
         Returns:
             LabeledDataset ready for use in a probing pipeline.
+
+        Raises:
+            ValueError: If ``text_column`` or ``label_column`` is missing
+                from the loaded dataset.
 
         Example:
             ds = LabeledDataset.from_hub(

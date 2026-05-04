@@ -1,4 +1,4 @@
-"""Save step — persists pipeline results to disk."""
+"""Save step: persists pipeline results to disk."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from murano.steps.base import Step
 
 
 class Save(Step):
-    """Saves all available results to organized subdirectories.
+    """Save all available results to organized subdirectories.
 
     Output structure:
         output_dir/

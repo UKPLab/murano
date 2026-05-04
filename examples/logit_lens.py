@@ -1,3 +1,5 @@
+"""Visualize layer-wise next-token predictions with the logit lens."""
+
 from murano import LayerLocation, LogitLens, MuranoModel
 
 model = MuranoModel.from_pretrained("gpt2")

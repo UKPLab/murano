@@ -1,4 +1,4 @@
-"""Record step — captures activations via nnsight trace."""
+"""Record step: captures activations via nnsight trace."""
 
 from __future__ import annotations
 
@@ -114,13 +114,24 @@ def _select_token_activations(
 
 
 class Record(Step):
-    """Captures residual stream activations via nnsight.
+    """Capture residual-stream activations via nnsight.
 
     Reads from results:
         results['dataset']: MuranoDataset or LabeledDataset
 
     Writes to results:
         results['record']: ActivationStore or LabeledActivationStore
+
+    Args:
+        model: Wrapped model to record from.
+        layers: Layer indices to record, or ``"all"`` for every layer.
+        position: Token position to record at. One of ``"last"``,
+            ``"first"``, ``"mean"``, or an integer token index.
+        batch_size: Forward-pass batch size; must be ``>= 1``.
+
+    Raises:
+        ValueError: If ``position`` or ``batch_size`` is invalid, or
+            ``layers`` is a string other than ``"all"``.
     """
 
     reads = ["dataset"]
@@ -239,8 +250,8 @@ class Record(Step):
             saved = {}
             with self.model._lm.trace(tokens):
                 for layer in self.layers:
-                    # Save full sequence output — use .output (not .output[0],
-                    # which indexes the batch dim in nnsight 0.5+)
+                    # Save full sequence output: use .output (not .output[0],
+                    # which indexes the batch dim in nnsight 0.5+).
                     saved[layer] = self.model.layer(layer).output.save()
 
             for layer in self.layers:
