@@ -1,15 +1,16 @@
 """Matplotlib recreation of the Murano dot-grid logo."""
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 GRID = 25
 CENTER = (GRID - 1) / 2
 FOCUS = (GRID * 0.58, GRID * 0.42)  # slight offset, like the reference
-SIGMA = 3.2                          # size of the focused "lens"
+SIGMA = 3.2  # size of the focused "lens"
 
 PALETTE = {
-    "ink":   "#191F1F",
-    "blue":  "#9BA7B6",
+    "ink": "#191F1F",
+    "blue": "#9BA7B6",
     "steel": "#DCE6F2",
     "faint": "#CFCFCF",
 }
@@ -25,7 +26,7 @@ for i in range(GRID):
     for j in range(GRID):
         dx, dy = i - FOCUS[0], j - FOCUS[1]
         d2 = dx * dx + dy * dy
-        w = np.exp(-d2 / (2 * SIGMA ** 2))  # gaussian focus
+        w = np.exp(-d2 / (2 * SIGMA**2))  # gaussian focus
 
         if w > 0.55:
             color = PALETTE["ink"]
@@ -36,8 +37,10 @@ for i in range(GRID):
             size = 14 + 30 * w
             alpha = 0.75
         elif w > 0.08:
-            color = rng.choice([PALETTE["blue"], PALETTE["steel"], PALETTE["faint"]],
-                               p=[0.25, 0.35, 0.4])
+            color = rng.choice(
+                [PALETTE["blue"], PALETTE["steel"], PALETTE["faint"]],
+                p=[0.25, 0.35, 0.4],
+            )
             size = 6 + 14 * w
             alpha = 0.55
         else:
@@ -45,16 +48,19 @@ for i in range(GRID):
             size = 2.5
             alpha = 0.35
 
-        xs.append(i); ys.append(j)
-        sizes.append(size); colors.append(color); alphas.append(alpha)
+        xs.append(i)
+        ys.append(j)
+        sizes.append(size)
+        colors.append(color)
+        alphas.append(alpha)
 
-ax.scatter(xs, ys, s=sizes, c=colors, alpha=alphas,
-           edgecolors="none", marker="o")
+ax.scatter(xs, ys, s=sizes, c=colors, alpha=alphas, edgecolors="none", marker="o")
 
 ax.set_xlim(-1, GRID)
 ax.set_ylim(-1, GRID)
 ax.set_aspect("equal")
-ax.set_xticks([]); ax.set_yticks([])
+ax.set_xticks([])
+ax.set_yticks([])
 for spine in ax.spines.values():
     spine.set_visible(False)
 
@@ -86,6 +92,6 @@ def write_svg(path, viewbox=100, margin=6, bg=None):
         f.write("\n".join(lines))
 
 
-write_svg("logo_out.svg")                   # transparent bg, for dark/light themes
+write_svg("logo_out.svg")  # transparent bg, for dark/light themes
 write_svg("favicon_out.svg", bg="#F9F9F6")  # opaque bg for browser tabs
 plt.show()
