@@ -5,15 +5,36 @@ Thank you for your interest in contributing to the murano framework! This docume
 ## Development Setup
 
 1. Make sure you have Python 3.10+ installed
-2. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
-3. Fork the repository
-4. Clone your fork: `git clone https://github.com/YOUR-USERNAME/murano.git`
-5. Install dependencies:
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
+1. Fork the repository
+1. Clone your fork: `git clone https://github.com/YOUR-USERNAME/murano.git`
+1. Install dependencies:
+
+   ```bash
+   uv sync --frozen --all-extras --dev
+   ```
+
+Local pre-commit hooks are optional. If you want fast local feedback, run `uv run pre-commit install` after the sync above. CI runs the same checks (ruff, pyright, prettier, uv-lock-check) on every PR, so installing locally only saves you a round-trip.
+
+## Branch and Commit Conventions
+
+Pre-1.0, the workflow is intentionally lightweight:
+
+- **Branch from `main`, PR back to `main`.** Release branches (`v1.1.x`) will exist starting at 1.0.
+- **Direct push to `main`** is fine for low-risk changes (docs, config, small fixes by a maintainer).
+- **Open a PR** for substantive changes: anything touching the `Step` protocol, public API, architecture, or anything you'd want a second pair of eyes on. Outside contributors should always PR.
+- **Conventional-commit prefixes** are encouraged: `feat:`, `fix:`, `docs:`, `chore:`, `ci:`, `refactor:`, `test:`. Not enforced by tooling.
+
+### Common gotcha: `uv.lock`
+
+Any change to `pyproject.toml` that affects dependency resolution (i.e., adding/removing/bumping a dep, changing extras, or changing `requires-python`) must regenerate `uv.lock` in the same commit:
+
 ```bash
-uv sync --frozen --all-extras --dev
+unset UV_RESOLUTION
+uv lock
 ```
-- ToDo: Add pre-commit instructions
-- ToDo: Add rules for commits + branches + PR/Branch workflow
+
+The `uv-lock-check` pre-commit hook fails CI if `uv.lock` and `pyproject.toml` are out of sync.
 
 ## Development Workflow
 
@@ -22,25 +43,28 @@ uv sync --frozen --all-extras --dev
    - For new features: use the main branch (which will become the next minor/major version)
    - If unsure, ask in an issue first
 
-2. Create a new branch from your chosen base branch
+1. Create a new branch from your chosen base branch
 
-3. Make your changes
+1. Make your changes
 
-4. Ensure tests pass:
-```bash 
-uv run pytest
-```
+1. Ensure tests pass:
 
-5. Run type checking:
-```bash
-uv run pyright
-```
+   ```bash
+   uv run pytest
+   ```
 
-6. Run linting:
-```bash
-uv run ruff check .
-uv run ruff format .
-```
+1. Run type checking:
+
+   ```bash
+   uv run pyright
+   ```
+
+1. Run linting:
+
+   ```bash
+   uv run ruff check .
+   uv run ruff format .
+   ```
 
 1. Submit a pull request to the same branch you branched from
 
@@ -54,10 +78,10 @@ uv run ruff format .
 ## Pull Request Process
 
 1. Update documentation as needed
-2. Add tests for new functionality
-3. Ensure CI passes
-4. Maintainers will review your code
-5. Address review feedback
+1. Add tests for new functionality
+1. Ensure CI passes
+1. Maintainers will review your code
+1. Address review feedback
 
 ## Code of Conduct
 
