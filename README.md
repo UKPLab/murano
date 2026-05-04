@@ -80,6 +80,39 @@ eval_output = Pipeline([
 ]).run()
 ```
 
+## Step API Reference
+
+Every step declares the keys it reads from and writes to `Results`. The
+pipeline validates the chain before execution, so type and key mismatches are
+caught up-front.
+
+| Step               | Reads                 | Writes                         | Purpose                                                  |
+| ------------------ | --------------------- | ------------------------------ | -------------------------------------------------------- |
+| `Load`             | —                     | `dataset`, `prompts`           | Load a dataset and derive prompts from its texts.        |
+| `LoadPrompts`      | —                     | `prompts`                      | Load raw prompts directly without a dataset.             |
+| `Record`           | `dataset`             | `record`                       | Capture residual-stream activations via nnsight.         |
+| `SteeringVector`   | `record`              | `steering`                     | Find a contrastive steering direction (mean diff).       |
+| `Intervene`        | `prompts`             | `intervene`                    | Generate baseline + intervened outputs side-by-side.     |
+| `WeightAblation`   | `prompts`, `steering` | `intervene`, `weight_ablation` | Project a direction out of model weights, then generate. |
+| `Probe`            | `record`              | `probe`                        | Train a linear probe per layer via cross-validation.     |
+| `GenerationMetric` | `intervene`           | `metric`                       | Score baseline vs modified outputs with a user metric.   |
+| `ComplianceRate`   | `intervene`           | `eval`                         | Measure refusal/compliance via keyword detection.        |
+| `Save`             | (any present)         | `output_dir`                   | Persist all results to organized subdirectories.         |
+| `Plot` \*          | (optional)            | —                              | Render jailbreaking plots (steering, generations, eval). |
+| `ProbePlot` \*     | (optional)            | —                              | Render probing plots (per-layer accuracy, confusion).    |
+
+\* Requires the `[plot]` extra: `pip install -e .[plot]`.
+
+To add your own step, subclass `Step`, set `reads` / `writes` (and optionally
+`read_types` / `write_types`), and implement `__call__(results) -> Results`.
+
+### Status
+
+The Step API and the steps in the table above are alpha-stable for the 0.1.x
+line. The `murano.lenses` module (logit lens) ships in this release but is not
+yet wired into the Pipeline API and should be considered experimental until the
+work tracked in [#51](https://github.com/UKPLab/murano/issues/51) lands.
+
 ## Core Ideas
 
 - `MuranoModel` is a thin model wrapper around `nnsight`.
