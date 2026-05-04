@@ -9,6 +9,7 @@ from typing import Any, TYPE_CHECKING, Callable
 
 import torch
 
+from murano import __version__
 from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
 from murano.logging import logger
 
@@ -151,6 +152,7 @@ def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
 def save_metadata(metadata: dict, path: Path) -> None:
     """Save pipeline metadata to a JSON file."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    metadata.setdefault("murano_version", __version__)
     metadata.setdefault("timestamp", datetime.now().isoformat())
     path.write_text(json.dumps(metadata, indent=2, default=str))
 
