@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any
 
 from murano.logging import setup_logging
+
+try:
+    __version__ = version("murano")
+except PackageNotFoundError:  # pragma: no cover
+    __version__ = "0.0.0+unknown"
 
 if TYPE_CHECKING:
     from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
@@ -48,6 +54,7 @@ __all__ = [
     "Pipeline",
     "Results",
     "Step",
+    "__version__",
     "compliance_rate",
     "setup_logging",
     "save_results",
