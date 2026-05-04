@@ -38,8 +38,16 @@ MODULES = [
 ]
 
 # Skip these names everywhere
-SKIP_NAMES = {"__repr__", "__str__", "__len__", "__contains__",
-              "__getitem__", "__setitem__", "__hash__", "__eq__"}
+SKIP_NAMES = {
+    "__repr__",
+    "__str__",
+    "__len__",
+    "__contains__",
+    "__getitem__",
+    "__setitem__",
+    "__hash__",
+    "__eq__",
+}
 
 
 @dataclass
@@ -98,7 +106,9 @@ def _non_self_params(func: griffe.Function) -> list[griffe.Parameter]:
     return [p for p in func.parameters if p.name not in ("self", "cls")]
 
 
-def check_function(func: griffe.Function, module: str, report: Report, parent_cls: str | None = None):
+def check_function(
+    func: griffe.Function, module: str, report: Report, parent_cls: str | None = None
+):
     full_name = f"{parent_cls}.{func.name}" if parent_cls else func.name
 
     if func.name.startswith("_") and func.name != "__init__":
@@ -124,12 +134,18 @@ def check_function(func: griffe.Function, module: str, report: Report, parent_cl
 
     params = _non_self_params(func)
     if len(params) >= 2 and not _has_section(doc, "Args:"):
-        report.add(module, full_name, "warning",
-                   f"Has {len(params)} parameters but no Args section")
+        report.add(
+            module,
+            full_name,
+            "warning",
+            f"Has {len(params)} parameters but no Args section",
+        )
 
     if func.returns and str(func.returns) not in ("None", ""):
         if not _has_section(doc, "Returns:") and not _has_section(doc, "Return:"):
-            report.add(module, full_name, "warning", "Has return type but no Returns section")
+            report.add(
+                module, full_name, "warning", "Has return type but no Returns section"
+            )
 
 
 def check_class(cls: griffe.Class, module: str, report: Report):
@@ -155,8 +171,12 @@ def check_class(cls: griffe.Class, module: str, report: Report):
             init_doc = init.docstring.value.strip() if init.docstring else ""
             has_init_args = _has_section(init_doc, "Args:") if init_doc else False
             if not has_args and not has_init_args:
-                report.add(module, cls.name, "warning",
-                           f"__init__ has {len(params)} parameters but neither class nor __init__ docstring documents them")
+                report.add(
+                    module,
+                    cls.name,
+                    "warning",
+                    f"__init__ has {len(params)} parameters but neither class nor __init__ docstring documents them",
+                )
 
     # Check public methods
     for name, member in cls.members.items():
@@ -191,7 +211,9 @@ def format_report(report: Report) -> str:
     errors = report.errors
     warnings = report.warnings
 
-    lines.append(f"**{len(errors)} errors, {len(warnings)} warnings** across {len(MODULES)} modules")
+    lines.append(
+        f"**{len(errors)} errors, {len(warnings)} warnings** across {len(MODULES)} modules"
+    )
     lines.append("")
 
     if errors:

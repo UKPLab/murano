@@ -46,13 +46,19 @@ MODULES = [
 
 
 _SECTION_HEADERS = {
-    "Args", "Arguments", "Parameters",
-    "Returns", "Return",
+    "Args",
+    "Arguments",
+    "Parameters",
+    "Returns",
+    "Return",
     "Raises",
     "Attributes",
-    "Note", "Notes",
-    "Example", "Examples",
-    "Reads from results", "Writes to results",
+    "Note",
+    "Notes",
+    "Example",
+    "Examples",
+    "Reads from results",
+    "Writes to results",
 }
 
 
@@ -78,7 +84,9 @@ def _format_docstring(raw: str) -> str:
                 # Item lines are indented; continuation lines are further indented
                 item_stripped = item_line.strip()
                 # Check if this is a new section header
-                if item_stripped.rstrip(":") in _SECTION_HEADERS and item_stripped.endswith(":"):
+                if item_stripped.rstrip(
+                    ":"
+                ) in _SECTION_HEADERS and item_stripped.endswith(":"):
                     break
                 # Split "name: description" if possible
                 if ":" in item_stripped:
@@ -117,7 +125,14 @@ def render_function(func: griffe.Function, heading: int = 3) -> str:
     h = "#" * heading
     doc = _docstring(func)
     sig = _signature(func)
-    lines = [f"{h} `{func.name}`", "", f"```python", f"def {func.name}{sig}:", f"```", ""]
+    lines = [
+        f"{h} `{func.name}`",
+        "",
+        "```python",
+        f"def {func.name}{sig}:",
+        "```",
+        "",
+    ]
     if doc:
         lines += [doc, ""]
     return "\n".join(lines)
