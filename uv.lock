@@ -1411,7 +1411,6 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "nnsight" },
     { name = "nnterp" },
-    { name = "plotly" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "torch" },
@@ -1422,6 +1421,7 @@ dependencies = [
 [package.optional-dependencies]
 plot = [
     { name = "matplotlib" },
+    { name = "plotly" },
     { name = "seaborn" },
 ]
 
@@ -1442,7 +1442,7 @@ requires-dist = [
     { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.9" },
     { name = "nnsight", specifier = ">=0.4.8" },
     { name = "nnterp", specifier = ">=1.2.2,<2.0" },
-    { name = "plotly", specifier = ">=6.7.0" },
+    { name = "plotly", marker = "extra == 'plot'", specifier = ">=6.7.0" },
     { name = "scikit-learn", specifier = ">=1.5.0" },
     { name = "seaborn", marker = "extra == 'plot'", specifier = ">=0.13" },
     { name = "torch", specifier = ">=2.7.1" },

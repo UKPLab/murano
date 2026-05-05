@@ -13,7 +13,6 @@ from __future__ import annotations
 import os
 
 import pandas as pd
-import plotly.express as px
 import torch
 from sklearn.preprocessing import Normalizer
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
@@ -65,6 +64,8 @@ class PlotterLens:
         columns = [f"Component {i + 1}" for i in range(n_dims)]
         df = pd.DataFrame(reduced, columns=columns)
         df["label"] = y
+
+        import plotly.express as px  # pyright: ignore[reportMissingImports]
 
         if n_dims == 1:
             # Single component — scatter along x with a constant y offset per label
