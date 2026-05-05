@@ -372,3 +372,93 @@ class TestComparisonComputationStep:
         results = step(r)
         assert "result" in results
         assert torch.allclose(results["result"], a - b)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline composition tests
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineComposition:
+    """Integration tests: metric steps composed in a Pipeline."""
+
+    def test_valid_chain_passes_validation(self):
+        """A DummyLogitsStep → CrossEntropyLossStep chain must validate."""
+        from murano.pipeline import Pipeline
+        from murano.steps.base import Step
+
+        class DummyLogitsStep(Step):
+            reads = []
+            writes = ["final_logits", "target_ids"]
+
+            def __call__(self, results: Results) -> Results:
+                B, S, V = 2, 5, 10
+                results["final_logits"] = torch.randn(B, S, V)
+                results["target_ids"] = torch.randint(0, V, (B, S))
+                return results
+
+        pipe = Pipeline([DummyLogitsStep(), CrossEntropyLossStep(reduction="mean")])
+        keys = pipe.validate()
+        assert "loss" in keys
+        assert "final_logits" in keys
+        assert "target_ids" in keys
+
+    def test_valid_chain_produces_loss(self):
+        """Running a valid chain must produce a scalar loss in results."""
+        from murano.pipeline import Pipeline
+        from murano.steps.base import Step
+
+        class DummyLogitsStep(Step):
+            reads = []
+            writes = ["final_logits", "target_ids"]
+
+            def __call__(self, results: Results) -> Results:
+                B, S, V = 2, 5, 10
+                results["final_logits"] = torch.randn(B, S, V)
+                results["target_ids"] = torch.randint(0, V, (B, S))
+                return results
+
+        pipe = Pipeline([DummyLogitsStep(), CrossEntropyLossStep(reduction="mean")])
+        results = pipe.run()
+        assert "loss" in results
+        assert isinstance(results["loss"], torch.Tensor)
+        assert results["loss"].ndim == 0
+        assert results["loss"].item() > 0.0
+
+    def test_broken_chain_raises_on_validate(self):
+        """CrossEntropyLossStep before its data source must fail validation."""
+        from murano.pipeline import Pipeline
+
+        pipe = Pipeline([CrossEntropyLossStep(reduction="mean")])
+        with pytest.raises(KeyError, match="final_logits"):
+            pipe.validate()
+
+    def test_broken_chain_raises_on_run(self):
+        """CrossEntropyLossStep before its data source must fail at runtime."""
+        from murano.pipeline import Pipeline
+
+        pipe = Pipeline([CrossEntropyLossStep(reduction="mean")])
+        with pytest.raises(KeyError, match="final_logits"):
+            pipe.run()
+
+    def test_accuracy_in_pipeline(self):
+        """AccuracyStep must work in a Pipeline chain."""
+        from murano.pipeline import Pipeline
+        from murano.steps.base import Step
+
+        class DummyLogitsStep(Step):
+            reads = []
+            writes = ["final_logits", "target_ids"]
+
+            def __call__(self, results: Results) -> Results:
+                B, S, V = 2, 5, 10
+                results["final_logits"] = torch.randn(B, S, V)
+                results["target_ids"] = torch.randint(0, V, (B, S))
+                return results
+
+        pipe = Pipeline([DummyLogitsStep(), AccuracyStep()])
+        pipe.validate()
+        results = pipe.run()
+        assert "accuracy" in results
+        assert isinstance(results["accuracy"], float)
+        assert 0.0 <= results["accuracy"] <= 1.0

@@ -5,12 +5,16 @@ that map data to ``plotly.graph_objects.Figure`` instances.
 
 These functions do **not** accept ``Results`` objects — they operate on raw
 Python data or tensors so they can be used independently of the pipeline.
+
+Requires ``plotly`` (install with ``pip install murano[plot]``).
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
-import plotly.graph_objects as go
+if TYPE_CHECKING:
+    import plotly.graph_objects as go
 
 
 def plot_heatmap(
@@ -36,6 +40,8 @@ def plot_heatmap(
     Returns:
         A ``plotly.graph_objects.Figure`` with a single heatmap trace.
     """
+    import plotly.graph_objects as go
+
     if y_labels is None:
         y_labels = [f"Layer {i}" for i in range(len(z_data))]
 
@@ -79,6 +85,8 @@ def plot_line_chart(
         A ``plotly.graph_objects.Figure`` with one scatter trace per entry
         in ``y_series``.
     """
+    import plotly.graph_objects as go
+
     fig = go.Figure()
 
     for name, y_values in y_series.items():
