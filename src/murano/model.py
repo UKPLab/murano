@@ -10,6 +10,7 @@ from torch import Tensor
 from nnterp import StandardizedTransformer
 
 from murano.logging import logger
+from murano.steps.record import ActivationKey
 
 if TYPE_CHECKING:
     from murano.steps.record import ActivationStore
@@ -98,7 +99,7 @@ class MuranoModel:
             return [text], True
         return list(text), False
 
-    def _coerce_directions(self, direction_like: Any) -> dict:
+    def _coerce_directions(self, direction_like: Any) -> dict[ActivationKey, Tensor]:
         if hasattr(direction_like, "direction_per_layer"):
             return direction_like.direction_per_layer
         if isinstance(direction_like, dict):
@@ -129,12 +130,22 @@ class MuranoModel:
 
         Returns:
             nnsight proxy for the requested submodule.
+
+        Raises:
+            ValueError: If any part of the dotted path does not exist.
         """
         if mod_str == "residual":
             return layer_proxy
         current = layer_proxy
         for part in mod_str.split("."):
-            current = getattr(current, part)
+            try:
+                current = getattr(current, part)
+            except AttributeError:
+                raise ValueError(
+                    f"Could not resolve submodule {mod_str!r} on layer proxy: "
+                    f"attribute {part!r} not found. "
+                    f"Available attributes depend on the model architecture."
+                ) from None
         return current
 
     def _generate_single(

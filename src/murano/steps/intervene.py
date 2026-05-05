@@ -12,12 +12,10 @@ from murano.artifacts import GenerationComparison, PromptBatch
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
+from murano.steps.record import ActivationKey
 
 if TYPE_CHECKING:
     from murano.model import MuranoModel
-
-# Key type for direction dictionaries — matches ActivationKey from record.py.
-ActivationKey = int | tuple[int, str]
 
 
 class InterveneResult(GenerationComparison):

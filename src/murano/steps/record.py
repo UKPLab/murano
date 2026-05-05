@@ -253,6 +253,10 @@ class Record(Step):
     def _collect(self, texts: list[str]) -> dict[ActivationKey, Tensor]:
         """Run texts through model and capture activations per layer/module.
 
+        Runs a separate nnsight trace per module to avoid ``OutOfOrderError``
+        when saving outputs from nested submodules (e.g. ``layer.output`` and
+        ``layer.mlp.output``) in the same trace.
+
         Returns:
             {key: tensor [N, d_model]} with selected-token activations.
             Keys are ``int`` (layer index) when a single module is targeted,
@@ -267,35 +271,36 @@ class Record(Step):
                 )
                 all_acts[key] = []
 
-        for batch in _batched(texts, self.batch_size):
-            tokens = self.model.tokenizer(
-                batch,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                return_token_type_ids=False,
-            )
-            attention_mask = tokens["attention_mask"]
-            assert isinstance(attention_mask, Tensor)
+        # Run a separate trace per module to avoid nnsight conflicts when
+        # saving outputs from nested submodules in the same trace.
+        for mod_str in self.modules:
+            for batch in _batched(texts, self.batch_size):
+                tokens = self.model.tokenizer(
+                    batch,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    return_token_type_ids=False,
+                )
+                attention_mask = tokens["attention_mask"]
+                assert isinstance(attention_mask, Tensor)
 
-            saved = {}
-            with self.model._lm.trace(tokens):
-                for layer in self.layers:
-                    for mod_str in self.modules:
+                saved = {}
+                with self.model._lm.trace(tokens):
+                    for layer in self.layers:
                         mod_proxy = self.model._resolve_module(
                             self.model.layer(layer), mod_str
                         )
-                        saved[(layer, mod_str)] = mod_proxy.output.save()
+                        saved[layer] = mod_proxy.output.save()
 
-            for layer in self.layers:
-                for mod_str in self.modules:
+                for layer in self.layers:
                     key: ActivationKey = (
                         layer if len(self.modules) == 1 else (layer, mod_str)
                     )
                     output = (
-                        saved[(layer, mod_str)].value
-                        if hasattr(saved[(layer, mod_str)], "value")
-                        else saved[(layer, mod_str)]
+                        saved[layer].value
+                        if hasattr(saved[layer], "value")
+                        else saved[layer]
                     )
                     # Some transformers versions return (hidden_states, ...) tuples
                     # from decoder layers; older (<5.0) Llama is one. Unwrap here.

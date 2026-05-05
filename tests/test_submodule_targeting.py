@@ -11,13 +11,17 @@ import pytest
 import torch
 
 from murano.results import Results
-from murano.steps.record import ActivationStore, LabeledActivationStore, Record
+from murano.steps.record import (
+    ActivationKey,
+    ActivationStore,
+    LabeledActivationStore,
+    Record,
+)
 from murano.steps.train import SteeringVector, SteeringResult
 from murano.steps.probe import Probe, ProbeResult
 from murano.steps.intervene import (
     ablate_direction,
     steer_direction,
-    ActivationKey,
 )
 from murano.dataset import LabeledDataset
 
@@ -406,3 +410,209 @@ class TestActivationKeyType:
         """Tuple keys should be usable in sets."""
         s = {(0, "mlp"), (1, "attn"), (0, "mlp")}
         assert len(s) == 2
+
+
+# ── Real-Model Integration Tests ──────────────────────────────────────
+
+
+class TestResolveModule:
+    """Unit tests for MuranoModel._resolve_module."""
+
+    def test_resolve_residual(self):
+        """_resolve_module returns the layer proxy for 'residual'."""
+        from murano.model import MuranoModel
+
+        class FakeLayer:
+            pass
+
+        layer = FakeLayer()
+        result = MuranoModel._resolve_module(layer, "residual")
+        assert result is layer
+
+    def test_resolve_child_attribute(self):
+        """_resolve_module resolves single child via getattr."""
+        from murano.model import MuranoModel
+
+        class FakeLayer:
+            class MLP:
+                pass
+
+            mlp = MLP()
+
+        layer = FakeLayer()
+        result = MuranoModel._resolve_module(layer, "mlp")
+        assert result is layer.mlp
+
+    def test_resolve_dotted_path(self):
+        """_resolve_module resolves dotted paths."""
+        from murano.model import MuranoModel
+
+        class GateProj:
+            pass
+
+        class MLP:
+            gate_proj = GateProj()
+
+        class FakeLayer:
+            mlp = MLP()
+
+        layer = FakeLayer()
+        result = MuranoModel._resolve_module(layer, "mlp.gate_proj")
+        assert result is layer.mlp.gate_proj
+
+    def test_resolve_bad_path_raises_value_error(self):
+        """_resolve_module raises ValueError for non-existent paths."""
+        from murano.model import MuranoModel
+
+        class FakeLayer:
+            pass
+
+        layer = FakeLayer()
+        with pytest.raises(ValueError, match="Could not resolve submodule"):
+            MuranoModel._resolve_module(layer, "mlp")
+
+    def test_resolve_bad_dotted_path_raises_value_error(self):
+        """_resolve_module raises ValueError for non-existent dotted paths."""
+        from murano.model import MuranoModel
+
+        class MLP:
+            pass
+
+        class FakeLayer:
+            mlp = MLP()
+
+        layer = FakeLayer()
+        with pytest.raises(ValueError, match="Could not resolve submodule"):
+            MuranoModel._resolve_module(layer, "mlp.gate_proj")
+
+
+@pytest.mark.skipif(
+    not pytest.importorskip("nnsight"),
+    reason="nnsight not available",
+)
+class TestSubmoduleTargetingRealModel:
+    """End-to-end submodule targeting with a real (tiny) model."""
+
+    def _build_tiny_model(self, tmp_path):
+        from tokenizers import Tokenizer
+        from tokenizers.models import WordLevel
+        from tokenizers.pre_tokenizers import Whitespace
+        from transformers import (
+            LlamaConfig,
+            LlamaForCausalLM,
+            PreTrainedTokenizerFast,
+        )
+
+        vocab = {
+            "<pad>": 0,
+            "<s>": 1,
+            "</s>": 2,
+            "<unk>": 3,
+            "hello": 4,
+            "world": 5,
+            "good": 6,
+            "bad": 7,
+        }
+        tokenizer = Tokenizer(WordLevel(vocab=vocab, unk_token="<unk>"))
+        tokenizer.pre_tokenizer = Whitespace()
+        fast_tokenizer = PreTrainedTokenizerFast(
+            tokenizer_object=tokenizer,
+            unk_token="<unk>",
+            pad_token="<pad>",
+            bos_token="<s>",
+            eos_token="</s>",
+            model_max_length=64,
+        )
+        fast_tokenizer.save_pretrained(tmp_path)
+
+        config = LlamaConfig(
+            vocab_size=len(vocab),
+            hidden_size=32,
+            intermediate_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=4,
+            max_position_embeddings=64,
+            pad_token_id=vocab["<pad>"],
+            bos_token_id=vocab["<s>"],
+            eos_token_id=vocab["</s>"],
+        )
+        model = LlamaForCausalLM(config)
+        model.save_pretrained(tmp_path)
+
+    def test_record_single_module_mlp(self, tmp_path):
+        """Record with modules='mlp' produces int keys."""
+        self._build_tiny_model(tmp_path)
+        from murano.model import MuranoModel
+
+        model = MuranoModel(str(tmp_path), device_map="cpu", dtype=torch.float32)
+        store = model.record(
+            ["hello world", "good world"],
+            layers=[0],
+            modules="mlp",
+            position="mean",
+            batch_size=2,
+        )
+        assert 0 in store.positive
+        assert store.positive[0].shape == (2, model.d_model)
+
+    def test_record_multi_module(self, tmp_path):
+        """Record with modules=['residual', 'mlp'] produces tuple keys."""
+        self._build_tiny_model(tmp_path)
+        from murano.model import MuranoModel
+
+        model = MuranoModel(str(tmp_path), device_map="cpu", dtype=torch.float32)
+        store = model.record(
+            ["hello world"],
+            layers=[0],
+            modules=["residual", "mlp"],
+            position="last",
+            batch_size=1,
+        )
+        assert (0, "residual") in store.positive
+        assert (0, "mlp") in store.positive
+        assert store.positive[(0, "residual")].shape == (1, model.d_model)
+        assert store.positive[(0, "mlp")].shape == (1, model.d_model)
+
+    def test_steering_vector_with_multi_module(self, tmp_path):
+        """SteeringVector preserves tuple keys from multi-module recording."""
+        self._build_tiny_model(tmp_path)
+        from murano.model import MuranoModel
+
+        model = MuranoModel(str(tmp_path), device_map="cpu", dtype=torch.float32)
+        steering = model.find_direction(
+            positive=["good world"],
+            negative=["bad world"],
+            layers=[0],
+            modules=["residual", "mlp"],
+            position="first",
+            batch_size=1,
+        )
+        keys = list(steering.direction_per_layer.keys())
+        assert all(isinstance(k, tuple) for k in keys)
+        assert (0, "residual") in steering.direction_per_layer
+        assert (0, "mlp") in steering.direction_per_layer
+        assert steering.direction_per_layer[(0, "mlp")].shape == (model.d_model,)
+
+    def test_generate_with_module_mlp(self, tmp_path):
+        """Generate with modules='mlp' and ablation runs without error."""
+        self._build_tiny_model(tmp_path)
+        from murano.model import MuranoModel
+
+        model = MuranoModel(str(tmp_path), device_map="cpu", dtype=torch.float32)
+        steering = model.find_direction(
+            positive=["good world"],
+            negative=["bad world"],
+            layers=[0],
+            modules="mlp",
+            position="last",
+            batch_size=1,
+        )
+        result = model.generate(
+            "hello",
+            ablate=steering,
+            modules="mlp",
+            gen_kwargs={"max_new_tokens": 1, "do_sample": False},
+        )
+        assert isinstance(result, str)
+        assert len(result) > 0
