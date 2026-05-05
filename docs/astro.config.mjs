@@ -4,6 +4,11 @@ import starlight from '@astrojs/starlight';
 
 // https://astro.build/config
 export default defineConfig({
+	// Default GitHub Pages URL for UKPLab/murano. Switch `site` to a custom
+	// domain (e.g. https://murano.ukp.informatik.tu-darmstadt.de) and set
+	// `base: '/'` once DNS + repo Pages settings are configured.
+	site: 'https://ukplab.github.io',
+	base: '/murano',
 	integrations: [
 		starlight({
 			components: {
