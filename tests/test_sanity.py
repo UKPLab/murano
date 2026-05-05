@@ -19,6 +19,14 @@ _CROSS_ARCH_MODELS = [
         "HuggingFaceM4/tiny-random-Llama3ForCausalLM",
         id="llama3",
     ),
+    pytest.param(
+        "hf-internal-testing/tiny-random-MistralForCausalLM",
+        id="mistral",
+    ),
+    pytest.param(
+        "trl-internal-testing/tiny-Qwen2ForCausalLM-2.5",
+        id="qwen",
+    ),
 ]
 
 

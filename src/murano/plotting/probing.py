@@ -13,9 +13,23 @@ if TYPE_CHECKING:
     from murano.steps.record import LabeledActivationStore
 
 
+def _require_plotting():
+    """Ensure plotting dependencies are installed."""
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        return plt, sns
+    except ImportError as e:
+        raise RuntimeError(
+            "Plotting utilities require additional dependencies. "
+            "Please install them via: pip install murano[plot]"
+        ) from e
+
+
 def _setup():
     """Consistent seaborn style for all plots."""
-    import seaborn as sns
+    _, sns = _require_plotting()
 
     sns.set_theme(
         style="whitegrid", context="notebook", palette="muted", font_scale=1.1

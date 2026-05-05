@@ -72,7 +72,7 @@ class MuranoModel:
             self._lm = StandardizedTransformer(
                 load_path,
                 device_map=device_map,
-                torch_dtype=dtype,
+                dtype=dtype,
                 dispatch=True,
             )
         except Exception as e:
