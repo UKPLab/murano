@@ -9,7 +9,7 @@ from torch import Tensor
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
-from murano.steps.record import ActivationStore
+from murano.steps.record import ActivationStore, ActivationKey
 
 
 @dataclass
@@ -17,14 +17,17 @@ class SteeringResult:
     """Output of SteeringVector step.
 
     Attributes:
-        direction_per_layer: {layer_idx: tensor [d_model]} normalized direction.
-        separation_scores: {layer_idx: float} how well the direction separates classes.
-        best_layer: Layer index with highest separation score.
+        direction_per_layer: {key: tensor [d_model]} normalized direction.
+                             Keys are ``int`` (layer index) when a single
+                             module was recorded, or ``(int, str)``
+                             (layer, module_name) for multiple modules.
+        separation_scores: {key: float} how well the direction separates classes.
+        best_layer: Key with highest separation score.
     """
 
-    direction_per_layer: dict[int, Tensor]
-    separation_scores: dict[int, float]
-    best_layer: int
+    direction_per_layer: dict[ActivationKey, Tensor]
+    separation_scores: dict[ActivationKey, float]
+    best_layer: ActivationKey
 
 
 class SteeringVector(Step):
@@ -60,12 +63,12 @@ class SteeringVector(Step):
 
     def __call__(self, results: Results) -> Results:
         store = results["record"]
-        directions: dict[int, Tensor] = {}
-        scores: dict[int, float] = {}
+        directions: dict[ActivationKey, Tensor] = {}
+        scores: dict[ActivationKey, float] = {}
 
-        for layer in store.positive:
-            pos_acts = store.positive[layer].float()
-            neg_acts = store.negative[layer].float()
+        for key in store.positive:
+            pos_acts = store.positive[key].float()
+            neg_acts = store.negative[key].float()
 
             direction = pos_acts.mean(0) - neg_acts.mean(0)
 
@@ -80,13 +83,13 @@ class SteeringVector(Step):
                 norm = direction.norm()
                 if norm < 1e-10:
                     logger.warning(
-                        "Near-zero direction at layer %d, skipping normalization", layer
+                        "Near-zero direction at key %s, skipping normalization", key
                     )
                 else:
                     direction = direction / norm
 
-            directions[layer] = direction
-            scores[layer] = score.item()
+            directions[key] = direction
+            scores[key] = score.item()
 
         if not scores:
             raise ValueError(
@@ -94,11 +97,11 @@ class SteeringVector(Step):
                 "positive and negative activations."
             )
 
-        best_layer = max(scores, key=lambda k: scores[k])
+        best_key = max(scores, key=lambda k: scores[k])
         results["steering"] = SteeringResult(
             direction_per_layer=directions,
             separation_scores=scores,
-            best_layer=best_layer,
+            best_layer=best_key,
         )
-        logger.info("Best layer: %d (score=%.4f)", best_layer, scores[best_layer])
+        logger.info("Best key: %s (score=%.4f)", best_key, scores[best_key])
         return results

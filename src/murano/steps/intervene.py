@@ -12,6 +12,7 @@ from murano.artifacts import GenerationComparison, PromptBatch
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
+from murano.steps.record import ActivationKey
 
 if TYPE_CHECKING:
     from murano.model import MuranoModel
@@ -42,61 +43,67 @@ class InterveneResult(GenerationComparison):
         )
 
 
-def _normalize_directions(directions: dict[int, Tensor]) -> dict[int, Tensor]:
-    normalized: dict[int, Tensor] = {}
-    for layer, direction in directions.items():
+def _normalize_directions(
+    directions: dict[ActivationKey, Tensor],
+) -> dict[ActivationKey, Tensor]:
+    normalized: dict[ActivationKey, Tensor] = {}
+    for key, direction in directions.items():
         norm = direction.norm()
         if not torch.isfinite(norm).item() or norm.item() < 1e-10:
             logger.warning(
-                "Skipping non-finite or near-zero direction at layer %d",
-                layer,
+                "Skipping non-finite or near-zero direction at key %s",
+                key,
             )
             continue
-        normalized[layer] = direction / norm
+        normalized[key] = direction / norm
     return normalized
 
 
-def ablate_direction(directions: dict[int, Tensor]) -> Callable:
+def ablate_direction(directions: dict[ActivationKey, Tensor]) -> Callable:
     """Return an intervention function that projects out a direction.
 
     Removes the component along the direction from the residual stream.
 
     Args:
-        directions: {layer_idx: tensor [d_model]} directions to ablate.
+        directions: {key: tensor [d_model]} directions to ablate.
+                    Keys are ``int`` (layer index) or ``(int, str)``
+                    (layer, module_name).
 
     Returns:
-        Callable(activation, layer_idx) -> modified activation.
+        Callable(activation, key) -> modified activation.
     """
     normalized = _normalize_directions(directions)
 
-    def fn(activation: Tensor, layer: int) -> Tensor:
-        if layer not in normalized:
+    def fn(activation: Tensor, key: ActivationKey) -> Tensor:
+        if key not in normalized:
             return activation
-        d_hat = normalized[layer].to(activation.device, activation.dtype)
+        d_hat = normalized[key].to(activation.device, activation.dtype)
         proj = (activation @ d_hat).unsqueeze(-1) * d_hat
         return activation - proj
 
     return fn
 
 
-def steer_direction(directions: dict[int, Tensor], alpha: float) -> Callable:
+def steer_direction(directions: dict[ActivationKey, Tensor], alpha: float) -> Callable:
     """Return an intervention function that adds a scaled direction.
 
-    Adds alpha * direction to the residual stream at each layer.
+    Adds alpha * direction to the residual stream at each layer/module.
 
     Args:
-        directions: {layer_idx: tensor [d_model]} directions to add.
+        directions: {key: tensor [d_model]} directions to add.
+                    Keys are ``int`` (layer index) or ``(int, str)``
+                    (layer, module_name).
         alpha: Scaling factor. Positive = strengthen, negative = suppress.
 
     Returns:
-        Callable(activation, layer_idx) -> modified activation.
+        Callable(activation, key) -> modified activation.
     """
     normalized = _normalize_directions(directions)
 
-    def fn(activation: Tensor, layer: int) -> Tensor:
-        if layer not in normalized:
+    def fn(activation: Tensor, key: ActivationKey) -> Tensor:
+        if key not in normalized:
             return activation
-        d_hat = normalized[layer].to(activation.device, activation.dtype)
+        d_hat = normalized[key].to(activation.device, activation.dtype)
         return activation + alpha * d_hat
 
     return fn
@@ -133,6 +140,7 @@ class Intervene(Step):
         model: MuranoModel,
         fn: Callable,
         layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
         gen_kwargs: dict | None = None,
     ):
         self.model = model
@@ -143,6 +151,7 @@ class Intervene(Step):
             self.layers: list[int] = list(range(model.n_layers))
         else:
             self.layers = list(layers)
+        self.modules: list[str] = [modules] if isinstance(modules, str) else modules
         self.gen_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
 
     def __call__(self, results: Results) -> Results:
@@ -175,10 +184,11 @@ class Intervene(Step):
         return self.model._generate_single(text, gen_kwargs=self.gen_kwargs)
 
     def _generate_ablated(self, text: str) -> str:
-        """Generate with the intervention applied at each layer."""
+        """Generate with the intervention applied at each layer/module."""
         return self.model._generate_single(
             text,
             fn=self.fn,
             layers=self.layers,
+            modules=self.modules,
             gen_kwargs=self.gen_kwargs,
         )
