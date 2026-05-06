@@ -1,4 +1,4 @@
-"""MuranoModel: nnsight-based model wrapper."""
+"""MuranoModel: nnterp-based model wrapper."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import torch
 from torch import Tensor
-from nnsight import LanguageModel
+from nnterp import StandardizedTransformer
 
 from murano.logging import logger
 
@@ -35,9 +35,9 @@ def _ensure_downloaded(model_id: str) -> str:
 
 
 class MuranoModel:
-    """Thin wrapper around nnsight LanguageModel for mechanistic interpretability.
+    """Thin wrapper around nnterp StandardizedTransformer for mechanistic interpretability.
 
-    Provides access to model layers, tokenizer, and metadata.
+    Provides cross-architecture access to model layers, tokenizer, and metadata.
     All analysis logic lives in pipeline steps, not here.
 
     Args:
@@ -69,10 +69,10 @@ class MuranoModel:
             device_map = "cuda:0"
 
         try:
-            self._lm = LanguageModel(
+            self._lm = StandardizedTransformer(
                 load_path,
                 device_map=device_map,
-                torch_dtype=dtype,
+                dtype=dtype,
                 dispatch=True,
             )
         except Exception as e:
@@ -90,8 +90,8 @@ class MuranoModel:
         )
 
     def layer(self, idx: int):
-        """Return the nnsight module proxy for a decoder layer."""
-        return self._lm.model.layers[idx]
+        """Return the nnterp module proxy for a decoder layer."""
+        return self._lm.layers[idx]  # pyright: ignore[reportIndexIssue,reportArgumentType]
 
     def _coerce_texts(self, text: str | Sequence[str]) -> tuple[list[str], bool]:
         if isinstance(text, str):
