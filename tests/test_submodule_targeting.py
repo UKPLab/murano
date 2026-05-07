@@ -614,5 +614,9 @@ class TestSubmoduleTargetingRealModel:
             modules="mlp",
             gen_kwargs={"max_new_tokens": 1, "do_sample": False},
         )
+        # Don't assert non-empty: with max_new_tokens=1 and a tiny random-init
+        # model whose vocab is half special tokens, the generated token is
+        # often <pad>/<s>/</s>/<unk>, which decodes to "" via skip_special_tokens.
+        # The test's stated purpose ("runs without error") is satisfied by the
+        # call returning a string.
         assert isinstance(result, str)
-        assert len(result) > 0
