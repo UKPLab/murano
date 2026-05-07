@@ -38,6 +38,7 @@ dev = [
 plot = [
     "matplotlib>=3.9",
     "seaborn>=0.13",
+    "plotly>=6.7.0",
 ]
 
 [tool.hatch.version]
