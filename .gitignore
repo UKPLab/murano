@@ -139,3 +139,6 @@ sketch*
 murano/sketch*
 .vscode*
 .draft/
+
+# OS files
+.DS_Store
