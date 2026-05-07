@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from itertools import islice
 from typing import TYPE_CHECKING
 
-import torch
-from torch import Tensor
+from torch import Tensor, arange, cat, full_like, long, tensor  # pyright: ignore[reportPrivateImportUsage]
 
 from murano.logging import logger
 from murano.results import Results
@@ -81,7 +80,7 @@ def _select_token_activations(
             f"Expected [batch, seq, d_model] output, got {tuple(output.shape)}"
         )
 
-    batch_indices = torch.arange(output.shape[0], device=output.device)
+    batch_indices = arange(output.shape[0], device=output.device)
     mask_bool = attention_mask.bool()
     seq_len = attention_mask.shape[1]
 
@@ -94,9 +93,7 @@ def _select_token_activations(
         return output[batch_indices, first_pos, :]
 
     indices = (
-        torch.arange(seq_len, device=output.device)
-        .unsqueeze(0)
-        .expand_as(attention_mask)
+        arange(seq_len, device=output.device).unsqueeze(0).expand_as(attention_mask)
     )
     masked_indices = indices.masked_fill(~mask_bool, -1)
 
@@ -106,7 +103,7 @@ def _select_token_activations(
 
     if isinstance(position, int):
         lengths = attention_mask.sum(dim=1)
-        target_rank = torch.full_like(lengths, position)
+        target_rank = full_like(lengths, position)
         if position < 0:
             target_rank = lengths + position
         invalid = (target_rank < 0) | (target_rank >= lengths)
@@ -228,7 +225,7 @@ class Record(Step):
                 len(self.layers),
             )
             acts = self._collect(dataset.texts)
-            labels_tensor = torch.tensor(dataset.labels, dtype=torch.long)
+            labels_tensor = tensor(dataset.labels, dtype=long)
             results["record"] = LabeledActivationStore(
                 activations=acts,
                 labels=labels_tensor,
@@ -314,4 +311,4 @@ class Record(Step):
                     )
                     all_acts[key].append(selected_acts.detach().cpu())
 
-        return {key: torch.cat(all_acts[key]) for key in all_acts}
+        return {key: cat(all_acts[key]) for key in all_acts}

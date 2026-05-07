@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
-import torch
-from torch import Tensor
+from torch import Tensor, isfinite  # pyright: ignore[reportPrivateImportUsage]
 from tqdm import tqdm
 
 from murano.artifacts import GenerationComparison, PromptBatch
@@ -49,7 +48,7 @@ def _normalize_directions(
     normalized: dict[ActivationKey, Tensor] = {}
     for key, direction in directions.items():
         norm = direction.norm()
-        if not torch.isfinite(norm).item() or norm.item() < 1e-10:
+        if not isfinite(norm).item() or norm.item() < 1e-10:
             logger.warning(
                 "Skipping non-finite or near-zero direction at key %s",
                 key,

@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import torch
-from torch import Tensor
+from torch import Tensor, eye, float32, isfinite  # pyright: ignore[reportPrivateImportUsage]
 from tqdm import tqdm
 
 from murano.artifacts import GenerationComparison, PromptBatch
@@ -54,7 +54,7 @@ class ProjectionOperator:
         normalized_rows = []
         for idx, direction in enumerate(directions):
             norm = direction.norm()
-            if not torch.isfinite(norm).item() or norm.item() < 1e-10:
+            if not isfinite(norm).item() or norm.item() < 1e-10:
                 logger.warning(
                     "Skipping non-finite or near-zero projection direction %d",
                     idx,
@@ -69,7 +69,7 @@ class ProjectionOperator:
 
         basis = torch.stack(normalized_rows).T  # [d_model, n_dirs]
         basis, _ = torch.linalg.qr(basis, mode="reduced")
-        self.P = torch.eye(basis.shape[0], dtype=torch.float32) - basis @ basis.T
+        self.P = eye(basis.shape[0], dtype=float32) - basis @ basis.T
         self.n_dirs = basis.shape[1]
         self.d_model = basis.shape[0]
 

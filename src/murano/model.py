@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import torch
-from torch import Tensor
+from torch import Tensor, bfloat16  # pyright: ignore[reportPrivateImportUsage]
+from torch import dtype as TorchDtype  # pyright: ignore[reportPrivateImportUsage]
 from nnterp import StandardizedTransformer
 
 from murano.logging import logger
@@ -55,7 +56,7 @@ class MuranoModel:
         self,
         model_id: str,
         device_map: str = "auto",
-        dtype: torch.dtype = torch.bfloat16,
+        dtype: TorchDtype = bfloat16,
     ):
         self.model_id = model_id
 
