@@ -1,0 +1,67 @@
+name: 📓 Reproduction Submission
+description: Submit a Murano-powered reproduction of an interpretability paper for the gallery
+title: "[REPRODUCTION] "
+labels:
+  - reproduction
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing your reproduction! Submissions land here for review before being added
+        to the [Reproduction Gallery](https://ukplab.github.io/murano/reproductions/).
+
+        We expect each submission to include a runnable notebook and the original paper reference.
+        See the [submit guide](https://ukplab.github.io/murano/docs/reproductions/submit/) for the
+        format reviewers will check against.
+
+  - type: input
+    id: submitter
+    attributes:
+      label: Your name
+      description: How you'd like to be credited in the gallery.
+      placeholder: e.g. Federico Tiblias
+    validations:
+      required: true
+
+  - type: input
+    id: paper
+    attributes:
+      label: Paper title or DOI
+      placeholder: e.g. Representation Engineering (Zou et al., 2023) — arXiv:2310.01405
+    validations:
+      required: true
+
+  - type: input
+    id: notebook
+    attributes:
+      label: Notebook URL
+      description: Public link to a runnable `.ipynb` (GitHub, gist, Colab, nbviewer).
+      placeholder: https://github.com/your-org/your-repo/blob/main/notebook.ipynb
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Short description
+      description: What does the notebook reproduce, and what should reviewers focus on?
+      placeholder: Reproduces the linear-probe analysis from Section 4. Uses Llama-3.2-1B and 1k contrastive prompts.
+    validations:
+      required: true
+
+  - type: input
+    id: code_repo
+    attributes:
+      label: Original code repo (optional)
+      description: Link to the paper's reference implementation, if any.
+      placeholder: https://github.com/...
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Optional — known caveats, deviations from the paper, planned follow-ups.
+    validations:
+      required: false

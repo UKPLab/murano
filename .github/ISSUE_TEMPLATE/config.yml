@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/UKPLab/murano/discussions
+    about: Ask questions, share usage tips, and chat with other Murano users.
+  - name: 📖 Documentation
+    url: https://ukplab.github.io/murano/
+    about: Read the guides, API reference, and reproduction gallery.
+  - name: 🚀 Quickstart
+    url: https://ukplab.github.io/murano/docs/getting-started/quickstart/
+    about: New to Murano? Start here.
+  - name: 🧪 Reproduction Gallery
+    url: https://ukplab.github.io/murano/reproductions/
+    about: Browse Murano-powered reproductions of published interpretability work.

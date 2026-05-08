@@ -1,0 +1,51 @@
+name: 📖 Documentation
+description: Report unclear, wrong, or missing documentation
+title: "[DOCS] "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us improve the docs! This template is for issues with the documentation
+        itself — guides, API reference, README, examples, or comments in the source.
+
+        For runtime bugs in the code, please use the **Bug Report** template instead.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of issue
+      options:
+        - Wrong (the docs say something incorrect)
+        - Unclear (the docs are ambiguous or hard to follow)
+        - Missing (a topic isn't documented at all)
+        - Out of date (a docs example uses an old API)
+        - Typo / formatting
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Where is the issue?
+      description: URL, file path, or section heading. Multiple locations OK.
+      placeholder: e.g. https://ukplab.github.io/murano/docs/guides/record/ or src/murano/steps/record.py:230
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong / what's missing?
+      description: Quote the current text or describe what you couldn't find.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix (optional)
+      description: If you have a concrete change in mind, share it. Pull requests welcome.
+    validations:
+      required: false

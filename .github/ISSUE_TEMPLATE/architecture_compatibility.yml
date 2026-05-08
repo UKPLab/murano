@@ -1,0 +1,86 @@
+name: 🧩 Architecture / Compatibility
+description: Murano works on one model or version but not another (cross-architecture, dependency-version, hardware)
+title: "[COMPAT] "
+labels:
+  - compatibility
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when something works on one configuration but breaks on another:
+
+        - The same code works on Llama but fails on GPT-2 / Mistral / Qwen / OPT
+        - Worked on transformers 4.57 but breaks on 4.58
+        - Works on CPU but breaks on `device_map="auto"`
+        - Works locally but fails on a Slurm GPU node
+
+        For pure runtime errors (any model, any version), use the **Bug Report** template.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight Checklist
+      options:
+        - label: I have a working configuration to compare against (i.e., I know it isn't a universal bug).
+          required: true
+        - label: I have searched [existing compatibility issues](https://github.com/UKPLab/murano/issues?q=is%3Aissue+label%3Acompatibility).
+          required: true
+
+  - type: dropdown
+    id: axis
+    attributes:
+      label: Compatibility axis
+      options:
+        - Model architecture (Llama vs GPT-2 vs Mistral vs ...)
+        - Model size / variant (Llama-1B vs Llama-8B)
+        - Library version (transformers / nnsight / nnterp / torch)
+        - Python version
+        - Device / GPU (CPU vs CUDA vs `device_map="auto"`)
+        - OS / platform
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: works_on
+    attributes:
+      label: Works on
+      description: The configuration where Murano runs correctly.
+      placeholder: e.g. meta-llama/Llama-3.2-1B-Instruct, transformers 4.57.6, nnterp 1.2.4
+    validations:
+      required: true
+
+  - type: input
+    id: breaks_on
+    attributes:
+      label: Breaks on
+      description: The configuration where Murano fails or returns wrong results.
+      placeholder: e.g. mistralai/Mistral-7B-Instruct-v0.3, transformers 4.58.0, nnterp 1.2.4
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Code that runs cleanly on the "works on" config but fails on "breaks on".
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: error_output
+    attributes:
+      label: Error / wrong output
+      description: Exception trace, or the wrong-shape / wrong-value output you saw.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Optional — your hypothesis about the root cause, suspected upstream change, etc.
+    validations:
+      required: false

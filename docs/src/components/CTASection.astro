@@ -68,28 +68,18 @@
   form?.addEventListener('submit', (e) => {
     e.preventDefault();
     const data = new FormData(form);
-    const name = (data.get('name') as string ?? '').trim();
+    const submitter = (data.get('name') as string ?? '').trim();
     const paper = (data.get('paper') as string ?? '').trim();
     const notebook = (data.get('notebook') as string ?? '').trim();
     const description = (data.get('description') as string ?? '').trim();
 
-    const title = `[Reproduction] ${paper}`;
-    const body = [
-      `**Submitter:** ${name}`,
-      ``,
-      `**Paper:** ${paper}`,
-      ``,
-      `**Notebook URL:** ${notebook}`,
-      ``,
-      `**Description:**`,
-      ``,
-      description,
-    ].join('\n');
-
     const params = new URLSearchParams({
-      title,
-      body,
-      labels: 'reproduction',
+      template: 'reproduction_submission.yml',
+      title: `[REPRODUCTION] ${paper}`,
+      submitter,
+      paper,
+      notebook,
+      description,
     });
     const url = `https://github.com/UKPLab/murano/issues/new?${params.toString()}`;
     window.open(url, '_blank', 'noopener');

@@ -1,0 +1,104 @@
+name: 🐛 Bug Report
+description: Report a crash, exception, or incorrect output in Murano
+title: "[BUG] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below so we can reproduce and fix it.
+
+        Before submitting, please check:
+        - This issue hasn't already been reported by searching [existing issues](https://github.com/UKPLab/murano/issues?q=is%3Aissue+label%3Abug).
+        - You're using a recent version of Murano (`pip show murano`).
+        - This is a bug in Murano itself, not a model-loading issue with a specific HuggingFace model (those tend to be transformers/nnsight problems).
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight Checklist
+      options:
+        - label: I have searched [existing issues](https://github.com/UKPLab/murano/issues?q=is%3Aissue+label%3Abug) and this hasn't been reported yet.
+          required: true
+        - label: This is a single bug report (please file separate reports for different bugs).
+          required: true
+        - label: I can reproduce this with the latest released version of Murano.
+          required: true
+
+  - type: textarea
+    id: what_wrong
+    attributes:
+      label: What's Wrong?
+      description: Describe what's happening that shouldn't be.
+      placeholder: |
+        When I call `model.record(...)` with `position="mean"`, I get an empty tensor instead of the mean activation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+      placeholder: A non-empty `[N, d_model]` tensor with the masked-mean activations.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: |
+        A minimal, runnable code snippet that triggers the bug. Include the model id, input, and exact arguments.
+      placeholder: |
+        ```python
+        from murano import MuranoModel
+        model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
+        acts = model.record("Hello world", position="mean")
+        print(acts.positive[0].shape)  # expected (1, 2048), got ...
+        ```
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: error_output
+    attributes:
+      label: Error Messages / Logs
+      description: If you saw an exception or warnings, paste them here. Auto-formatted as code.
+      placeholder: |
+        Traceback (most recent call last):
+          ...
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: murano_version
+    attributes:
+      label: Murano Version
+      description: Output of `pip show murano | grep Version` or `python -c 'import murano; print(murano.__version__)'`
+      placeholder: e.g. 0.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Python, PyTorch, transformers, nnsight, nnterp versions; OS; GPU model.
+      placeholder: |
+        Python 3.12.4, torch 2.8.0+cu126, transformers 4.58.0, nnsight 0.5.1, nnterp 1.2.4
+        Ubuntu 22.04, NVIDIA A100 (40 GB)
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Optional — workarounds you've tried, related issues, model-specific notes.
+    validations:
+      required: false
