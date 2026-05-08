@@ -1,7 +1,7 @@
 ---
 import Default from '@astrojs/starlight/components/SocialIcons.astro';
 
-const base = import.meta.env.BASE_URL;
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 const pathname = Astro.url.pathname;
 const isRepro = pathname.startsWith(`${base}reproductions`) || pathname.startsWith('/reproductions');
 const isDocs = pathname.startsWith(`${base}docs`) || pathname.startsWith('/docs');

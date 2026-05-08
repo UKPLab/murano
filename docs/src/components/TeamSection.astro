@@ -1,5 +1,7 @@
 ---
-const base = import.meta.env.BASE_URL;
+import maintainersJson from '../data/maintainers.json';
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 interface Contributor {
   login: string;
@@ -8,6 +10,9 @@ interface Contributor {
   contributions: number;
   type: string;
 }
+
+const allowlist: string[] = maintainersJson.usernames;
+const allowlistLower = new Set(allowlist.map((u) => u.toLowerCase()));
 
 let members: { name: string; github: string; avatar: string }[] = [];
 try {
@@ -20,9 +25,15 @@ try {
   });
   if (res.ok) {
     const data: Contributor[] = await res.json();
-    members = data
-      .filter((c) => c.type === 'User')
-      .sort((a, b) => b.contributions - a.contributions)
+    const byLogin = new Map(
+      data
+        .filter((c) => c.type === 'User')
+        .map((c) => [c.login.toLowerCase(), c]),
+    );
+    // Preserve allowlist order; drop entries with no matching GitHub data.
+    members = allowlist
+      .map((login) => byLogin.get(login.toLowerCase()))
+      .filter((c): c is Contributor => c !== undefined)
       .map((c) => ({ name: c.login, github: c.html_url, avatar: c.avatar_url }));
   } else {
     console.warn(`GitHub contributors fetch failed: ${res.status} ${res.statusText}`);

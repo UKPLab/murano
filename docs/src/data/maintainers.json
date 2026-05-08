@@ -1,0 +1,8 @@
+{
+  "_comment": "Allowlist of GitHub usernames whose cards appear in the People section on the docs homepage. Edit this list to add/remove maintainers. Order in this file is preserved on the rendered page; the GitHub avatars and profile links are fetched at build time from the public Contributors API.",
+  "usernames": [
+    "alirezabayatmk",
+    "adham137",
+    "akatief"
+  ]
+}

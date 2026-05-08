@@ -18,7 +18,7 @@ const { frontmatter } = Astro.props;
 const title = Astro.props.title ?? frontmatter?.title ?? 'Murano';
 const description = Astro.props.description ?? frontmatter?.description;
 const fullTitle = `${title} | Murano`;
-const base = import.meta.env.BASE_URL;
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 
 <!doctype html>

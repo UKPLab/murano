@@ -2,7 +2,7 @@
 import ReproLayout from '../../layouts/ReproLayout.astro';
 import ReproCard from '../../components/ReproCard.astro';
 
-const base = import.meta.env.BASE_URL;
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 const reproductions = [
   {
