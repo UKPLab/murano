@@ -68,10 +68,47 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority for you
+      description: How important is this to your own work? We treat this as a signal, not a commitment.
+      options:
+        - Critical — blocking my paper / project
+        - High — significant impact on productivity
+        - Medium — would be very helpful
+        - Nice to have
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Concrete use case
+      description: Walk us through one realistic scenario where you'd use this. Useful for grepping prior issues with similar intent.
+      placeholder: |
+        I'm running activation patching across 24 layers for a 1B model on 200 prompts.
+        With separate Record + Intervene steps, I do 200 × 2 = 400 forward passes.
+        With this feature, I'd do 200 and the wall-clock drops from ~10 min to ~5 min.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: pr_status
+    attributes:
+      label: Have you started a PR?
+      description: Tells us whether to expect "review my code" or "design and build it for me".
+      options:
+        - "No — want to discuss first"
+        - "Considering / sketching"
+        - "Yes — draft PR is open (link below)"
+    validations:
+      required: true
+
   - type: textarea
     id: extra
     attributes:
-      label: References
-      description: Links to papers, prior implementations, or related discussions.
+      label: References / draft PR link
+      description: Links to papers, prior implementations, related discussions, or your draft PR.
     validations:
       required: false

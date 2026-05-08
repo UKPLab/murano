@@ -7,12 +7,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug! Please fill out the sections below so we can reproduce and fix it.
+        Thanks for reporting a bug! Filling in every section below saves us a round-trip.
 
         Before submitting, please check:
         - This issue hasn't already been reported by searching [existing issues](https://github.com/UKPLab/murano/issues?q=is%3Aissue+label%3Abug).
-        - You're using a recent version of Murano (`pip show murano`).
-        - This is a bug in Murano itself, not a model-loading issue with a specific HuggingFace model (those tend to be transformers/nnsight problems).
+        - You can reproduce the bug on a recent version of Murano.
+        - This is a bug in Murano itself, not a model-loading issue with a specific HuggingFace model
+          (those tend to be `transformers` or `nnsight` problems).
 
   - type: checkboxes
     id: preflight
@@ -26,13 +27,30 @@ body:
         - label: I can reproduce this with the latest released version of Murano.
           required: true
 
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of Murano is involved? Pick the closest match — the maintainer will refine.
+      options:
+        - Recording / activation extraction
+        - Interventions / generation modification
+        - Analysis / probing / lenses
+        - I/O / saving artifacts
+        - Pipeline / Step framework
+        - Plotting / visualization
+        - Cross-architecture / model loading
+        - Other / not sure
+    validations:
+      required: true
+
   - type: textarea
     id: what_wrong
     attributes:
       label: What's Wrong?
       description: Describe what's happening that shouldn't be.
       placeholder: |
-        When I call `model.record(...)` with `position="mean"`, I get an empty tensor instead of the mean activation.
+        When I call `model.record(texts, position="mean")` with a batch of 4, the returned tensor has shape (1, 2048) instead of (4, 2048).
     validations:
       required: true
 
@@ -41,22 +59,27 @@ body:
     attributes:
       label: Expected Behavior
       description: What did you expect to happen instead?
-      placeholder: A non-empty `[N, d_model]` tensor with the masked-mean activations.
+      placeholder: A `[N=4, d_model=2048]` tensor with one masked-mean activation per input.
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Steps to Reproduce
+      label: Minimal reproduction
       description: |
-        A minimal, runnable code snippet that triggers the bug. Include the model id, input, and exact arguments.
+        A self-contained, runnable code snippet that triggers the bug.
+
+        **Please use a small, public, no-auth model** so we can run your repro locally —
+        e.g. `meta-llama/Llama-3.2-1B-Instruct`, `gpt2`, `Qwen/Qwen2.5-0.5B`, `EleutherAI/pythia-70m`.
+        If the bug only occurs on a large or gated model, say so explicitly.
       placeholder: |
         ```python
         from murano import MuranoModel
-        model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
-        acts = model.record("Hello world", position="mean")
-        print(acts.positive[0].shape)  # expected (1, 2048), got ...
+        model = MuranoModel("gpt2")
+        acts = model.record(["hello", "world", "foo", "bar"], position="mean")
+        # expected acts.positive[0].shape == (4, 768); got (1, 768)
+        print(acts.positive[0].shape, acts.positive[0].dtype, acts.positive[0].device)
         ```
       render: python
     validations:
@@ -65,32 +88,100 @@ body:
   - type: textarea
     id: error_output
     attributes:
-      label: Error Messages / Logs
-      description: If you saw an exception or warnings, paste them here. Auto-formatted as code.
+      label: Error / wrong output
+      description: |
+        Full stack trace if it crashed. For numerical / shape bugs, paste the result of
+        `print(tensor.shape, tensor.dtype, tensor.device)` and any value comparison.
       placeholder: |
         Traceback (most recent call last):
-          ...
+          File "...", line N, in ...
+            ...
+        ValueError: ...
+
+        # — or, for wrong-output bugs:
+        actual:   torch.Size([1, 768]) bfloat16 cuda:0
+        expected: torch.Size([4, 768])
       render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Is this a regression?
+      description: Did this work in a previous Murano version? If yes, please tell us which version still worked in the next field.
+      options:
+        - "Yes — it worked in a previous version"
+        - "No — this never worked / new install"
+        - "Don't know"
+    validations:
+      required: true
+
+  - type: input
+    id: last_working_version
+    attributes:
+      label: Last working Murano version (if regression)
+      description: e.g. `0.1.0`. Skip if this isn't a regression.
+      placeholder: e.g. 0.1.0
     validations:
       required: false
 
-  - type: input
-    id: murano_version
+  - type: dropdown
+    id: reproducibility
     attributes:
-      label: Murano Version
-      description: Output of `pip show murano | grep Version` or `python -c 'import murano; print(murano.__version__)'`
-      placeholder: e.g. 0.1.0
+      label: Reproducibility
+      options:
+        - Always
+        - Sometimes (intermittent)
+        - Only happened once
+        - Haven't tried to reproduce
+    validations:
+      required: true
+
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: Model architecture
+      description: nnterp standardizes module names across these. Pick the family of the model in your repro.
+      options:
+        - Llama
+        - GPT-2
+        - Mistral
+        - Qwen
+        - OPT
+        - Other
+        - Not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Hardware
+      options:
+        - Single CUDA GPU
+        - Multi-GPU (`device_map="auto"`)
+        - CPU only
+        - Apple MPS
+        - Other
     validations:
       required: true
 
   - type: textarea
-    id: env
+    id: versions
     attributes:
-      label: Environment
-      description: Python, PyTorch, transformers, nnsight, nnterp versions; OS; GPU model.
+      label: Library versions
+      description: |
+        Paste the output of:
+        ```
+        python -c "import murano, nnsight, nnterp, transformers, torch; print('murano', murano.__version__); print('nnsight', nnsight.__version__); print('nnterp', nnterp.__version__); print('transformers', transformers.__version__); print('torch', torch.__version__)"
+        ```
       placeholder: |
-        Python 3.12.4, torch 2.8.0+cu126, transformers 4.58.0, nnsight 0.5.1, nnterp 1.2.4
-        Ubuntu 22.04, NVIDIA A100 (40 GB)
+        murano 0.1.0
+        nnsight 0.5.1
+        nnterp 1.2.4
+        transformers 4.58.0
+        torch 2.8.0+cu126
       render: shell
     validations:
       required: true
@@ -99,6 +190,6 @@ body:
     id: extra
     attributes:
       label: Anything else?
-      description: Optional — workarounds you've tried, related issues, model-specific notes.
+      description: Workarounds you've tried, related issues, model-specific notes.
     validations:
       required: false

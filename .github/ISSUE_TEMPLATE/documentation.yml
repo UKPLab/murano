@@ -20,7 +20,9 @@ body:
         - Wrong (the docs say something incorrect)
         - Unclear (the docs are ambiguous or hard to follow)
         - Missing (a topic isn't documented at all)
-        - Out of date (a docs example uses an old API)
+        - Missing code examples
+        - Out of date (an example uses an old API)
+        - Broken link
         - Typo / formatting
     validations:
       required: true
@@ -45,7 +47,24 @@ body:
   - type: textarea
     id: suggestion
     attributes:
-      label: Suggested fix (optional)
-      description: If you have a concrete change in mind, share it. Pull requests welcome.
+      label: Suggested improvement
+      description: A concrete change in mind. If you can word it, please do — that's the fastest path to a merged fix.
+      placeholder: |
+        Replace:
+          "Pass `position="last"` to record only the final token."
+        with:
+          "Pass `position="last"` to record only the final non-padding token of each sequence (the position is determined per-row from the attention mask)."
     validations:
-      required: false
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: How badly does this confuse new users?
+      options:
+        - High — blocks users from using a feature
+        - Medium — feature is usable but takes guesswork
+        - Low — minor confusion or polish
+    validations:
+      required: true

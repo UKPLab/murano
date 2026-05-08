@@ -58,6 +58,20 @@ body:
     validations:
       required: false
 
+  - type: dropdown
+    id: hardware_required
+    attributes:
+      label: Hardware required to re-run
+      description: Sets reviewer expectations on whether they can verify the notebook locally.
+      options:
+        - CPU OK (small/no model, or precomputed activations)
+        - Single consumer GPU (≤16 GB)
+        - Single A100 / H100 (40–80 GB)
+        - Multi-GPU
+        - Other / specify in description
+    validations:
+      required: true
+
   - type: textarea
     id: extra
     attributes:
