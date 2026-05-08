@@ -29,11 +29,8 @@ jobs:
           enable-cache: true
           version: 0.7.2
 
-      - name: Install Python deps (murano + griffe)
+      - name: Install Python deps
         run: uv sync --frozen --all-extras --python 3.12
-
-      - name: Install griffe
-        run: uv pip install griffe
 
       - name: Generate API reference
         run: uv run python docs/scripts/gen_api_docs.py
