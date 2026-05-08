@@ -103,4 +103,4 @@ results = Pipeline([
 ]).run()
 ```
 
-This requires the `plot` extra: `pip install murano[plot]`.
+This requires the `plot` extra: `pip install "murano-interp[plot]"`.

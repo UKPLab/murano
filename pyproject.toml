@@ -1,5 +1,5 @@
 [project]
-name = "murano"
+name = "murano-interp"
 dynamic = ["version"]
 description = "Mechanistic interpretability pipelines for recording, steering, probing, and evaluation"
 readme = "README.md"

@@ -27,7 +27,7 @@ jobs:
       - name: Create “latest” wheel copy
         run: |
           wheel=$(ls dist/*.whl)
-          cp "$wheel" dist/murano-latest.whl
+          cp "$wheel" dist/murano_interp-latest.whl
 
       - name: Publish wheels to GitHub Release
         uses: softprops/action-gh-release@v3

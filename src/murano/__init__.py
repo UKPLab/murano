@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from murano.logging import setup_logging
 
 try:
-    __version__ = version("murano")
+    __version__ = version("murano-interp")
 except PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0+unknown"
 

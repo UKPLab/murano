@@ -4,11 +4,25 @@
 
 # Murano
 
+[![Python](https://img.shields.io/badge/Python-3.10%E2%80%933.13-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![CI](https://img.shields.io/github/actions/workflow/status/UKPLab/murano/main-checks.yml?branch=main&style=flat-square&label=CI)](https://github.com/UKPLab/murano/actions/workflows/main-checks.yml)
+[![License: MIT](https://img.shields.io/github/license/UKPLab/murano?style=flat-square&color=brightgreen)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-ukplab.github.io%2Fmurano-blue?style=flat-square)](https://ukplab.github.io/murano/)
+
 Murano is a mechanistic interpretability framework for recording activations,
 finding directions, steering generations, probing representations, and running
 reproducible experiment pipelines.
 
 ## Install
+
+```bash
+pip install murano-interp
+```
+
+The PyPI distribution is `murano-interp` (the bare name `murano` belongs to an
+unrelated OpenStack project). The Python module name is unchanged: `import murano`.
+
+For a development install from source:
 
 ```bash
 pip install -e .

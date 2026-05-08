@@ -12,14 +12,17 @@ description: Install Murano and set up your environment.
 ## Install
 
 ```bash
-pip install murano
+pip install murano-interp
 ```
 
 To include plotting support (matplotlib + seaborn):
 
 ```bash
-pip install murano[plot]
+pip install "murano-interp[plot]"
 ```
+
+The PyPI distribution is `murano-interp` (the bare name `murano` is held by an
+unrelated OpenStack project). The Python module name is unchanged: `import murano`.
 
 ## Development install
 
