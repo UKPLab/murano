@@ -64,7 +64,7 @@ body:
         - New plotting helper (`src/murano/plotting/...`)
         - New `MuranoModel` method
         - New CLI / IO helper
-        - I'm not sure — you decide
+        - I'm not sure; you decide
     validations:
       required: true
 
@@ -74,9 +74,9 @@ body:
       label: Priority for you
       description: How important is this to your own work? We treat this as a signal, not a commitment.
       options:
-        - Critical — blocking my paper / project
-        - High — significant impact on productivity
-        - Medium — would be very helpful
+        - "Critical: blocking my paper / project"
+        - "High: significant impact on productivity"
+        - "Medium: would be very helpful"
         - Nice to have
     validations:
       required: true
@@ -99,9 +99,9 @@ body:
       label: Have you started a PR?
       description: Tells us whether to expect "review my code" or "design and build it for me".
       options:
-        - "No — want to discuss first"
+        - "No: want to discuss first"
         - "Considering / sketching"
-        - "Yes — draft PR is open (link below)"
+        - "Yes: draft PR is open (link below)"
     validations:
       required: true
 

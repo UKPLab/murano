@@ -31,7 +31,7 @@ body:
     id: area
     attributes:
       label: Affected area
-      description: Which part of Murano is involved? Pick the closest match — the maintainer will refine.
+      description: Which part of Murano is involved? Pick the closest match; the maintainer will refine.
       options:
         - Recording / activation extraction
         - Interventions / generation modification
@@ -70,7 +70,7 @@ body:
       description: |
         A self-contained, runnable code snippet that triggers the bug.
 
-        **Please use a small, public, no-auth model** so we can run your repro locally —
+        **Please use a small, public, no-auth model** so we can run your repro locally:
         e.g. `meta-llama/Llama-3.2-1B-Instruct`, `gpt2`, `Qwen/Qwen2.5-0.5B`, `EleutherAI/pythia-70m`.
         If the bug only occurs on a large or gated model, say so explicitly.
       placeholder: |
@@ -98,7 +98,7 @@ body:
             ...
         ValueError: ...
 
-        # — or, for wrong-output bugs:
+        # or, for wrong-output bugs:
         actual:   torch.Size([1, 768]) bfloat16 cuda:0
         expected: torch.Size([4, 768])
       render: shell
@@ -111,8 +111,8 @@ body:
       label: Is this a regression?
       description: Did this work in a previous Murano version? If yes, please tell us which version still worked in the next field.
       options:
-        - "Yes — it worked in a previous version"
-        - "No — this never worked / new install"
+        - "Yes: it worked in a previous version"
+        - "No: this never worked / new install"
         - "Don't know"
     validations:
       required: true

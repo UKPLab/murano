@@ -1,0 +1,145 @@
+name: Issue auto-labeler
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    if: github.event.issue.user.type != 'Bot'
+    steps:
+      - name: Apply labels from issue body
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || "";
+            const issueNumber = context.payload.issue.number;
+
+            // ---- helper: read the value under a "### <heading>" markdown section ----
+            // GitHub renders YAML form dropdown values as: "### <field label>\n\n<value>\n\n..."
+            function fieldValue(heading) {
+              const re = new RegExp(
+                `^###\\s+${heading.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\s*\\r?\\n+([^\\n]+?)\\s*\\r?\\n`,
+                "m",
+              );
+              const m = body.match(re);
+              return m ? m[1].trim() : null;
+            }
+
+            // ---- mappings: form value -> label ----
+            // Use prefix matches (startsWith) so wording tweaks in templates don't break the labeler.
+            const labels = new Set();
+
+            const areaMap = [
+              ["Recording / activation extraction",     "area:record"],
+              ["Interventions / generation modification","area:intervene"],
+              ["Analysis / probing / lenses",            "area:analysis"],
+              ["I/O / saving artifacts",                 "area:io"],
+              ["Pipeline / Step framework",              "area:pipeline"],
+              ["Plotting / visualization",               "area:plotting"],
+              ["Cross-architecture / model loading",     "area:cross-arch"],
+            ];
+
+            const archMap = [
+              ["Llama",   "arch:llama"],
+              ["GPT-2",   "arch:gpt2"],
+              ["Mistral", "arch:mistral"],
+              ["Qwen",    "arch:qwen"],
+              ["OPT",     "arch:opt"],
+            ];
+
+            const hardwareMap = [
+              ["Single CUDA GPU",  "hardware:gpu"],
+              ["Multi-GPU",        "hardware:multi-gpu"],
+              ["CPU only",         "hardware:cpu"],
+              ["Apple MPS",        "hardware:mps"],
+            ];
+
+            const upstreamMap = [
+              ["nnsight",      "upstream:nnsight"],
+              ["nnterp",       "upstream:nnterp"],
+              ["transformers", "upstream:transformers"],
+              ["torch",        "upstream:torch"],
+            ];
+
+            const priorityMap = [
+              ["Critical",     "priority:critical"],
+              ["High",         "priority:high"],
+              ["Medium",       "priority:medium"],
+              ["Nice to have", "priority:nice-to-have"],
+            ];
+
+            const impactMap = [
+              ["High",   "impact:high"],
+              ["Medium", "impact:medium"],
+              ["Low",    "impact:low"],
+            ];
+
+            function applyMap(value, map) {
+              if (!value) return;
+              for (const [prefix, label] of map) {
+                if (value.startsWith(prefix)) {
+                  labels.add(label);
+                  return;
+                }
+              }
+            }
+
+            // ---- form-driven labels ----
+            applyMap(fieldValue("Affected area"),                    areaMap);
+            applyMap(fieldValue("Model architecture"),               archMap);
+            applyMap(fieldValue("Hardware"),                         hardwareMap);
+            applyMap(fieldValue("Suspected upstream cause"),         upstreamMap);
+            applyMap(fieldValue("Priority for you"),                 priorityMap);
+            applyMap(fieldValue("Impact"),                           impactMap);
+
+            // ---- regression / PR-status flags ----
+            const regression = fieldValue("Is this a regression?");
+            if (regression && regression.startsWith("Yes")) {
+              labels.add("regression");
+            }
+
+            const prStatus = fieldValue("Have you started a PR?");
+            if (prStatus && prStatus.startsWith("Yes")) {
+              labels.add("has-pr");
+            }
+
+            // ---- regex fallback (Tier 2) ----
+            // Only fires when the form didn't already determine an area or upstream.
+            const bodyLower = body.toLowerCase();
+            const hasArea = [...labels].some((l) => l.startsWith("area:"));
+            const hasUpstream = [...labels].some((l) => l.startsWith("upstream:"));
+
+            if (!hasArea) {
+              if (/\bnnterp\b|cross.arch|gpt-?2|mistral|qwen|llama/.test(bodyLower)) {
+                labels.add("area:cross-arch");
+              } else if (/\b(plotly|matplotlib|seaborn)\b|\bplot[a-z_]*\(/.test(bodyLower)) {
+                labels.add("area:plotting");
+              } else if (/\brecord\b|activations?|residual.stream/.test(bodyLower)) {
+                labels.add("area:record");
+              }
+            }
+
+            if (!hasUpstream) {
+              if (/\bnnsight\.([a-z_]+|\(|trace\b)/.test(bodyLower)) {
+                labels.add("upstream:nnsight");
+              }
+            }
+
+            // ---- apply ----
+            const labelArray = [...labels];
+            if (labelArray.length === 0) {
+              core.info(`No auto-labels matched for issue #${issueNumber}.`);
+              return;
+            }
+
+            core.info(`Applying labels to #${issueNumber}: ${labelArray.join(", ")}`);
+            await github.rest.issues.addLabels({
+              ...context.repo,
+              issue_number: issueNumber,
+              labels: labelArray,
+            });

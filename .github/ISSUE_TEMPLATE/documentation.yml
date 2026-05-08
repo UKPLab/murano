@@ -8,7 +8,7 @@ body:
     attributes:
       value: |
         Thanks for helping us improve the docs! This template is for issues with the documentation
-        itself — guides, API reference, README, examples, or comments in the source.
+        itself: guides, API reference, README, examples, or comments in the source.
 
         For runtime bugs in the code, please use the **Bug Report** template instead.
 
@@ -48,7 +48,7 @@ body:
     id: suggestion
     attributes:
       label: Suggested improvement
-      description: A concrete change in mind. If you can word it, please do — that's the fastest path to a merged fix.
+      description: A concrete change in mind. If you can word it, please do; that's the fastest path to a merged fix.
       placeholder: |
         Replace:
           "Pass `position="last"` to record only the final token."
@@ -63,8 +63,8 @@ body:
       label: Impact
       description: How badly does this confuse new users?
       options:
-        - High — blocks users from using a feature
-        - Medium — feature is usable but takes guesswork
-        - Low — minor confusion or polish
+        - "High: blocks users from using a feature"
+        - "Medium: feature is usable but takes guesswork"
+        - "Low: minor confusion or polish"
     validations:
       required: true

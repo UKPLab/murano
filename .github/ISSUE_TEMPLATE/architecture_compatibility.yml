@@ -67,7 +67,7 @@ body:
         Code that runs cleanly on the "works on" config but fails on "breaks on".
 
         **Please use small, public, no-auth models** for both halves of the comparison so we can
-        run them locally — e.g. `gpt2`, `meta-llama/Llama-3.2-1B-Instruct`,
+        run them locally: e.g. `gpt2`, `meta-llama/Llama-3.2-1B-Instruct`,
         `Qwen/Qwen2.5-0.5B`, `EleutherAI/pythia-70m`, `facebook/opt-125m`.
       render: python
     validations:
@@ -116,6 +116,6 @@ body:
     id: extra
     attributes:
       label: Anything else?
-      description: Optional — your hypothesis about the root cause, suspected breaking commit, etc.
+      description: Optional. Your hypothesis about the root cause, suspected breaking commit, etc.
     validations:
       required: false
