@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import islice
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from torch import Tensor, arange, cat, full_like, long, tensor  # pyright: ignore[reportPrivateImportUsage]
 
@@ -279,8 +279,7 @@ class Record(Step):
                     truncation=True,
                     return_token_type_ids=False,
                 )
-                attention_mask = tokens["attention_mask"]
-                assert isinstance(attention_mask, Tensor)
+                attention_mask = cast(Tensor, tokens["attention_mask"])
 
                 saved = {}
                 with self.model._lm.trace(tokens):

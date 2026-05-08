@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence, cast
 
 import torch
 from torch import Tensor, bfloat16  # pyright: ignore[reportPrivateImportUsage]
@@ -162,8 +162,7 @@ class MuranoModel:
             return_tensors="pt",
             return_token_type_ids=False,
         )
-        input_ids = tokens["input_ids"]
-        assert isinstance(input_ids, Tensor)
+        input_ids = cast(Tensor, tokens["input_ids"])
         input_len = input_ids.shape[1]
         generation_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
 
@@ -184,9 +183,7 @@ class MuranoModel:
         out = output_ids.value if hasattr(output_ids, "value") else output_ids
         generated = out[0, input_len:]
         # nnsight returns a proxy; tokenizer.decode accepts it at runtime.
-        decoded = self.tokenizer.decode(generated, skip_special_tokens=True)  # pyright: ignore[reportArgumentType]
-        assert isinstance(decoded, str)
-        return decoded
+        return cast(str, self.tokenizer.decode(generated, skip_special_tokens=True))  # pyright: ignore[reportArgumentType]
 
     def record(
         self,
@@ -333,11 +330,12 @@ class MuranoModel:
         Returns:
             The rendered prompt string with a generation prompt appended.
         """
-        rendered = self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+        return cast(
+            str,
+            self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            ),
         )
-        assert isinstance(rendered, str)
-        return rendered
 
     def __repr__(self) -> str:
         return (

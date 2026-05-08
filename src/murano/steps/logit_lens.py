@@ -9,7 +9,7 @@ output. Cross-architecture access is provided by nnterp's standardized
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from torch import Tensor, no_grad, stack  # pyright: ignore[reportPrivateImportUsage]
 from torch.nn.functional import softmax
@@ -98,10 +98,8 @@ class LogitLens(Step):
             truncation=True,
             return_token_type_ids=False,
         )
-        input_ids = tokens["input_ids"]
-        attention_mask = tokens["attention_mask"]
-        assert isinstance(input_ids, Tensor)
-        assert isinstance(attention_mask, Tensor)
+        input_ids = cast(Tensor, tokens["input_ids"])
+        attention_mask = cast(Tensor, tokens["attention_mask"])
 
         saved = {}
         with self.model._lm.trace(tokens):
