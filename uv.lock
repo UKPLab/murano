@@ -1439,7 +1439,7 @@ dev = [
 requires-dist = [
     { name = "datasets", specifier = ">=4.0.0" },
     { name = "huggingface-hub", specifier = ">=0.23.0" },
-    { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.9" },
+    { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.10" },
     { name = "nnsight", specifier = ">=0.4.8" },
     { name = "nnterp", specifier = ">=1.2.2,<2.0" },
     { name = "plotly", marker = "extra == 'plot'", specifier = ">=6.7.0" },
