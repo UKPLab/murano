@@ -18,6 +18,7 @@ const { frontmatter } = Astro.props;
 const title = Astro.props.title ?? frontmatter?.title ?? 'Murano';
 const description = Astro.props.description ?? frontmatter?.description;
 const fullTitle = `${title} | Murano`;
+const base = import.meta.env.BASE_URL;
 ---
 
 <!doctype html>
@@ -27,17 +28,17 @@ const fullTitle = `${title} | Murano`;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{fullTitle}</title>
     {description && <meta name="description" content={description} />}
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="icon" type="image/png" href={`${base}favicon.png`} />
   </head>
   <body>
     <header class="site-header">
       <nav class="header-nav">
-        <a href="/" class="header-logo">
+        <a href={base} class="header-logo">
           <Image src={logoLight} alt="" width={24} height={24} class="logo-light" />
           <Image src={logoDark} alt="" width={24} height={24} class="logo-dark" />
           <span>Murano</span>
         </a>
-        <a href="/docs/getting-started/overview/" class="header-search" aria-label="Search">
+        <a href={`${base}docs/getting-started/overview/`} class="header-search" aria-label="Search">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/>
           </svg>
@@ -45,8 +46,8 @@ const fullTitle = `${title} | Murano`;
           <kbd class="header-search-kbd"><kbd>Ctrl</kbd><kbd>K</kbd></kbd>
         </a>
         <div class="header-links">
-          <a href="/docs/getting-started/overview/">Docs</a>
-          <a href="/reproductions/" class="active">Reproduction Gallery</a>
+          <a href={`${base}docs/getting-started/overview/`}>Docs</a>
+          <a href={`${base}reproductions/`} class="active">Reproduction Gallery</a>
           <a href="https://github.com/UKPLab/murano" target="_blank" rel="noopener">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-label="GitHub">
               <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>

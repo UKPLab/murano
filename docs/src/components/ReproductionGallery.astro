@@ -1,4 +1,6 @@
 ---
+const base = import.meta.env.BASE_URL;
+
 const reproductions = [
   {
     title: 'Hypothesis-Driven Feature Manifold Analysis in LLMs via Supervised Multi-Dimensional Scaling',
@@ -8,7 +10,7 @@ const reproductions = [
     tags: ['probing', 'representations', 'geometry'],
     paper: 'https://openreview.net/forum?id=vCKZ40YYPr',
     github: 'https://github.com/UKPLab/arxiv2025-shape-happens',
-    notebook: '/reproductions/',
+    notebook: `${base}reproductions/`,
   },
 ];
 ---
@@ -74,7 +76,7 @@ const reproductions = [
   </div>
 
   <div class="repro-footer">
-    <a href="/reproductions/" class="repro-all-link">Browse all reproductions →</a>
+    <a href={`${base}reproductions/`} class="repro-all-link">Browse all reproductions →</a>
   </div>
 </section>
 

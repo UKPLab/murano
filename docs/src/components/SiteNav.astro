@@ -1,14 +1,15 @@
 ---
 import Default from '@astrojs/starlight/components/SocialIcons.astro';
 
+const base = import.meta.env.BASE_URL;
 const pathname = Astro.url.pathname;
-const isRepro = pathname.startsWith('/reproductions');
-const isDocs = pathname.startsWith('/docs');
+const isRepro = pathname.startsWith(`${base}reproductions`) || pathname.startsWith('/reproductions');
+const isDocs = pathname.startsWith(`${base}docs`) || pathname.startsWith('/docs');
 ---
 
 <nav class="site-nav">
-  <a href="/docs/getting-started/overview/" data-text="Docs" class:list={['site-nav__link', { active: isDocs }]}>Docs</a>
-  <a href="/reproductions/" data-text="Reproduction Gallery" class:list={['site-nav__link', { active: isRepro }]}>Reproduction Gallery</a>
+  <a href={`${base}docs/getting-started/overview/`} data-text="Docs" class:list={['site-nav__link', { active: isDocs }]}>Docs</a>
+  <a href={`${base}reproductions/`} data-text="Reproduction Gallery" class:list={['site-nav__link', { active: isRepro }]}>Reproduction Gallery</a>
 </nav>
 <Default {...Astro.props} />
 

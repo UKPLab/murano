@@ -2,6 +2,8 @@
 import ReproLayout from '../../layouts/ReproLayout.astro';
 import ReproCard from '../../components/ReproCard.astro';
 
+const base = import.meta.env.BASE_URL;
+
 const reproductions = [
   {
     slug: 'tmlr2026',
@@ -30,7 +32,7 @@ const reproductions = [
       {reproductions.map((r) => (
         <ReproCard
           title={r.title}
-          href={`/reproductions/${r.slug}`}
+          href={`${base}reproductions/${r.slug}`}
           venue={r.venue}
           authors={r.authors}
           description={r.description}
