@@ -1443,7 +1443,7 @@ requires-dist = [
     { name = "nnsight", specifier = ">=0.4.8" },
     { name = "nnterp", specifier = ">=1.2.2,<2.0" },
     { name = "plotly", marker = "extra == 'plot'", specifier = ">=6.7.0" },
-    { name = "scikit-learn", specifier = ">=1.5.0" },
+    { name = "scikit-learn", specifier = ">=1.5.2" },
     { name = "seaborn", marker = "extra == 'plot'", specifier = ">=0.13" },
     { name = "torch", specifier = ">=2.7.1" },
     { name = "tqdm", specifier = ">=4.66.0" },
@@ -1458,7 +1458,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3.4" },
     { name = "pytest-cov", specifier = ">=4.1.0" },
     { name = "ruff", specifier = ">=0.8.5" },
-    { name = "sentencepiece", specifier = ">=0.2.0" },
+    { name = "sentencepiece", specifier = ">=0.2.1" },
 ]
 
 [[package]]
