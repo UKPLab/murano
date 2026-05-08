@@ -12,6 +12,7 @@ from murano.steps.evaluate import GenerationMetric
 from murano.steps.probe import Probe
 from murano.steps.jailbreaking import ComplianceRate, Plot
 from murano.steps.probing import ProbePlot
+from murano.steps.logit_lens import LogitLens, LogitLensResult
 from murano.steps.metrics import (
     CrossEntropyLossStep,
     AccuracyStep,
@@ -32,6 +33,8 @@ __all__ = [
     "ComplianceRate",
     "Plot",
     "ProbePlot",
+    "LogitLens",
+    "LogitLensResult",
     "CrossEntropyLossStep",
     "AccuracyStep",
     "ComparisonComputationStep",

@@ -38,10 +38,12 @@ MODULES = [
     ("murano.steps.jailbreaking.evaluate", "steps/jailbreaking/evaluate"),
     ("murano.steps.jailbreaking.plot", "steps/jailbreaking/plot"),
     ("murano.steps.probing.plot", "steps/probing/plot"),
-    ("murano.lenses.base_lens", "lenses/base_lens"),
-    ("murano.lenses.logit_lens", "lenses/logit_lens"),
+    ("murano.steps.logit_lens", "steps/logit_lens"),
+    ("murano.steps.metrics", "steps/metrics"),
     ("murano.plotting.jailbreaking", "plotting/jailbreaking"),
     ("murano.plotting.probing", "plotting/probing"),
+    ("murano.plotting.logit_lens", "plotting/logit_lens"),
+    ("murano.plotting.plotly_utils", "plotting/plotly_utils"),
 ]
 
 

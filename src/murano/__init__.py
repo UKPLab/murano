@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from murano.pipeline import Pipeline
     from murano.results import Results
     from murano.steps.base import Step
+    from murano.steps.logit_lens import LogitLens, LogitLensResult
 
 
 _LAZY_ATTRS = {
@@ -36,6 +37,8 @@ _LAZY_ATTRS = {
     "Pipeline": ("murano.pipeline", "Pipeline"),
     "Results": ("murano.results", "Results"),
     "Step": ("murano.steps.base", "Step"),
+    "LogitLens": ("murano.steps.logit_lens", "LogitLens"),
+    "LogitLensResult": ("murano.steps.logit_lens", "LogitLensResult"),
     "compliance_rate": ("murano.evaluation", "compliance_rate"),
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
@@ -54,6 +57,8 @@ __all__ = [
     "Pipeline",
     "Results",
     "Step",
+    "LogitLens",
+    "LogitLensResult",
     "__version__",
     "compliance_rate",
     "setup_logging",
