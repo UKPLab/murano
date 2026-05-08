@@ -17,43 +17,30 @@
         </div>
       </summary>
 
-      <form class="repro-form" onsubmit="return false;">
-        <div class="form-row">
-          <div class="form-field">
-            <label for="repro-name">Your name</label>
-            <input id="repro-name" type="text" placeholder="Alice Müller" autocomplete="name" />
-          </div>
-          <div class="form-field">
-            <label for="repro-email">Email</label>
-            <input id="repro-email" type="email" placeholder="alice@example.com" autocomplete="email" />
-          </div>
+      <form class="repro-form" id="repro-submit-form">
+        <div class="form-field">
+          <label for="repro-name">Your name</label>
+          <input id="repro-name" name="name" type="text" placeholder="Federico Tiblias" autocomplete="name" required />
         </div>
 
         <div class="form-field">
           <label for="repro-paper">Paper title or DOI</label>
-          <input id="repro-paper" type="text" placeholder="e.g. Representation Engineering (Zou et al., 2023)" />
+          <input id="repro-paper" name="paper" type="text" placeholder="e.g. Representation Engineering (Zou et al., 2023)" required />
+        </div>
+
+        <div class="form-field">
+          <label for="repro-notebook-url">Notebook URL</label>
+          <input id="repro-notebook-url" name="notebook" type="url" placeholder="https://github.com/your/repo/blob/main/notebook.ipynb (or gist URL)" required />
         </div>
 
         <div class="form-field">
           <label for="repro-desc">Short description</label>
-          <textarea id="repro-desc" rows="3" placeholder="What does your notebook reproduce? Any notes for reviewers."></textarea>
-        </div>
-
-        <div class="form-field">
-          <label for="repro-file">Notebook (.ipynb)</label>
-          <div class="file-drop" id="file-drop-zone">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            <span class="drop-label">Drop your <code>.ipynb</code> here, or <label for="repro-file" class="browse-link">browse</label></span>
-            <span class="drop-hint" id="file-name">No file selected</span>
-            <input id="repro-file" type="file" accept=".ipynb,application/json" />
-          </div>
+          <textarea id="repro-desc" name="description" rows="3" placeholder="What does your notebook reproduce? Any notes for reviewers." required></textarea>
         </div>
 
         <div class="form-actions">
           <button type="submit" class="cta-btn cta-btn--primary">Submit reproduction</button>
-          <span class="form-note">We review all submissions before publishing.</span>
+          <span class="form-note">Opens a pre-filled GitHub issue. We review every submission before publishing.</span>
         </div>
       </form>
     </details>
@@ -76,26 +63,36 @@
 </section>
 
 <script>
-  const input = document.getElementById('repro-file') as HTMLInputElement;
-  const label = document.getElementById('file-name');
-  const zone  = document.getElementById('file-drop-zone');
+  const form = document.getElementById('repro-submit-form') as HTMLFormElement | null;
 
-  input?.addEventListener('change', () => {
-    if (label) label.textContent = input.files?.[0]?.name ?? 'No file selected';
-  });
-
-  zone?.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone?.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone?.addEventListener('drop', (e) => {
+  form?.addEventListener('submit', (e) => {
     e.preventDefault();
-    zone.classList.remove('drag-over');
-    const file = e.dataTransfer?.files[0];
-    if (file && input) {
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      input.files = dt.files;
-      if (label) label.textContent = file.name;
-    }
+    const data = new FormData(form);
+    const name = (data.get('name') as string ?? '').trim();
+    const paper = (data.get('paper') as string ?? '').trim();
+    const notebook = (data.get('notebook') as string ?? '').trim();
+    const description = (data.get('description') as string ?? '').trim();
+
+    const title = `[Reproduction] ${paper}`;
+    const body = [
+      `**Submitter:** ${name}`,
+      ``,
+      `**Paper:** ${paper}`,
+      ``,
+      `**Notebook URL:** ${notebook}`,
+      ``,
+      `**Description:**`,
+      ``,
+      description,
+    ].join('\n');
+
+    const params = new URLSearchParams({
+      title,
+      body,
+      labels: 'reproduction',
+    });
+    const url = `https://github.com/UKPLab/murano/issues/new?${params.toString()}`;
+    window.open(url, '_blank', 'noopener');
   });
 </script>
 
@@ -218,17 +215,6 @@
   position: relative;
 }
 
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  align-items: start;
-}
-
-@media (max-width: 500px) {
-  .form-row { grid-template-columns: 1fr; }
-}
-
 .form-field {
   display: flex;
   flex-direction: column;
@@ -263,48 +249,6 @@
 .form-field input:focus,
 .form-field textarea:focus {
   border-color: var(--sl-color-accent);
-}
-
-/* ── File drop zone ── */
-.file-drop {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 1.5rem 1rem;
-  border: 1.5px dashed var(--sl-color-hairline);
-  border-radius: 0.5rem;
-  background: var(--sl-color-bg);
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  text-align: center;
-}
-
-.file-drop.drag-over {
-  border-color: var(--sl-color-accent);
-  background: color-mix(in srgb, var(--sl-color-accent) 6%, var(--sl-color-bg));
-}
-
-.file-drop input[type="file"] {
-  display: none;
-}
-
-.drop-label {
-  font-size: 0.875rem;
-  color: var(--sl-color-gray-3);
-}
-
-.browse-link {
-  color: var(--sl-color-accent);
-  cursor: pointer;
-  font-weight: 600;
-  border-bottom: 1px solid color-mix(in srgb, var(--sl-color-accent) 40%, transparent);
-}
-
-.drop-hint {
-  font-size: 0.775rem;
-  color: var(--sl-color-gray-4);
-  font-family: var(--sl-font-mono);
 }
 
 /* ── Submit row ── */

@@ -51,6 +51,8 @@ jobs:
       - name: Build site
         run: npm run build
         working-directory: docs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/configure-pages@v5
 
