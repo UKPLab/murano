@@ -29,11 +29,43 @@ jobs:
           wheel=$(ls dist/*.whl)
           cp "$wheel" dist/murano_interp-latest.whl
 
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+
       - name: Publish wheels to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*.whl
+            dist/*.tar.gz
           fail_on_unmatched_files: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [release-build]
+    environment:
+      name: pypi
+      url: https://pypi.org/p/murano-interp
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Remove non-distributable copies
+        run: rm -f dist/murano_interp-latest.whl
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
   checks:
     uses: ./.github/workflows/shared.yml
