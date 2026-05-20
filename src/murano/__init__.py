@@ -17,7 +17,12 @@ if TYPE_CHECKING:
     from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
     from murano.dataset import LabeledDataset, MuranoDataset
     from murano.evaluation import compliance_rate
-    from murano.io import load_steering, save_ablated_model, save_results
+    from murano.io import (
+        load_logit_lens,
+        load_steering,
+        save_ablated_model,
+        save_results,
+    )
     from murano.model import MuranoModel
     from murano.model import MuranoModel as Model
     from murano.pipeline import Pipeline
@@ -42,6 +47,7 @@ _LAZY_ATTRS = {
     "compliance_rate": ("murano.evaluation", "compliance_rate"),
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
+    "load_logit_lens": ("murano.io", "load_logit_lens"),
     "save_ablated_model": ("murano.io", "save_ablated_model"),
 }
 
@@ -64,6 +70,7 @@ __all__ = [
     "setup_logging",
     "save_results",
     "load_steering",
+    "load_logit_lens",
     "save_ablated_model",
 ]
 

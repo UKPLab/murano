@@ -176,6 +176,44 @@ class TestLogitLensSave:
         assert metadata["logit_lens"]["n_layers"] == 2
         assert metadata["logit_lens"]["n_inputs"] == 1
 
+    def test_load_logit_lens_roundtrip(self, model, tmp_path):
+        from murano.io import load_logit_lens
+
+        results = Pipeline(
+            [
+                LoadPrompts(["hello world", "good world"]),
+                LogitLens(model, layers=[0, 1]),
+                Save(output_dir=str(tmp_path)),
+            ]
+        ).run()
+
+        loaded = load_logit_lens(tmp_path / "logit_lens" / "logit_lens.pt")
+        original = results["logit_lens"]
+        assert isinstance(loaded, LogitLensResult)
+        assert torch.equal(loaded.all_probs, original.all_probs)
+        assert torch.equal(loaded.max_probs, original.max_probs)
+        assert torch.equal(loaded.predicted_tokens, original.predicted_tokens)
+        assert torch.equal(loaded.attention_mask, original.attention_mask)
+        assert loaded.predicted_words == original.predicted_words
+        assert loaded.input_words == original.input_words
+        assert loaded.layer_indices == original.layer_indices
+
+    def test_save_routes_custom_key_to_keyed_filename(self, model, tmp_path):
+        from murano.results import Results
+
+        pipe_results = Pipeline(
+            [
+                LoadPrompts(["hello world"]),
+                LogitLens(model, layers=[0]),
+            ]
+        ).run()
+        results = Results()
+        results["lens_baseline"] = pipe_results["logit_lens"]
+        Save(output_dir=str(tmp_path))(results)
+
+        assert (tmp_path / "logit_lens" / "lens_baseline.pt").exists()
+        assert not (tmp_path / "logit_lens" / "logit_lens.pt").exists()
+
 
 class TestLogitLensPlot:
     """Visualization smoke tests."""
