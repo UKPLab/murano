@@ -17,13 +17,25 @@ if TYPE_CHECKING:
     from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
     from murano.dataset import LabeledDataset, MuranoDataset
     from murano.evaluation import compliance_rate
-    from murano.io import load_steering, save_ablated_model, save_results
+    from murano.io import (
+        load_sae_activations,
+        load_sae_examples,
+        load_steering,
+        save_ablated_model,
+        save_results,
+    )
     from murano.model import MuranoModel
     from murano.model import MuranoModel as Model
     from murano.pipeline import Pipeline
     from murano.results import Results
     from murano.steps.base import Step
     from murano.steps.logit_lens import LogitLens, LogitLensResult
+    from murano.steps.sae import (
+        SAEActivationStore,
+        SAEEncode,
+        SAEFeatureExamples,
+        SAETopKContexts,
+    )
 
 
 _LAZY_ATTRS = {
@@ -39,9 +51,15 @@ _LAZY_ATTRS = {
     "Step": ("murano.steps.base", "Step"),
     "LogitLens": ("murano.steps.logit_lens", "LogitLens"),
     "LogitLensResult": ("murano.steps.logit_lens", "LogitLensResult"),
+    "SAEEncode": ("murano.steps.sae", "SAEEncode"),
+    "SAEActivationStore": ("murano.steps.sae", "SAEActivationStore"),
+    "SAETopKContexts": ("murano.steps.sae", "SAETopKContexts"),
+    "SAEFeatureExamples": ("murano.steps.sae", "SAEFeatureExamples"),
     "compliance_rate": ("murano.evaluation", "compliance_rate"),
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
+    "load_sae_activations": ("murano.io", "load_sae_activations"),
+    "load_sae_examples": ("murano.io", "load_sae_examples"),
     "save_ablated_model": ("murano.io", "save_ablated_model"),
 }
 
@@ -59,11 +77,17 @@ __all__ = [
     "Step",
     "LogitLens",
     "LogitLensResult",
+    "SAEActivationStore",
+    "SAEEncode",
+    "SAEFeatureExamples",
+    "SAETopKContexts",
     "__version__",
     "compliance_rate",
     "setup_logging",
     "save_results",
     "load_steering",
+    "load_sae_activations",
+    "load_sae_examples",
     "save_ablated_model",
 ]
 
