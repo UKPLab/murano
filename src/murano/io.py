@@ -215,6 +215,78 @@ def load_logit_lens(path: str | Path) -> Any:
     )
 
 
+def save_activation_store(activation_store: Any, path: Path) -> None:
+    """Save an ActivationStore to a .pt file.
+
+    Interim on-disk format; the layout may change.
+
+    Args:
+        activation_store: ActivationStore to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "positive": activation_store.positive,
+            "negative": activation_store.negative,
+        },
+        path,
+    )
+    logger.info("Saved activation store to %s", path)
+
+
+def load_activation_store(path: str | Path) -> Any:
+    """Load an ActivationStore from a .pt file.
+
+    Args:
+        path: Path to the saved activation-store .pt file.
+
+    Returns:
+        ActivationStore with ``positive`` and ``negative`` activation dicts.
+    """
+    from murano.steps.record import ActivationStore
+
+    data = torch.load(path, weights_only=False)
+    return ActivationStore(positive=data["positive"], negative=data["negative"])
+
+
+def save_labeled_activation_store(labeled_store: Any, path: Path) -> None:
+    """Save a LabeledActivationStore to a .pt file.
+
+    Interim on-disk format; the layout may change.
+
+    Args:
+        labeled_store: LabeledActivationStore to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "activations": labeled_store.activations,
+            "labels": labeled_store.labels,
+        },
+        path,
+    )
+    logger.info("Saved labeled activation store to %s", path)
+
+
+def load_labeled_activation_store(path: str | Path) -> Any:
+    """Load a LabeledActivationStore from a .pt file.
+
+    Args:
+        path: Path to the saved labeled-activation-store .pt file.
+
+    Returns:
+        LabeledActivationStore with ``activations`` dict and ``labels`` tensor.
+    """
+    from murano.steps.record import LabeledActivationStore
+
+    data = torch.load(path, weights_only=False)
+    return LabeledActivationStore(
+        activations=data["activations"], labels=data["labels"]
+    )
+
+
 def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
     """Save a PromptBatch to JSON.
 
@@ -295,6 +367,7 @@ def register_artifact_serializer(
 def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
+    from murano.steps.record import ActivationStore, LabeledActivationStore
     from murano.steps.train import SteeringResult
 
     registry: list[tuple[type, ArtifactSerializer]] = []
@@ -399,12 +472,49 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "n_inputs": logit_lens.all_probs.shape[1],
         }
 
+    def serialize_activation_store(
+        key: str,
+        store: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "record.pt" if key == "record" else f"{key}.pt"
+        save_activation_store(store, out / "activations" / filename)
+        pos = next(iter(store.positive.values()), None)
+        neg = next(iter(store.negative.values()), None)
+        metadata[key] = {
+            "kind": "contrastive",
+            "keys": [str(k) for k in store.positive],
+            "n_positive": pos.shape[0] if pos is not None else 0,
+            "n_negative": neg.shape[0] if neg is not None else 0,
+        }
+
+    def serialize_labeled_activation_store(
+        key: str,
+        store: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "record.pt" if key == "record" else f"{key}.pt"
+        save_labeled_activation_store(store, out / "activations" / filename)
+        metadata[key] = {
+            "kind": "labeled",
+            "keys": [str(k) for k in store.activations],
+            "n_examples": store.labels.shape[0],
+        }
+
     register_artifact_serializer(registry, PromptBatch, serialize_prompts)
     register_artifact_serializer(registry, SteeringResult, serialize_steering)
     register_artifact_serializer(registry, GenerationComparison, serialize_generations)
     register_artifact_serializer(registry, MetricResult, serialize_metric)
     register_artifact_serializer(registry, ProbeResult, serialize_probe)
     register_artifact_serializer(registry, LogitLensResult, serialize_logit_lens)
+    register_artifact_serializer(registry, ActivationStore, serialize_activation_store)
+    register_artifact_serializer(
+        registry, LabeledActivationStore, serialize_labeled_activation_store
+    )
     return registry
 
 
@@ -435,6 +545,8 @@ def save_results(
         │   └── eval.json
         ├── logit_lens/          # logit-lens probabilities + decoded words
         │   └── logit_lens.pt
+        ├── activations/         # recorded activation stores (transitional format)
+        │   └── record.pt
         └── metadata.json
 
     Args:
@@ -451,7 +563,7 @@ def save_results(
 
     metadata: dict[str, Any] = {
         "base_model": model_id,
-        "pipeline_steps": list(results.keys()),
+        "result_keys": list(results.keys()),
     }
 
     # Record dataset provenance
@@ -482,6 +594,18 @@ def save_results(
             continue
         serializer = _find_serializer(artifact, registry)
         if serializer is None:
+            # "dataset" is recorded as provenance above; "output_dir" and other
+            # transient values aren't artifacts. Warn on anything else so a real
+            # artifact with no serializer isn't dropped silently.
+            if key not in metadata and not isinstance(
+                artifact, (str, bytes, int, float, bool, Path, type(None))
+            ):
+                logger.warning(
+                    "No serializer registered for results[%r] (type %s); it was "
+                    "not saved. Register one in _serializer_registry().",
+                    key,
+                    type(artifact).__name__,
+                )
             continue
         serializer(key, artifact, out, results, metadata)
         serialized_ids.add(id(artifact))
