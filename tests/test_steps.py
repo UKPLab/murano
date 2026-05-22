@@ -29,7 +29,7 @@ from murano.steps.intervene import (
     steer_direction,
 )
 from murano.steps.weight_ablation import ProjectionOperator
-from murano.steps.jailbreaking.evaluate import (
+from murano.steps.refusal.evaluate import (
     ComplianceRate,
     EvalResult,
 )

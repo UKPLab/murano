@@ -1,6 +1,6 @@
 """Evaluate step: measures compliance rate after intervention.
 
-This step is jailbreaking-specific: it detects refusal phrases in model
+This step is refusal-specific: it detects refusal phrases in model
 generations. Generic evaluation steps (accuracy, KL div, etc.) belong
 in murano/steps/ directly.
 """

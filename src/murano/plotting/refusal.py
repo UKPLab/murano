@@ -1,4 +1,4 @@
-"""Plotting utilities for jailbreaking results.
+"""Plotting utilities for refusal results.
 
 Requires matplotlib and seaborn (install with: pip install murano[plot]).
 """
@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from murano.steps.train import SteeringResult
-    from murano.steps.jailbreaking.evaluate import EvalResult
+    from murano.steps.refusal.evaluate import EvalResult
 
 
 def _require_plotting():

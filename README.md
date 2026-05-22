@@ -112,7 +112,7 @@ caught up-front.
 | `GenerationMetric` | `intervene`           | `metric`                       | Score baseline vs modified outputs with a user metric.   |
 | `ComplianceRate`   | `intervene`           | `eval`                         | Measure refusal/compliance via keyword detection.        |
 | `Save`             | (any present)         | `output_dir`                   | Persist all results to organized subdirectories.         |
-| `Plot` \*          | (optional)            | —                              | Render jailbreaking plots (steering, generations, eval). |
+| `Plot` \*          | (optional)            | —                              | Render refusal plots (steering, generations, eval).      |
 | `ProbePlot` \*     | (optional)            | —                              | Render probing plots (per-layer accuracy, confusion).    |
 
 \* Requires the `[plot]` extra: `pip install -e .[plot]`.

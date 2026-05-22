@@ -1,6 +1,6 @@
 """Plotting utilities for Murano results."""
 
-from murano.plotting.jailbreaking import (
+from murano.plotting.refusal import (
     plot_separation_scores,
     plot_compliance_comparison,
     plot_refusal_heatmap,

@@ -87,7 +87,7 @@ For multi-step experiments that need validation and reproducibility, use the pip
 from murano import MuranoDataset, MuranoModel, Pipeline
 from murano.steps import Load, Record, SteeringVector, Intervene
 from murano.steps.intervene import ablate_direction
-from murano.steps.jailbreaking import ComplianceRate
+from murano.steps.refusal import ComplianceRate
 
 model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
 
