@@ -1,4 +1,4 @@
-"""Smoke tests for the SAE steps (SAEEncode, SAETopKContexts) and their I/O."""
+"""Smoke tests for the SAE steps (SAEEncode, SAETopActivations) and their I/O."""
 
 from __future__ import annotations
 
@@ -23,7 +23,8 @@ from murano.steps.sae import (
     SAEActivationStore,
     SAEEncode,
     SAEFeatureExamples,
-    SAETopKContexts,
+    SAEModel,
+    SAETopActivations,
 )
 
 
@@ -86,7 +87,8 @@ def _synthetic_sae_store(
     seq: int = 4,
     n_features: int = 5,
     layer: int = 0,
-    sae_repo: str = "test/synthetic-sae",
+    release: str = "test/synthetic-sae",
+    sae_id: str = "test/sae-id",
     texts: list[str] | None = None,
     tokens: torch.Tensor | None = None,
     attention_mask: torch.Tensor | None = None,
@@ -107,9 +109,62 @@ def _synthetic_sae_store(
         attention_mask=attention_mask,
         texts=texts,
         layer=layer,
-        sae_repo=sae_repo,
+        release=release,
+        sae_id=sae_id,
         n_features=n_features,
     )
+
+
+class _FakeSAE:
+    """Drop-in for a sae-lens SAE in tests, no HF download required."""
+
+    def __init__(
+        self,
+        d_sae: int = 16,
+        hook_name: str = "blocks.0.hook_resid_post",
+        hook_layer: int = 0,
+    ):
+        metadata = type("Metadata", (), {})()
+        metadata.hook_name = hook_name
+        metadata.hook_layer = hook_layer
+        cfg = type("Cfg", (), {})()
+        cfg.d_sae = d_sae
+        cfg.metadata = metadata
+        self.cfg = cfg
+
+    def encode(self, residual: torch.Tensor) -> torch.Tensor:
+        return residual.new_zeros(*residual.shape[:-1], self.cfg.d_sae)
+
+
+class TestSAEModel:
+    """SAEModel contract; loading is mocked to avoid HF downloads."""
+
+    def test_init_stores_args(self):
+        sae = SAEModel(release="acme/sae", sae_id="layer_0/canonical")
+        assert sae.release == "acme/sae"
+        assert sae.sae_id == "layer_0/canonical"
+        assert sae.device == "cpu"
+        assert sae._sae is None  # nothing loaded yet
+
+    def test_n_features_delegates_to_loaded_sae(self):
+        sae = SAEModel(release="acme/sae", sae_id="layer_0/canonical")
+        sae._sae = _FakeSAE()
+        assert sae.n_features == 16
+
+    def test_encode_delegates_to_loaded_sae(self):
+        sae = SAEModel(release="acme/sae", sae_id="layer_0/canonical")
+        sae._sae = _FakeSAE()
+        out = sae.encode(torch.zeros(2, 3, 32))
+        assert out.shape == (2, 3, 16)
+
+    def test_load_is_cached(self):
+        # Once _sae is set, subsequent calls reuse it without re-loading.
+        sae = SAEModel(release="acme/sae", sae_id="layer_0/canonical")
+        sae._sae = _FakeSAE()
+        before = sae._sae
+        _ = sae.n_features
+        _ = sae.encode(torch.zeros(1, 1, 4))
+        assert sae._sae is before
 
 
 class TestSAEArtifacts:
@@ -122,6 +177,8 @@ class TestSAEArtifacts:
         assert store.attention_mask.shape == (2, 3)
         assert len(store.texts) == 2
         assert store.layer == 0
+        assert store.release == "test/synthetic-sae"
+        assert store.sae_id == "test/sae-id"
         assert store.n_features == 4
 
     def test_sae_feature_examples_construction(self):
@@ -131,7 +188,8 @@ class TestSAEArtifacts:
             tokens={0: ["x", "y"], 1: ["z"]},
             act_vals={0: [1.0, 0.5], 1: [0.7]},
             layer=3,
-            sae_repo="test/repo",
+            release="acme/release",
+            sae_id="layer_3/canonical",
             k=2,
         )
         assert ex.feat_ids == [0, 1]
@@ -142,51 +200,180 @@ class TestSAEArtifacts:
 class TestSAEEncodeContract:
     """Contract-only tests for SAEEncode (encoder body unimplemented)."""
 
-    def test_init_validates_layer_bounds(self, model):
-        with pytest.raises(ValueError, match="out of bounds"):
-            SAEEncode(model, sae_repo="test/repo", layer=model.n_layers)
-        with pytest.raises(ValueError, match="out of bounds"):
-            SAEEncode(model, sae_repo="test/repo", layer=-1)
-
-    def test_init_stores_args(self, model):
-        step = SAEEncode(model, sae_repo="test/repo", layer=0)
+    def test_init_constructs_sae_model(self, model):
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
         assert step.model is model
-        assert step.sae_repo == "test/repo"
-        assert step.layer == 0
+        assert isinstance(step.sae_model, SAEModel)
+        assert step.sae_model.release == "test/repo"
+        assert step.sae_model.sae_id == "test/id"
 
     def test_declares_correct_reads_writes(self):
         assert SAEEncode.reads == ["prompts"]
         assert SAEEncode.writes == ["sae_record"]
         assert SAEEncode.write_types == {"sae_record": SAEActivationStore}
 
-    def test_call_raises_not_implemented(self, model):
+    def test_call_runs_trace_and_encodes_via_sae_model(self, model):
+        # Mock the SAE so this exercises trace + package without HF download.
+        from murano.artifacts import PromptBatch
         from murano.results import Results
 
-        step = SAEEncode(model, sae_repo="test/repo", layer=0)
-        with pytest.raises(NotImplementedError):
-            step(Results())
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=["hello world", "good world"])
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
+        step.sae_model._sae = _FakeSAE(hook_layer=0)
+
+        results = step(results)
+        store: SAEActivationStore = results["sae_record"]
+        assert store.activations.shape[0] == 2
+        assert store.activations.shape[-1] == 16
+        assert store.release == "test/repo"
+        assert store.sae_id == "test/id"
+        assert store.layer == 0
+        assert store.n_features == 16
+        assert store.texts == ["hello world", "good world"]
+
+    def test_call_validates_layer_bounds_against_sae_cfg(self, model):
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=["hello"])
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
+        step.sae_model._sae = _FakeSAE(hook_layer=model.n_layers)  # out of range
+        with pytest.raises(ValueError, match="model has only"):
+            step(results)
+
+    def test_call_handles_resid_pre_hook(self, model):
+        # SAE trained on `resid_pre` uses layer.input instead of layer.output.
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=["hello world"])
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
+        step.sae_model._sae = _FakeSAE(
+            hook_name="blocks.0.hook_resid_pre", hook_layer=0
+        )
+
+        results = step(results)
+        store: SAEActivationStore = results["sae_record"]
+        assert store.layer == 0
+        assert store.activations.shape[-1] == 16
+
+    def test_call_handles_mlp_out_hook(self, model):
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=["hello"])
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
+        step.sae_model._sae = _FakeSAE(hook_name="blocks.0.hook_mlp_out", hook_layer=0)
+
+        results = step(results)
+        assert results["sae_record"].layer == 0
+
+    def test_call_handles_attn_out_hook(self, model):
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=["hello"])
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
+        step.sae_model._sae = _FakeSAE(hook_name="blocks.0.hook_attn_out", hook_layer=0)
+
+        results = step(results)
+        assert results["sae_record"].layer == 0
+
+    def test_call_handles_resid_mid_hook(self, model):
+        # resid_mid = resid_pre + attn_out; ensures both captures + add path runs.
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=["hello"])
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
+        step.sae_model._sae = _FakeSAE(
+            hook_name="blocks.0.hook_resid_mid", hook_layer=0
+        )
+
+        results = step(results)
+        assert results["sae_record"].layer == 0
+
+    def test_call_falls_back_when_hook_layer_is_none(self, model):
+        # gemma-scope-style: hook_layer is None but sae_id encodes layer_N.
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=["hello"])
+        step = SAEEncode(
+            model, release="test/repo", sae_id="layer_1/width_16k/canonical"
+        )
+        step.sae_model._sae = _FakeSAE(hook_name=None, hook_layer=None)
+
+        results = step(results)
+        assert results["sae_record"].layer == 1
+
+    def test_call_rejects_hook_z(self, model):
+        # Per-head attention SAEs need release-specific reshape; not supported.
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=["hello"])
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
+        step.sae_model._sae = _FakeSAE(hook_name="blocks.0.attn.hook_z", hook_layer=0)
+        with pytest.raises(NotImplementedError, match="hook_z"):
+            step(results)
+
+    def test_call_rejects_truly_unknown_hook(self, model):
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=["hello"])
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
+        step.sae_model._sae = _FakeSAE(
+            hook_name="blocks.0.something_weird", hook_layer=0
+        )
+        with pytest.raises(NotImplementedError, match="not recognized"):
+            step(results)
+
+    def test_max_length_truncates_when_set(self, model):
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        long_prompt = "hello world good bad hello world good bad"  # 8 tokens
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=[long_prompt])
+        step = SAEEncode(model, release="test/repo", sae_id="test/id", max_length=4)
+        step.sae_model._sae = _FakeSAE(hook_layer=0)
+
+        results = step(results)
+        store = results["sae_record"]
+        assert store.tokens.shape[1] == 4
 
 
-class TestSAETopKContexts:
+class TestSAETopActivations:
     """Synthetic activations, deterministic top-K behavior."""
 
     def test_rejects_k_below_one(self, model):
         with pytest.raises(ValueError, match="k must be >= 1"):
-            SAETopKContexts(model, k=0)
+            SAETopActivations(model, k=0)
 
     def test_rejects_out_of_range_feat_ids(self, model):
         from murano.results import Results
 
         results = Results()
         results["sae_record"] = _synthetic_sae_store(n_features=4)
-        step = SAETopKContexts(model, k=2, feat_ids=[0, 7])
+        step = SAETopActivations(model, k=2, feat_ids=[0, 7])
         with pytest.raises(ValueError, match="out of range"):
             step(results)
 
     def test_topk_selects_largest_activations_per_feature(self, model):
         from murano.results import Results
 
-        # 2 texts × 3 seq × 2 features. Top values per feature:
+        # 2 texts x 3 seq x 2 features. Top values per feature:
         # feat 0: 9.0 at (1, 2) then 5.0 at (0, 2)
         # feat 1: 8.0 at (0, 1) then 6.0 at (0, 2)
         acts = torch.tensor(
@@ -215,7 +402,7 @@ class TestSAETopKContexts:
 
         results = Results()
         results["sae_record"] = store
-        results = SAETopKContexts(model, k=2)(results)
+        results = SAETopActivations(model, k=2)(results)
 
         examples: SAEFeatureExamples = results["feature_examples"]
         assert examples.feat_ids == [0, 1]
@@ -248,7 +435,7 @@ class TestSAETopKContexts:
 
         results = Results()
         results["sae_record"] = store
-        results = SAETopKContexts(model, k=2)(results)
+        results = SAETopActivations(model, k=2)(results)
 
         examples: SAEFeatureExamples = results["feature_examples"]
         assert 10.0 not in examples.act_vals[0]
@@ -262,16 +449,79 @@ class TestSAETopKContexts:
 
         results = Results()
         results["sae_record"] = store
-        step = SAETopKContexts(model, k=1, feat_ids=[1, 3])
+        step = SAETopActivations(model, k=1, feat_ids=[1, 3])
         results = step(results)
 
         examples: SAEFeatureExamples = results["feature_examples"]
         assert examples.feat_ids == [1, 3]
         assert set(examples.contexts.keys()) == {1, 3}
 
+    def test_topk_propagates_release_and_sae_id(self, model):
+        from murano.results import Results
+
+        store = _synthetic_sae_store(
+            n=1, seq=2, n_features=2, release="acme/release", sae_id="layer_0/canonical"
+        )
+        results = Results()
+        results["sae_record"] = store
+        results = SAETopActivations(model, k=1)(results)
+
+        examples: SAEFeatureExamples = results["feature_examples"]
+        assert examples.release == "acme/release"
+        assert examples.sae_id == "layer_0/canonical"
+
+    def test_topk_skips_bos_by_default(self, model):
+        from murano.results import Results
+
+        # Hand-craft: largest activation is at a BOS-token position.
+        # With skip_bos=True (default) it must not appear.
+        bos = VOCAB["<s>"]
+        acts = torch.tensor([[[10.0], [3.0], [2.0]]])
+        tokens = torch.tensor([[bos, VOCAB["hello"], VOCAB["world"]]], dtype=torch.long)
+        store = _synthetic_sae_store(
+            n=1,
+            seq=3,
+            n_features=1,
+            activations=acts,
+            tokens=tokens,
+            attention_mask=torch.ones(1, 3, dtype=torch.long),
+            texts=["only prompt"],
+        )
+
+        results = Results()
+        results["sae_record"] = store
+        results = SAETopActivations(model, k=2)(results)
+
+        examples: SAEFeatureExamples = results["feature_examples"]
+        assert 10.0 not in examples.act_vals[0]
+        assert examples.act_vals[0] == [3.0, 2.0]
+
+    def test_topk_includes_bos_when_skip_disabled(self, model):
+        from murano.results import Results
+
+        bos = VOCAB["<s>"]
+        acts = torch.tensor([[[10.0], [3.0], [2.0]]])
+        tokens = torch.tensor([[bos, VOCAB["hello"], VOCAB["world"]]], dtype=torch.long)
+        store = _synthetic_sae_store(
+            n=1,
+            seq=3,
+            n_features=1,
+            activations=acts,
+            tokens=tokens,
+            attention_mask=torch.ones(1, 3, dtype=torch.long),
+            texts=["only prompt"],
+        )
+
+        results = Results()
+        results["sae_record"] = store
+        results = SAETopActivations(model, k=2, skip_bos=False)(results)
+
+        examples: SAEFeatureExamples = results["feature_examples"]
+        assert examples.act_vals[0] == [10.0, 3.0]
+
 
 class TestSAESave:
-    """End-to-end Pipeline → Save round-trip with synthetic SAE artifacts."""
+    """End-to-end Pipeline + Save round-trip with synthetic SAE artifacts."""
 
     def test_save_writes_sae_record_and_examples(self, model, tmp_path):
         from murano.results import Results
@@ -279,7 +529,7 @@ class TestSAESave:
         results = Results()
         results["sae_record"] = _synthetic_sae_store(n=2, seq=3, n_features=4)
         results["sae_record"].activations[:] = torch.randn(2, 3, 4)
-        SAETopKContexts(model, k=2)(results)
+        SAETopActivations(model, k=2)(results)
         Save(output_dir=str(tmp_path))(results)
 
         sae_pt = tmp_path / "sae" / "sae_record.pt"
@@ -294,7 +544,8 @@ class TestSAESave:
         assert torch.equal(loaded["attention_mask"], original.attention_mask)
         assert loaded["texts"] == original.texts
         assert loaded["layer"] == original.layer
-        assert loaded["sae_repo"] == original.sae_repo
+        assert loaded["release"] == original.release
+        assert loaded["sae_id"] == original.sae_id
         assert loaded["n_features"] == original.n_features
 
         examples_data = json.loads(examples_json.read_text())
@@ -310,15 +561,21 @@ class TestSAESave:
 
         results = Results()
         results["sae_record"] = _synthetic_sae_store(
-            n=2, seq=3, n_features=4, layer=1, sae_repo="acme/sae-v1"
+            n=2,
+            seq=3,
+            n_features=4,
+            layer=1,
+            release="acme/sae-v1",
+            sae_id="layer_1/canonical",
         )
-        SAETopKContexts(model, k=2)(results)
+        SAETopActivations(model, k=2)(results)
         Save(output_dir=str(tmp_path))(results)
 
         metadata = json.loads((tmp_path / "metadata.json").read_text())
         assert "sae_record" in metadata
         assert metadata["sae_record"]["layer"] == 1
-        assert metadata["sae_record"]["sae_repo"] == "acme/sae-v1"
+        assert metadata["sae_record"]["release"] == "acme/sae-v1"
+        assert metadata["sae_record"]["sae_id"] == "layer_1/canonical"
         assert metadata["sae_record"]["n_features"] == 4
         assert "feature_examples" in metadata
         assert metadata["feature_examples"]["k"] == 2
@@ -326,7 +583,7 @@ class TestSAESave:
 
 
 class TestSAELoadRoundTrip:
-    """save → load returns an equivalent artifact."""
+    """save then load returns an equivalent artifact."""
 
     def test_load_sae_activations_roundtrip(self, model, tmp_path):
         from murano.io import load_sae_activations
@@ -334,7 +591,12 @@ class TestSAELoadRoundTrip:
 
         results = Results()
         results["sae_record"] = _synthetic_sae_store(
-            n=2, seq=3, n_features=4, layer=1, sae_repo="acme/sae-v1"
+            n=2,
+            seq=3,
+            n_features=4,
+            layer=1,
+            release="acme/sae-v1",
+            sae_id="layer_1/canonical",
         )
         results["sae_record"].activations[:] = torch.randn(2, 3, 4)
         Save(output_dir=str(tmp_path))(results)
@@ -346,7 +608,8 @@ class TestSAELoadRoundTrip:
         assert torch.equal(loaded.attention_mask, original.attention_mask)
         assert loaded.texts == original.texts
         assert loaded.layer == original.layer
-        assert loaded.sae_repo == original.sae_repo
+        assert loaded.release == original.release
+        assert loaded.sae_id == original.sae_id
         assert loaded.n_features == original.n_features
 
     def test_load_sae_examples_roundtrip(self, model, tmp_path):
@@ -356,7 +619,7 @@ class TestSAELoadRoundTrip:
         results = Results()
         results["sae_record"] = _synthetic_sae_store(n=2, seq=3, n_features=4)
         results["sae_record"].activations[:] = torch.randn(2, 3, 4)
-        SAETopKContexts(model, k=2)(results)
+        SAETopActivations(model, k=2)(results)
         Save(output_dir=str(tmp_path))(results)
 
         loaded = load_sae_examples(tmp_path / "sae" / "feature_examples.json")
@@ -368,7 +631,8 @@ class TestSAELoadRoundTrip:
         assert loaded.tokens == original.tokens
         assert loaded.act_vals == original.act_vals
         assert loaded.layer == original.layer
-        assert loaded.sae_repo == original.sae_repo
+        assert loaded.release == original.release
+        assert loaded.sae_id == original.sae_id
         assert loaded.k == original.k
 
     def test_load_via_top_level(self, model, tmp_path):

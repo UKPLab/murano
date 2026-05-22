@@ -178,7 +178,8 @@ def save_sae_activations(sae_store: Any, path: Path) -> None:
             "attention_mask": sae_store.attention_mask,
             "texts": sae_store.texts,
             "layer": sae_store.layer,
-            "sae_repo": sae_store.sae_repo,
+            "release": sae_store.release,
+            "sae_id": sae_store.sae_id,
             "n_features": sae_store.n_features,
         },
         path,
@@ -193,7 +194,7 @@ def load_sae_activations(path: str | Path) -> Any:
         path: Path to the sae_record.pt file.
 
     Returns:
-        SAEActivationStore ready for downstream steps (SAETopKContexts etc.).
+        SAEActivationStore ready for downstream steps (SAETopActivations etc.).
     """
     from murano.steps.sae import SAEActivationStore
 
@@ -204,7 +205,8 @@ def load_sae_activations(path: str | Path) -> Any:
         attention_mask=data["attention_mask"],
         texts=data["texts"],
         layer=data["layer"],
-        sae_repo=data["sae_repo"],
+        release=data["release"],
+        sae_id=data["sae_id"],
         n_features=data["n_features"],
     )
 
@@ -226,7 +228,8 @@ def save_sae_examples(feature_examples: Any, path: Path) -> None:
         "tokens": {str(k): v for k, v in feature_examples.tokens.items()},
         "act_vals": {str(k): v for k, v in feature_examples.act_vals.items()},
         "layer": feature_examples.layer,
-        "sae_repo": feature_examples.sae_repo,
+        "release": feature_examples.release,
+        "sae_id": feature_examples.sae_id,
         "k": feature_examples.k,
     }
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
@@ -254,7 +257,8 @@ def load_sae_examples(path: str | Path) -> Any:
         tokens={int(k): v for k, v in data["tokens"].items()},
         act_vals={int(k): v for k, v in data["act_vals"].items()},
         layer=data["layer"],
-        sae_repo=data["sae_repo"],
+        release=data["release"],
+        sae_id=data["sae_id"],
         k=data["k"],
     )
 
@@ -439,10 +443,11 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         save_sae_activations(sae_store, out / "sae" / filename)
         metadata[key] = {
             "layer": sae_store.layer,
-            "sae_repo": sae_store.sae_repo,
+            "release": sae_store.release,
+            "sae_id": sae_store.sae_id,
             "n_features": sae_store.n_features,
-            "n_inputs": int(sae_store.activations.shape[0]),
-            "seq_len": int(sae_store.activations.shape[1]),
+            "n_inputs": sae_store.activations.shape[0],
+            "seq_len": sae_store.activations.shape[1],
         }
 
     def serialize_sae_examples(
@@ -458,7 +463,8 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         save_sae_examples(examples, out / "sae" / filename)
         metadata[key] = {
             "layer": examples.layer,
-            "sae_repo": examples.sae_repo,
+            "release": examples.release,
+            "sae_id": examples.sae_id,
             "k": examples.k,
             "n_tracked": len(examples.feat_ids),
         }

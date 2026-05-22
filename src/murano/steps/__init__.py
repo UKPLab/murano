@@ -17,7 +17,8 @@ from murano.steps.sae import (
     SAEActivationStore,
     SAEEncode,
     SAEFeatureExamples,
-    SAETopKContexts,
+    SAEModel,
+    SAETopActivations,
 )
 from murano.steps.metrics import (
     CrossEntropyLossStep,
@@ -44,7 +45,8 @@ __all__ = [
     "SAEActivationStore",
     "SAEEncode",
     "SAEFeatureExamples",
-    "SAETopKContexts",
+    "SAEModel",
+    "SAETopActivations",
     "CrossEntropyLossStep",
     "AccuracyStep",
     "ComparisonComputationStep",

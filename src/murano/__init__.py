@@ -34,7 +34,8 @@ if TYPE_CHECKING:
         SAEActivationStore,
         SAEEncode,
         SAEFeatureExamples,
-        SAETopKContexts,
+        SAEModel,
+        SAETopActivations,
     )
 
 
@@ -53,7 +54,8 @@ _LAZY_ATTRS = {
     "LogitLensResult": ("murano.steps.logit_lens", "LogitLensResult"),
     "SAEEncode": ("murano.steps.sae", "SAEEncode"),
     "SAEActivationStore": ("murano.steps.sae", "SAEActivationStore"),
-    "SAETopKContexts": ("murano.steps.sae", "SAETopKContexts"),
+    "SAEModel": ("murano.steps.sae", "SAEModel"),
+    "SAETopActivations": ("murano.steps.sae", "SAETopActivations"),
     "SAEFeatureExamples": ("murano.steps.sae", "SAEFeatureExamples"),
     "compliance_rate": ("murano.evaluation", "compliance_rate"),
     "save_results": ("murano.io", "save_results"),
@@ -80,7 +82,8 @@ __all__ = [
     "SAEActivationStore",
     "SAEEncode",
     "SAEFeatureExamples",
-    "SAETopKContexts",
+    "SAEModel",
+    "SAETopActivations",
     "__version__",
     "compliance_rate",
     "setup_logging",

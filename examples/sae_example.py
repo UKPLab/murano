@@ -1,31 +1,26 @@
-"""Inspect SAE features via top-activating contexts and the logit lens.
+"""Inspect SAE features via top-activating contexts.
 
 Pipeline:
     1. Load prompts
-    2. Load SAE weights from HuggingFace
-    3. Encode prompts through the SAE to get activation records
-    4. For each feature, find the top-K activating contexts (token + leftward text) across the prompts
-    5. Run the logit lens on the same prompts to get per-layer next-token predictions
-    6. Save results to disk and print top contexts.
+    2. Encode prompts through an SAE loaded from HuggingFace via sae-lens
+    3. For each feature, find the top-K (text, token) positions where it activated
+    4. Save results to disk and print the table
 
-Set ``SAE_REPO`` and ``LAYER`` below to match a real SAE on the Hub for
-the chosen base model.
+Defaults to Gemma 2 2B + gemma-scope layer-8 residual SAEs. The target layer
+and hook point are read from the SAE's own config.
 """
 
 from __future__ import annotations
 
-import os
-
 from murano import MuranoModel, Pipeline
-from murano.steps import LogitLens, Save, SAEEncode, SAETopKContexts
+from murano.steps import SAEEncode, SAETopActivations, Save
 from murano.steps.prompts import LoadPrompts
 
 
-MODEL_ID = os.environ.get("MURANO_EXAMPLE_MODEL", "meta-llama/Llama-3.2-1B-Instruct")
-SAE_REPO = "<set me to a Hub repo with SAE weights for the chosen layer>"
-LAYER = 8
-TOP_K = 10
-N_FEATURES_TO_TRACK = 5
+MODEL_ID = "google/gemma-2-2b-it"
+SAE_RELEASE = "gemma-scope-2b-pt-res-canonical"
+SAE_ID = "layer_8/width_16k/canonical"
+K = 10
 OUTPUT_DIR = "/tmp/murano_sae_example"
 
 
@@ -46,10 +41,13 @@ def main() -> None:
 
     results = Pipeline(
         [
+            # -> 'prompts': the input texts wrapped as a PromptBatch
             LoadPrompts(PROMPTS),
-            SAEEncode(model, sae_repo=SAE_REPO, layer=LAYER),
-            SAETopKContexts(model, k=TOP_K, feat_ids=list(range(N_FEATURES_TO_TRACK))),
-            LogitLens(model, layers=[LAYER]),
+            # -> 'sae_record': per-token raw SAE feature activations
+            SAEEncode(model, release=SAE_RELEASE, sae_id=SAE_ID),
+            # -> 'feature_examples': top-K activating contexts for the first K features
+            SAETopActivations(model, k=K, feat_ids=list(range(K))),
+            # -> 'output_dir': persists everything above under OUTPUT_DIR
             Save(output_dir=OUTPUT_DIR, model_id=MODEL_ID),
         ]
     ).run()
@@ -63,14 +61,6 @@ def main() -> None:
             examples.act_vals[feat_id],
         ):
             print(f"  {act_val:8.4f}  [{token!r:>14}]  {context}")
-
-    lens = results["logit_lens"]
-    print(f"\n── Logit-lens next-token predictions at layer {LAYER} ──")
-    for i, prompt in enumerate(PROMPTS):
-        valid_len = int(lens.attention_mask[i].sum().item())
-        pred = lens.predicted_words[0][i][valid_len - 1]
-        print(f"  {prompt!r:50}  →  {pred!r}")
-
     print(f"\nArtifacts saved to {results['output_dir']}")
 
 
