@@ -75,7 +75,7 @@ Many experiments need a train phase and an eval phase with different data. Run t
 ```python
 from murano.steps import Intervene
 from murano.steps.intervene import ablate_direction
-from murano.steps.jailbreaking import ComplianceRate
+from murano.steps.refusal import ComplianceRate
 
 # Phase 1: Train
 train_results = Pipeline([

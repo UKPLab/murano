@@ -10,7 +10,7 @@ from murano.steps.intervene import Intervene
 from murano.steps.weight_ablation import WeightAblation
 from murano.steps.evaluate import GenerationMetric
 from murano.steps.probe import Probe
-from murano.steps.jailbreaking import ComplianceRate, Plot
+from murano.steps.refusal import ComplianceRate, Plot
 from murano.steps.probing import ProbePlot
 from murano.steps.logit_lens import LogitLens, LogitLensResult
 from murano.steps.metrics import (
