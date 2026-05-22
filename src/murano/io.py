@@ -163,6 +163,58 @@ def save_probe(probe_result: Any, path: Path) -> None:
     logger.info("Saved probe result to %s", path)
 
 
+def save_logit_lens(logit_lens_result: Any, path: Path) -> None:
+    """Save a LogitLensResult to a .pt file.
+
+    Persists every field on the dataclass. Per-layer probability tensors,
+    argmax tokens, decoded words, input words, attention mask, and layer
+    indices, so the result can be reloaded for downstream plotting or
+    analysis without re-running the trace.
+
+    Args:
+        logit_lens_result: LogitLensResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "all_probs": logit_lens_result.all_probs,
+            "max_probs": logit_lens_result.max_probs,
+            "predicted_tokens": logit_lens_result.predicted_tokens,
+            "predicted_words": logit_lens_result.predicted_words,
+            "input_words": logit_lens_result.input_words,
+            "attention_mask": logit_lens_result.attention_mask,
+            "layer_indices": logit_lens_result.layer_indices,
+        },
+        path,
+    )
+    logger.info("Saved logit lens result to %s", path)
+
+
+def load_logit_lens(path: str | Path) -> Any:
+    """Load a LogitLensResult from a .pt file.
+
+    Args:
+        path: Path to the logit_lens.pt file.
+
+    Returns:
+        LogitLensResult reconstructed from the saved tensors and lists,
+        ready for downstream plotting or analysis.
+    """
+    from murano.steps.logit_lens import LogitLensResult
+
+    data = torch.load(path, weights_only=False)
+    return LogitLensResult(
+        all_probs=data["all_probs"],
+        max_probs=data["max_probs"],
+        predicted_tokens=data["predicted_tokens"],
+        predicted_words=data["predicted_words"],
+        input_words=data["input_words"],
+        attention_mask=data["attention_mask"],
+        layer_indices=data["layer_indices"],
+    )
+
+
 def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
     """Save a PromptBatch to JSON.
 
@@ -241,6 +293,7 @@ def register_artifact_serializer(
 
 
 def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
+    from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
     from murano.steps.train import SteeringResult
 
@@ -331,11 +384,27 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "accuracy_per_layer": probe.accuracy_per_layer,
         }
 
+    def serialize_logit_lens(
+        key: str,
+        logit_lens: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "logit_lens.pt" if key == "logit_lens" else f"{key}.pt"
+        save_logit_lens(logit_lens, out / "logit_lens" / filename)
+        metadata[key] = {
+            "layer_indices": logit_lens.layer_indices,
+            "n_layers": logit_lens.all_probs.shape[0],
+            "n_inputs": logit_lens.all_probs.shape[1],
+        }
+
     register_artifact_serializer(registry, PromptBatch, serialize_prompts)
     register_artifact_serializer(registry, SteeringResult, serialize_steering)
     register_artifact_serializer(registry, GenerationComparison, serialize_generations)
     register_artifact_serializer(registry, MetricResult, serialize_metric)
     register_artifact_serializer(registry, ProbeResult, serialize_probe)
+    register_artifact_serializer(registry, LogitLensResult, serialize_logit_lens)
     return registry
 
 
@@ -364,6 +433,8 @@ def save_results(
         ├── evaluation/          # generations + metrics
         │   ├── generations.json
         │   └── eval.json
+        ├── logit_lens/          # logit-lens probabilities + decoded words
+        │   └── logit_lens.pt
         └── metadata.json
 
     Args:

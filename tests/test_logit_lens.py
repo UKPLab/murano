@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from tokenizers.pre_tokenizers import Whitespace
 from transformers import LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerFast
 
 from murano import MuranoModel, Pipeline
+from murano.steps import Save
 from murano.steps.logit_lens import LogitLens, LogitLensResult
 from murano.steps.prompts import LoadPrompts
 
@@ -126,6 +128,91 @@ class TestLogitLensStep:
         all_probs = results["logit_lens"].all_probs
         sums = all_probs.sum(dim=-1)
         assert torch.allclose(sums, torch.ones_like(sums), atol=1e-4)
+
+
+class TestLogitLensSave:
+    """Round-trip persistence via Pipeline + Save."""
+
+    def test_save_writes_logit_lens_artifact(self, model, tmp_path):
+        pipe = Pipeline(
+            [
+                LoadPrompts(["hello world", "good world"]),
+                LogitLens(model, layers=[0, 1]),
+                Save(output_dir=str(tmp_path)),
+            ]
+        )
+        results = pipe.run()
+
+        artifact_path = tmp_path / "logit_lens" / "logit_lens.pt"
+        assert artifact_path.exists(), (
+            f"Save did not write LogitLens artifact. "
+            f"Found: {sorted(p.name for p in tmp_path.iterdir())}"
+        )
+
+        loaded = torch.load(artifact_path, weights_only=False)
+        original = results["logit_lens"]
+        assert isinstance(original, LogitLensResult)
+        assert torch.equal(loaded["all_probs"], original.all_probs)
+        assert torch.equal(loaded["max_probs"], original.max_probs)
+        assert torch.equal(loaded["predicted_tokens"], original.predicted_tokens)
+        assert torch.equal(loaded["attention_mask"], original.attention_mask)
+        assert loaded["predicted_words"] == original.predicted_words
+        assert loaded["input_words"] == original.input_words
+        assert loaded["layer_indices"] == original.layer_indices
+
+    def test_save_records_logit_lens_in_metadata(self, model, tmp_path):
+        pipe = Pipeline(
+            [
+                LoadPrompts(["hello world"]),
+                LogitLens(model, layers=[0, 1]),
+                Save(output_dir=str(tmp_path)),
+            ]
+        )
+        pipe.run()
+
+        metadata = json.loads((tmp_path / "metadata.json").read_text())
+        assert "logit_lens" in metadata
+        assert metadata["logit_lens"]["layer_indices"] == [0, 1]
+        assert metadata["logit_lens"]["n_layers"] == 2
+        assert metadata["logit_lens"]["n_inputs"] == 1
+
+    def test_load_logit_lens_roundtrip(self, model, tmp_path):
+        from murano.io import load_logit_lens
+
+        results = Pipeline(
+            [
+                LoadPrompts(["hello world", "good world"]),
+                LogitLens(model, layers=[0, 1]),
+                Save(output_dir=str(tmp_path)),
+            ]
+        ).run()
+
+        loaded = load_logit_lens(tmp_path / "logit_lens" / "logit_lens.pt")
+        original = results["logit_lens"]
+        assert isinstance(loaded, LogitLensResult)
+        assert torch.equal(loaded.all_probs, original.all_probs)
+        assert torch.equal(loaded.max_probs, original.max_probs)
+        assert torch.equal(loaded.predicted_tokens, original.predicted_tokens)
+        assert torch.equal(loaded.attention_mask, original.attention_mask)
+        assert loaded.predicted_words == original.predicted_words
+        assert loaded.input_words == original.input_words
+        assert loaded.layer_indices == original.layer_indices
+
+    def test_save_routes_custom_key_to_keyed_filename(self, model, tmp_path):
+        from murano.results import Results
+
+        pipe_results = Pipeline(
+            [
+                LoadPrompts(["hello world"]),
+                LogitLens(model, layers=[0]),
+            ]
+        ).run()
+        results = Results()
+        results["lens_baseline"] = pipe_results["logit_lens"]
+        Save(output_dir=str(tmp_path))(results)
+
+        assert (tmp_path / "logit_lens" / "lens_baseline.pt").exists()
+        assert not (tmp_path / "logit_lens" / "logit_lens.pt").exists()
 
 
 class TestLogitLensPlot:
