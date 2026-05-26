@@ -1,6 +1,6 @@
 """Plot step: generates and saves standard visualizations.
 
-This step is jailbreaking-specific: it generates refusal-related plots.
+This step is refusal-specific: it generates refusal-related plots.
 """
 
 from __future__ import annotations

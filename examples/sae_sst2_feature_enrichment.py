@@ -1,4 +1,4 @@
-"""Rank class-selective SST-2 SAE features with Murano."""
+"""Rank class-selective SST-2 SAE features."""
 
 import json
 from pathlib import Path

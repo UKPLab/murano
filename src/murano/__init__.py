@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from murano.dataset import LabeledDataset, MuranoDataset
     from murano.evaluation import compliance_rate
     from murano.io import (
+        load_activation_store,
+        load_labeled_activation_store,
+        load_logit_lens,
         load_sae_activations,
         load_sae_examples,
         load_steering,
@@ -60,6 +63,9 @@ _LAZY_ATTRS = {
     "compliance_rate": ("murano.evaluation", "compliance_rate"),
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
+    "load_logit_lens": ("murano.io", "load_logit_lens"),
+    "load_activation_store": ("murano.io", "load_activation_store"),
+    "load_labeled_activation_store": ("murano.io", "load_labeled_activation_store"),
     "load_sae_activations": ("murano.io", "load_sae_activations"),
     "load_sae_examples": ("murano.io", "load_sae_examples"),
     "save_ablated_model": ("murano.io", "save_ablated_model"),
@@ -89,6 +95,9 @@ __all__ = [
     "setup_logging",
     "save_results",
     "load_steering",
+    "load_logit_lens",
+    "load_activation_store",
+    "load_labeled_activation_store",
     "load_sae_activations",
     "load_sae_examples",
     "save_ablated_model",

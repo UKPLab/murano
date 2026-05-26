@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SAE support via the optional `[sae]` extra: `SAEEncode` and `SAETopActivations` steps, `SAEModel` wrapper around `sae-lens`, `SAEActivationStore` and `SAEFeatureExamples` artifacts with on-disk persistence (`load_sae_activations`, `load_sae_examples`).
+
 ## [0.1.0] - TBD
 
 Initial release.
@@ -20,7 +24,7 @@ Initial release.
 - Datasets: `MuranoDataset` (contrastive) and `LabeledDataset`, with `from_hub()` and `from_template()` factories.
 - Direction-based interventions: `ablate_direction`, `steer_direction`.
 - I/O: `save_results()` with structured output layout, `load_steering()`, `save_ablated_model()`.
-- Jailbreaking submodule for safety-behavior analysis.
+- Refusal-analysis submodule for safety-behavior analysis.
 - Top-level `__version__` via `importlib.metadata`.
 - `py.typed` marker for PEP 561 type-checker support.
 - `murano_version` field in saved artifact metadata for forward-compatible reloading.
