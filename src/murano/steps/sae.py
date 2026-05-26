@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from torch import Tensor, no_grad  # pyright: ignore[reportPrivateImportUsage]
 
@@ -88,13 +88,13 @@ def _capture_residual(
         elif hook_kind == "resid_post":
             saved["main"] = layer.output.save()
         elif hook_kind == "mlp_out":
-            saved["main"] = layer.mlp.output.save()
+            saved["main"] = model._resolve_module(layer, "mlp").output.save()
         elif hook_kind == "attn_out":
-            saved["main"] = layer.self_attn.output.save()
+            saved["main"] = model._resolve_module(layer, "self_attn").output.save()
         else:  # resid_mid
             # resid_mid = resid_pre + attn_out (post-attention, pre-MLP).
             saved["main"] = layer.input.save()
-            saved["extra"] = layer.self_attn.output.save()
+            saved["extra"] = model._resolve_module(layer, "self_attn").output.save()
 
     residual = _unwrap(saved["main"])
     if "extra" in saved:
@@ -269,8 +269,8 @@ class SAEEncode(Step):
 
         results["sae_record"] = SAEActivationStore(
             activations=sae_acts.detach().cpu(),
-            tokens=tokens["input_ids"].detach().cpu(),
-            attention_mask=tokens["attention_mask"].detach().cpu(),
+            tokens=cast(Tensor, tokens["input_ids"]).detach().cpu(),
+            attention_mask=cast(Tensor, tokens["attention_mask"]).detach().cpu(),
             texts=list(prompts),
             layer=hook_layer,
             release=self.sae_model.release,

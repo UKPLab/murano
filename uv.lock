@@ -1687,7 +1687,7 @@ requires-dist = [
     { name = "nnsight", specifier = ">=0.4.8" },
     { name = "nnterp", specifier = ">=1.2.2,<2.0" },
     { name = "plotly", marker = "extra == 'plot'", specifier = ">=6.7.0" },
-    { name = "sae-lens", marker = "extra == 'sae'", specifier = ">=6.0" },
+    { name = "sae-lens", marker = "extra == 'sae'", specifier = ">=6.7.0" },
     { name = "scikit-learn", specifier = ">=1.5.2" },
     { name = "seaborn", marker = "extra == 'plot'", specifier = ">=0.13" },
     { name = "torch", specifier = ">=2.7.1" },

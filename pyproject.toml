@@ -42,7 +42,7 @@ plot = [
     "plotly>=6.7.0",
 ]
 sae = [
-    "sae-lens>=6.0",
+    "sae-lens>=6.7.0",
 ]
 
 [tool.hatch.version]
