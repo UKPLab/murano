@@ -13,6 +13,13 @@ from murano.steps.probe import Probe
 from murano.steps.refusal import ComplianceRate, Plot
 from murano.steps.probing import ProbePlot
 from murano.steps.logit_lens import LogitLens, LogitLensResult
+from murano.steps.sae import (
+    SAEActivationStore,
+    SAEEncode,
+    SAEFeatureExamples,
+    SAEModel,
+    SAETopActivations,
+)
 from murano.steps.metrics import (
     CrossEntropyLossStep,
     AccuracyStep,
@@ -35,6 +42,11 @@ __all__ = [
     "ProbePlot",
     "LogitLens",
     "LogitLensResult",
+    "SAEActivationStore",
+    "SAEEncode",
+    "SAEFeatureExamples",
+    "SAEModel",
+    "SAETopActivations",
     "CrossEntropyLossStep",
     "AccuracyStep",
     "ComparisonComputationStep",

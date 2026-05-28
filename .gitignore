@@ -139,6 +139,7 @@ sketch*
 murano/sketch*
 .vscode*
 .draft/
+examples/artifacts
 
 # OS files
 .DS_Store

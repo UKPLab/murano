@@ -287,6 +287,106 @@ def load_labeled_activation_store(path: str | Path) -> Any:
     )
 
 
+def save_sae_activations(sae_store: Any, path: Path) -> None:
+    """Save an SAEActivationStore to a .pt file.
+
+    Args:
+        sae_store: SAEActivationStore to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "activations": sae_store.activations,
+            "tokens": sae_store.tokens,
+            "attention_mask": sae_store.attention_mask,
+            "texts": sae_store.texts,
+            "layer": sae_store.layer,
+            "release": sae_store.release,
+            "sae_id": sae_store.sae_id,
+            "n_features": sae_store.n_features,
+        },
+        path,
+    )
+    logger.info("Saved SAE activations to %s", path)
+
+
+def load_sae_activations(path: str | Path) -> Any:
+    """Load an SAEActivationStore from a .pt file.
+
+    Args:
+        path: Path to the sae_record.pt file.
+
+    Returns:
+        SAEActivationStore ready for downstream steps (SAETopActivations etc.).
+    """
+    from murano.steps.sae import SAEActivationStore
+
+    data = torch.load(path, weights_only=False)
+    return SAEActivationStore(
+        activations=data["activations"],
+        tokens=data["tokens"],
+        attention_mask=data["attention_mask"],
+        texts=data["texts"],
+        layer=data["layer"],
+        release=data["release"],
+        sae_id=data["sae_id"],
+        n_features=data["n_features"],
+    )
+
+
+def save_sae_examples(feature_examples: Any, path: Path) -> None:
+    """Save an SAEFeatureExamples to a JSON file.
+
+    Integer ``feat_id`` keys are stringified on save (JSON requires string
+    keys); :func:`load_sae_examples` casts them back.
+
+    Args:
+        feature_examples: SAEFeatureExamples to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "feat_ids": feature_examples.feat_ids,
+        "contexts": {str(k): v for k, v in feature_examples.contexts.items()},
+        "tokens": {str(k): v for k, v in feature_examples.tokens.items()},
+        "act_vals": {str(k): v for k, v in feature_examples.act_vals.items()},
+        "layer": feature_examples.layer,
+        "release": feature_examples.release,
+        "sae_id": feature_examples.sae_id,
+        "k": feature_examples.k,
+    }
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    logger.info("Saved SAE feature examples to %s", path)
+
+
+def load_sae_examples(path: str | Path) -> Any:
+    """Load an SAEFeatureExamples from a JSON file.
+
+    Stringified ``feat_id`` keys produced by :func:`save_sae_examples`
+    are cast back to int.
+
+    Args:
+        path: Path to the feature_examples.json file.
+
+    Returns:
+        SAEFeatureExamples reconstructed from the JSON payload.
+    """
+    from murano.steps.sae import SAEFeatureExamples
+
+    data = json.loads(Path(path).read_text())
+    return SAEFeatureExamples(
+        feat_ids=list(data["feat_ids"]),
+        contexts={int(k): v for k, v in data["contexts"].items()},
+        tokens={int(k): v for k, v in data["tokens"].items()},
+        act_vals={int(k): v for k, v in data["act_vals"].items()},
+        layer=data["layer"],
+        release=data["release"],
+        sae_id=data["sae_id"],
+        k=data["k"],
+    )
+
+
 def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
     """Save a PromptBatch to JSON.
 
@@ -368,6 +468,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
     from murano.steps.record import ActivationStore, LabeledActivationStore
+    from murano.steps.sae import SAEActivationStore, SAEFeatureExamples
     from murano.steps.train import SteeringResult
 
     registry: list[tuple[type, ArtifactSerializer]] = []
@@ -505,6 +606,43 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "n_examples": store.labels.shape[0],
         }
 
+    def serialize_sae_activations(
+        key: str,
+        sae_store: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "sae_record.pt" if key == "sae_record" else f"{key}.pt"
+        save_sae_activations(sae_store, out / "sae" / filename)
+        metadata[key] = {
+            "layer": sae_store.layer,
+            "release": sae_store.release,
+            "sae_id": sae_store.sae_id,
+            "n_features": sae_store.n_features,
+            "n_inputs": sae_store.activations.shape[0],
+            "seq_len": sae_store.activations.shape[1],
+        }
+
+    def serialize_sae_examples(
+        key: str,
+        examples: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = (
+            "feature_examples.json" if key == "feature_examples" else f"{key}.json"
+        )
+        save_sae_examples(examples, out / "sae" / filename)
+        metadata[key] = {
+            "layer": examples.layer,
+            "release": examples.release,
+            "sae_id": examples.sae_id,
+            "k": examples.k,
+            "n_tracked": len(examples.feat_ids),
+        }
+
     register_artifact_serializer(registry, PromptBatch, serialize_prompts)
     register_artifact_serializer(registry, SteeringResult, serialize_steering)
     register_artifact_serializer(registry, GenerationComparison, serialize_generations)
@@ -515,6 +653,10 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     register_artifact_serializer(
         registry, LabeledActivationStore, serialize_labeled_activation_store
     )
+    register_artifact_serializer(
+        registry, SAEActivationStore, serialize_sae_activations
+    )
+    register_artifact_serializer(registry, SAEFeatureExamples, serialize_sae_examples)
     return registry
 
 
@@ -547,6 +689,9 @@ def save_results(
         │   └── logit_lens.pt
         ├── activations/         # recorded activation stores (transitional format)
         │   └── record.pt
+        ├── sae/                 # SAE activations + per-feature examples
+        │   ├── sae_record.pt
+        │   └── feature_examples.json
         └── metadata.json
 
     Args:

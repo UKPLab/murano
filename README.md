@@ -112,10 +112,13 @@ caught up-front.
 | `GenerationMetric` | `intervene`           | `metric`                       | Score baseline vs modified outputs with a user metric.   |
 | `ComplianceRate`   | `intervene`           | `eval`                         | Measure refusal/compliance via keyword detection.        |
 | `Save`             | (any present)         | `output_dir`                   | Persist all results to organized subdirectories.         |
+| `SAEEncode` †      | `prompts`             | `sae_record`                   | Encode residuals through an SAE loaded from HuggingFace. |
+| `SAETopActivations` | `sae_record`         | `feature_examples`             | Rank the top-K activating contexts per SAE feature.      |
 | `Plot` \*          | (optional)            | —                              | Render refusal plots (steering, generations, eval).      |
 | `ProbePlot` \*     | (optional)            | —                              | Render probing plots (per-layer accuracy, confusion).    |
 
 \* Requires the `[plot]` extra: `pip install -e .[plot]`.
+† Requires the `[sae]` extra: `pip install -e .[sae]`.
 
 To add your own step, subclass `Step`, set `reads` / `writes` (and optionally
 `read_types` / `write_types`), and implement `__call__(results) -> Results`.
@@ -155,6 +158,8 @@ src/murano/
 
 - `examples/quick_prototype.py`
 - `examples/refusal_direction.py`
+- `examples/sae_example.py`
+- `examples/sae_sst2_feature_enrichment.py`
 
 ## Development
 

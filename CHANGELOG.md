@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SAE support via the optional `[sae]` extra: `SAEEncode` and `SAETopActivations` steps, `SAEModel` wrapper around `sae-lens`, `SAEActivationStore` and `SAEFeatureExamples` artifacts with on-disk persistence (`load_sae_activations`, `load_sae_examples`).
+
 ## [0.1.0] - TBD
 
 Initial release.

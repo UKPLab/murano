@@ -21,6 +21,8 @@ if TYPE_CHECKING:
         load_activation_store,
         load_labeled_activation_store,
         load_logit_lens,
+        load_sae_activations,
+        load_sae_examples,
         load_steering,
         save_ablated_model,
         save_results,
@@ -31,6 +33,13 @@ if TYPE_CHECKING:
     from murano.results import Results
     from murano.steps.base import Step
     from murano.steps.logit_lens import LogitLens, LogitLensResult
+    from murano.steps.sae import (
+        SAEActivationStore,
+        SAEEncode,
+        SAEFeatureExamples,
+        SAEModel,
+        SAETopActivations,
+    )
 
 
 _LAZY_ATTRS = {
@@ -46,12 +55,19 @@ _LAZY_ATTRS = {
     "Step": ("murano.steps.base", "Step"),
     "LogitLens": ("murano.steps.logit_lens", "LogitLens"),
     "LogitLensResult": ("murano.steps.logit_lens", "LogitLensResult"),
+    "SAEEncode": ("murano.steps.sae", "SAEEncode"),
+    "SAEActivationStore": ("murano.steps.sae", "SAEActivationStore"),
+    "SAEModel": ("murano.steps.sae", "SAEModel"),
+    "SAETopActivations": ("murano.steps.sae", "SAETopActivations"),
+    "SAEFeatureExamples": ("murano.steps.sae", "SAEFeatureExamples"),
     "compliance_rate": ("murano.evaluation", "compliance_rate"),
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
     "load_logit_lens": ("murano.io", "load_logit_lens"),
     "load_activation_store": ("murano.io", "load_activation_store"),
     "load_labeled_activation_store": ("murano.io", "load_labeled_activation_store"),
+    "load_sae_activations": ("murano.io", "load_sae_activations"),
+    "load_sae_examples": ("murano.io", "load_sae_examples"),
     "save_ablated_model": ("murano.io", "save_ablated_model"),
 }
 
@@ -69,6 +85,11 @@ __all__ = [
     "Step",
     "LogitLens",
     "LogitLensResult",
+    "SAEActivationStore",
+    "SAEEncode",
+    "SAEFeatureExamples",
+    "SAEModel",
+    "SAETopActivations",
     "__version__",
     "compliance_rate",
     "setup_logging",
@@ -77,6 +98,8 @@ __all__ = [
     "load_logit_lens",
     "load_activation_store",
     "load_labeled_activation_store",
+    "load_sae_activations",
+    "load_sae_examples",
     "save_ablated_model",
 ]
 
