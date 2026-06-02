@@ -81,11 +81,12 @@ def _select_token_activations(
         )
 
     batch_indices = arange(output.shape[0], device=output.device)
+    attention_mask = attention_mask.to(device=output.device)
     mask_bool = attention_mask.bool()
     seq_len = attention_mask.shape[1]
 
     if position == "mean":
-        mask = attention_mask.unsqueeze(-1).to(output.dtype)
+        mask = mask_bool.unsqueeze(-1).to(output.dtype)
         return (output * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
 
     if position == "first":
