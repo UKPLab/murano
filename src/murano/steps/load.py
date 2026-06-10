@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from murano import keys
 from murano.artifacts import PromptBatch
 from murano.dataset import LabeledDataset, MuranoDataset
 from murano.results import Results
@@ -26,7 +27,7 @@ class Load(Step):
     """
 
     reads = []
-    writes = ["dataset", "prompts"]
+    writes = [keys.DATASET, keys.PROMPTS]
 
     def __init__(self, dataset: MuranoDataset | LabeledDataset):
         self.dataset = dataset
@@ -34,13 +35,13 @@ class Load(Step):
     def expected_write_types(self, results=None, available_types=None):
         """Return ``{"dataset": <constructor dataset's type>, "prompts": PromptBatch}``."""
         return {
-            "dataset": type(self.dataset),
-            "prompts": PromptBatch,
+            keys.DATASET: type(self.dataset),
+            keys.PROMPTS: PromptBatch,
         }
 
     def __call__(self, results: Results) -> Results:
-        results["dataset"] = self.dataset
-        results["prompts"] = self._prompt_batch()
+        results[keys.DATASET] = self.dataset
+        results[keys.PROMPTS] = self._prompt_batch()
         return results
 
     def _prompt_batch(self) -> PromptBatch:

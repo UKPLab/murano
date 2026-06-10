@@ -9,7 +9,7 @@ from typing import Any, TYPE_CHECKING, Callable
 
 import torch
 
-from murano import __version__
+from murano import __version__, keys
 from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
 from murano.logging import logger
 
@@ -507,7 +507,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     def serialize_steering(
         key: str, steering: Any, out: Path, _results: Any, metadata: dict[str, Any]
     ) -> None:
-        filename = "steering.pt" if key == "steering" else f"{key}.pt"
+        filename = "steering.pt" if key == keys.STEERING else f"{key}.pt"
         save_steering(steering, out / "direction" / filename)
         metadata[key] = {
             "best_layer": str(steering.best_layer),
@@ -524,17 +524,17 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         metadata: dict[str, Any],
     ) -> None:
         prompts = comparison.prompts
-        if prompts is None and "prompts" in results:
-            prompt_batch = results["prompts"]
+        if prompts is None and keys.PROMPTS in results:
+            prompt_batch = results[keys.PROMPTS]
             prompts = (
                 prompt_batch.raw_prompts
                 if prompt_batch.raw_prompts is not None
                 else prompt_batch.prompts
             )
-        if prompts is None and "dataset" in results:
-            prompts = _generation_prompts(results["dataset"])
+        if prompts is None and keys.DATASET in results:
+            prompts = _generation_prompts(results[keys.DATASET])
 
-        filename = "generations.json" if key == "intervene" else f"{key}.json"
+        filename = "generations.json" if key == keys.INTERVENE else f"{key}.json"
         save_generations(comparison, out / "evaluation" / filename, prompts=prompts)
         metadata[key] = {
             "baseline_label": comparison.baseline_label,
@@ -550,8 +550,8 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "eval.json" if key == "eval" else f"{key}.json"
-        folder = "evaluation" if key == "eval" else "metrics"
+        filename = "eval.json" if key == keys.EVAL else f"{key}.json"
+        folder = "evaluation" if key == keys.EVAL else "metrics"
         save_eval(metric, out / folder / filename)
         metadata[key] = {
             "metric_name": metric.metric_name,
@@ -561,7 +561,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "modified_score": metric.modified_score,
             "metadata": metric.metadata,
         }
-        if key == "eval":
+        if key == keys.EVAL:
             metadata["evaluation"] = {
                 "metric_name": metric.metric_name,
                 "baseline_score": metric.baseline_score,
@@ -571,7 +571,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     def serialize_probe(
         key: str, probe: Any, out: Path, _results: Any, metadata: dict[str, Any]
     ) -> None:
-        filename = "probe.json" if key == "probe" else f"{key}.json"
+        filename = "probe.json" if key == keys.PROBE else f"{key}.json"
         save_probe(probe, out / "probe" / filename)
         metadata[key] = {
             "best_layer": str(probe.best_layer),
@@ -587,7 +587,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "logit_lens.pt" if key == "logit_lens" else f"{key}.pt"
+        filename = "logit_lens.pt" if key == keys.LOGIT_LENS else f"{key}.pt"
         save_logit_lens(logit_lens, out / "logit_lens" / filename)
         metadata[key] = {
             "layer_indices": logit_lens.layer_indices,
@@ -602,7 +602,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "record.pt" if key == "record" else f"{key}.pt"
+        filename = "record.pt" if key == keys.RECORD else f"{key}.pt"
         save_activation_store(store, out / "activations" / filename)
         pos = next(iter(store.positive.values()), None)
         neg = next(iter(store.negative.values()), None)
@@ -622,7 +622,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "record.pt" if key == "record" else f"{key}.pt"
+        filename = "record.pt" if key == keys.RECORD else f"{key}.pt"
         save_labeled_activation_store(store, out / "activations" / filename)
         metadata[key] = {
             "kind": "labeled",
@@ -639,7 +639,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "sae_record.pt" if key == "sae_record" else f"{key}.pt"
+        filename = "sae_record.pt" if key == keys.SAE_RECORD else f"{key}.pt"
         save_sae_activations(sae_store, out / "sae" / filename)
         metadata[key] = {
             "layer": sae_store.layer,
@@ -658,7 +658,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         metadata: dict[str, Any],
     ) -> None:
         filename = (
-            "feature_examples.json" if key == "feature_examples" else f"{key}.json"
+            "feature_examples.json" if key == keys.FEATURE_EXAMPLES else f"{key}.json"
         )
         save_sae_examples(examples, out / "sae" / filename)
         metadata[key] = {
@@ -738,8 +738,8 @@ def save_results(
     }
 
     # Record dataset provenance
-    if "dataset" in results:
-        ds = results["dataset"]
+    if keys.DATASET in results:
+        ds = results[keys.DATASET]
         from murano.dataset import LabeledDataset
 
         if isinstance(ds, LabeledDataset):

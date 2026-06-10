@@ -17,6 +17,7 @@ import torch
 from torch import Tensor, eye, float32, isfinite  # pyright: ignore[reportPrivateImportUsage]
 from tqdm import tqdm
 
+from murano import keys
 from murano.artifacts import GenerationComparison, PromptBatch
 from murano.logging import logger
 from murano.results import Results
@@ -215,17 +216,17 @@ class WeightAblation(Step):
         gen_kwargs: Keyword arguments for generation.
     """
 
-    reads = ["prompts", "steering"]
-    writes = ["intervene", "weight_ablation"]
+    reads = [keys.PROMPTS, keys.STEERING]
+    writes = [keys.INTERVENE, keys.WEIGHT_ABLATION]
     write_types = {
-        "intervene": InterveneResult,
-        "weight_ablation": WeightAblationResult,
+        keys.INTERVENE: InterveneResult,
+        keys.WEIGHT_ABLATION: WeightAblationResult,
     }
 
     def expected_read_types(self, results=None, available_types=None):
         return {
-            "prompts": PromptBatch,
-            "steering": SteeringResult,
+            keys.PROMPTS: PromptBatch,
+            keys.STEERING: SteeringResult,
         }
 
     def __init__(
@@ -239,8 +240,8 @@ class WeightAblation(Step):
         self.gen_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
 
     def __call__(self, results: Results) -> Results:
-        prompt_batch = results["prompts"]
-        steering = results["steering"]
+        prompt_batch = results[keys.PROMPTS]
+        steering = results[keys.STEERING]
         prompts = prompt_batch.prompts
 
         # Use the best layer's direction for the projection
@@ -284,8 +285,8 @@ class WeightAblation(Step):
                 **prompt_batch.metadata,
             },
         )
-        results["weight_ablation"] = result
-        results["intervene"] = InterveneResult(
+        results[keys.WEIGHT_ABLATION] = result
+        results[keys.INTERVENE] = InterveneResult(
             clean_generations=clean_gens,
             modified_generations=modified_gens,
             prompts=result.prompts,

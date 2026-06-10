@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from torch import Tensor
 
+from murano import keys
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
@@ -46,10 +47,10 @@ class SteeringVector(Step):
         ValueError: If ``method`` is not a supported value.
     """
 
-    reads = ["record"]
-    writes = ["steering"]
-    read_types = {"record": ActivationStore}
-    write_types = {"steering": SteeringResult}
+    reads = [keys.RECORD]
+    writes = [keys.STEERING]
+    read_types = {keys.RECORD: ActivationStore}
+    write_types = {keys.STEERING: SteeringResult}
 
     def __init__(self, method: str = "contrastive_mean_diff", normalize: bool = True):
         if method != "contrastive_mean_diff":
@@ -60,7 +61,7 @@ class SteeringVector(Step):
         self.normalize = normalize
 
     def __call__(self, results: Results) -> Results:
-        store = results["record"]
+        store = results[keys.RECORD]
         _require_reduced_store(store, "SteeringVector")
         directions: dict[ActivationKey, Tensor] = {}
         scores: dict[ActivationKey, float] = {}
@@ -97,7 +98,7 @@ class SteeringVector(Step):
             )
 
         best_key = max(scores, key=lambda k: scores[k])
-        results["steering"] = SteeringResult(
+        results[keys.STEERING] = SteeringResult(
             direction_per_layer=directions,
             separation_scores=scores,
             best_layer=best_key,

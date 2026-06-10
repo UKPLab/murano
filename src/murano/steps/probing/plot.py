@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from murano import keys
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
@@ -36,20 +37,20 @@ class ProbePlot(Step):
         root = (
             Path(self.output_dir)
             if self.output_dir
-            else Path(results.get("output_dir", "."))
+            else Path(results.get(keys.OUTPUT_DIR, "."))
         )
         plots_dir = root / "plots"
         plots_dir.mkdir(parents=True, exist_ok=True)
 
-        if "probe" in results:
+        if keys.PROBE in results:
             plot_probe_accuracy(
-                results["probe"],
+                results[keys.PROBE],
                 save_path=plots_dir / "probe_accuracy.png",
             )
-            if results["probe"].classifiers and "record" in results:
+            if results[keys.PROBE].classifiers and keys.RECORD in results:
                 plot_confusion_matrix(
-                    results["probe"],
-                    results["record"],
+                    results[keys.PROBE],
+                    results[keys.RECORD],
                     save_path=plots_dir / "confusion_matrix.png",
                 )
 

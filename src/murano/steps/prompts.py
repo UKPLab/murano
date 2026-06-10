@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from murano import keys
 from murano.artifacts import PromptBatch
 from murano.results import Results
 from murano.steps.base import Step
@@ -19,7 +20,7 @@ class LoadPrompts(Step):
     """
 
     reads = []
-    writes = ["prompts"]
+    writes = [keys.PROMPTS]
 
     def __init__(
         self,
@@ -37,8 +38,8 @@ class LoadPrompts(Step):
             )
 
     def expected_write_types(self, results=None, available_types=None):
-        return {"prompts": PromptBatch}
+        return {keys.PROMPTS: PromptBatch}
 
     def __call__(self, results: Results) -> Results:
-        results["prompts"] = self.prompts
+        results[keys.PROMPTS] = self.prompts
         return results
