@@ -48,9 +48,9 @@ def test_model_generate_supports_ablate(monkeypatch):
     result = model.generate(
         "prompt",
         ablate=SteeringResult(
-            direction_per_layer={0: torch.ones(4)},
-            separation_scores={0: 1.0},
-            best_layer=0,
+            direction_per_layer={(0, "residual"): torch.ones(4)},
+            separation_scores={(0, "residual"): 1.0},
+            best_layer=(0, "residual"),
         ),
     )
     assert result == "done:prompt"

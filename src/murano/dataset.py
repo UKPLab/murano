@@ -223,7 +223,7 @@ class MuranoDataset:
 
 
 class LabeledDataset:
-    """Dataset with per-example labels for probing.
+    """Dataset pairing texts with per-example integer labels.
 
     Attributes:
         texts: List of input strings (possibly chat-templated).

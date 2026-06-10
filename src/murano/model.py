@@ -102,13 +102,36 @@ class MuranoModel:
 
     def _coerce_directions(self, direction_like: Any) -> dict[ActivationKey, Tensor]:
         if hasattr(direction_like, "direction_per_layer"):
-            return direction_like.direction_per_layer
-        if isinstance(direction_like, dict):
-            return direction_like
-        raise TypeError(
-            "Expected a SteeringResult or {key: tensor} mapping for the "
-            "intervention directions."
-        )
+            directions = direction_like.direction_per_layer
+        elif isinstance(direction_like, dict):
+            directions = direction_like
+        else:
+            raise TypeError(
+                "Expected a SteeringResult or {key: tensor} mapping for the "
+                "intervention directions."
+            )
+        # Interventions are applied under (layer, module) keys; a key that is
+        # not exactly (int, str) would never match and the intervention would
+        # silently do nothing. The module of a pre-normalization int key is
+        # unknowable, so reject rather than guess.
+        bad = [
+            k
+            for k in directions
+            if not (
+                isinstance(k, tuple)
+                and len(k) == 2
+                and isinstance(k[0], int)
+                and isinstance(k[1], str)
+            )
+        ]
+        if bad:
+            raise ValueError(
+                f"Intervention direction keys must be (layer: int, module: str) "
+                f"tuples; got malformed keys {bad}. Re-key as (layer, module) "
+                f"(e.g. {{(L, 'residual'): tensor}}) or recompute with "
+                f"find_direction()."
+            )
+        return directions
 
     def _layer_indices(self, layers: list[int] | str) -> list[int]:
         if isinstance(layers, str):
@@ -152,7 +175,7 @@ class MuranoModel:
     def _generate_single(
         self,
         text: str,
-        fn: Callable[[Tensor, int | tuple[int, str]], Tensor] | None = None,
+        fn: Callable[[Tensor, ActivationKey], Tensor] | None = None,
         layers: list[int] | str = "all",
         modules: str | list[str] = "residual",
         gen_kwargs: dict[str, Any] | None = None,
@@ -174,9 +197,7 @@ class MuranoModel:
                     for mod_str in module_list:
                         mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
                         h = mod_proxy.output
-                        key: int | tuple[int, str] = (
-                            layer_idx if len(module_list) == 1 else (layer_idx, mod_str)
-                        )
+                        key: ActivationKey = (layer_idx, mod_str)
                         mod_proxy.output = fn(h, key)  # pyright: ignore[reportArgumentType]
             output_ids = self._lm.generator.output.save()
 
@@ -192,6 +213,7 @@ class MuranoModel:
         modules: str | list[str] = "residual",
         position: str | int = "last",
         batch_size: int = 8,
+        per_head: bool = False,
     ) -> ActivationStore:
         """Record activations on one or more texts.
 
@@ -199,8 +221,11 @@ class MuranoModel:
             text: Single string or sequence of strings to record from.
             layers: Layer indices to record at, or ``"all"`` for every layer.
             position: Token position to record. One of ``"last"``, ``"first"``,
-                ``"mean"``, or an integer index.
+                ``"mean"``, an integer index, or ``"none"`` to keep every
+                position.
             batch_size: Forward-pass batch size.
+            per_head: If True, split attention activations per head (attention
+                modules only).
 
         Returns:
             ActivationStore with per-layer activations under ``positive``;
@@ -219,6 +244,7 @@ class MuranoModel:
             modules=modules,
             position=position,
             batch_size=batch_size,
+            per_head=per_head,
         )(results)
         return results["record"]
 

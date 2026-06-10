@@ -1,6 +1,6 @@
 """Shape and contract tests for pipeline steps.
 
-Tests run on CPU with synthetic data — no model loading required.
+Tests run on CPU with synthetic data; no model loading required.
 These verify tensor shapes, step contracts, and pipeline validation.
 """
 
@@ -60,10 +60,12 @@ def activation_store(n_examples, n_layers, d_model):
     """Synthetic ActivationStore with random activations."""
     # Add a slight mean shift to positive so steering vector is non-degenerate
     positive = {
-        layer: torch.randn(n_examples, d_model) + 0.5 for layer in range(n_layers)
+        (layer, "residual"): torch.randn(n_examples, d_model) + 0.5
+        for layer in range(n_layers)
     }
     negative = {
-        layer: torch.randn(n_examples, d_model) - 0.5 for layer in range(n_layers)
+        (layer, "residual"): torch.randn(n_examples, d_model) - 0.5
+        for layer in range(n_layers)
     }
     return ActivationStore(positive=positive, negative=negative)
 
@@ -165,7 +167,7 @@ class TestPipelineValidation:
         pipe = Pipeline(
             [
                 Load(contrastive_dataset),
-                SteeringVector(),  # reads record — but Load writes dataset, not record
+                SteeringVector(),  # reads record, but Load writes dataset, not record
             ]
         )
         # This should fail because SteeringVector reads 'record' which Load doesn't write
@@ -369,15 +371,16 @@ class TestSteeringVector:
     def test_single_example_score_is_finite(self, d_model):
         r = Results()
         r["record"] = ActivationStore(
-            positive={0: torch.randn(1, d_model) + 0.5},
-            negative={0: torch.randn(1, d_model) - 0.5},
+            positive={(0, "residual"): torch.randn(1, d_model) + 0.5},
+            negative={(0, "residual"): torch.randn(1, d_model) - 0.5},
         )
         results = SteeringVector()(r)
-        assert math.isfinite(results["steering"].separation_scores[0])
+        assert math.isfinite(results["steering"].separation_scores[(0, "residual")])
 
     def test_best_layer_is_valid(self, results_with_activations, n_layers):
         results = SteeringVector()(results_with_activations)
-        assert results["steering"].best_layer in range(n_layers)
+        valid_keys = {(layer, "residual") for layer in range(n_layers)}
+        assert results["steering"].best_layer in valid_keys
 
     def test_best_layer_has_highest_score(self, results_with_activations, n_examples):
         if n_examples < 2:
@@ -396,22 +399,26 @@ class TestInterventionFunctions:
 
     @pytest.mark.parametrize("batch_size,seq_len", [(1, 1), (4, 10), (8, 32)])
     def test_ablate_preserves_shape(self, batch_size, seq_len, d_model, n_layers):
-        directions = {layer: torch.randn(d_model) for layer in range(n_layers)}
+        directions = {
+            (layer, "residual"): torch.randn(d_model) for layer in range(n_layers)
+        }
         fn = ablate_direction(directions)
 
         activation = torch.randn(batch_size, seq_len, d_model)
         for layer in range(n_layers):
-            result = fn(activation, layer)
+            result = fn(activation, (layer, "residual"))
             assert result.shape == activation.shape
 
     @pytest.mark.parametrize("batch_size,seq_len", [(1, 1), (4, 10), (8, 32)])
     def test_steer_preserves_shape(self, batch_size, seq_len, d_model, n_layers):
-        directions = {layer: torch.randn(d_model) for layer in range(n_layers)}
+        directions = {
+            (layer, "residual"): torch.randn(d_model) for layer in range(n_layers)
+        }
         fn = steer_direction(directions, alpha=1.5)
 
         activation = torch.randn(batch_size, seq_len, d_model)
         for layer in range(n_layers):
-            result = fn(activation, layer)
+            result = fn(activation, (layer, "residual"))
             assert result.shape == activation.shape
 
     def test_ablate_removes_direction_component(self, d_model):
@@ -674,7 +681,7 @@ def labeled_activation_store(n_examples, n_layers, d_model):
     """Synthetic LabeledActivationStore with well-separated classes."""
     n_per_class = max(n_examples, 5)  # ensure enough for CV
     activations = {
-        layer: torch.cat(
+        (layer, "residual"): torch.cat(
             [
                 torch.randn(n_per_class, d_model) + 2.0,
                 torch.randn(n_per_class, d_model) - 2.0,
@@ -722,11 +729,11 @@ class TestLabeledActivationStore:
         assert len(store.activations) == n_layers
         n_total = store.labels.shape[0]
         for layer in range(n_layers):
-            assert store.activations[layer].shape == (n_total, d_model)
+            assert store.activations[(layer, "residual")].shape == (n_total, d_model)
 
     def test_labels_shape(self, labeled_activation_store):
         store = labeled_activation_store
-        n_total = sum(store.activations[0].shape[0] for _ in [None])
+        n_total = sum(store.activations[(0, "residual")].shape[0] for _ in [None])
         assert store.labels.shape == (n_total,)
         assert store.labels.dtype == torch.long
 
@@ -758,7 +765,8 @@ class TestProbe:
         r["dataset"] = labeled_dataset
         r["record"] = labeled_activation_store
         results = Probe(cv=2)(r)
-        assert results["probe"].best_layer in range(n_layers)
+        valid_keys = {(layer, "residual") for layer in range(n_layers)}
+        assert results["probe"].best_layer in valid_keys
 
     def test_best_layer_has_highest_accuracy(
         self, labeled_activation_store, labeled_dataset
@@ -807,7 +815,7 @@ class TestProbe:
         cv = 2
         results = Probe(cv=cv)(r)
         for layer in range(n_layers):
-            assert len(results["probe"].cv_scores[layer]) == cv
+            assert len(results["probe"].cv_scores[(layer, "residual")]) == cv
 
     def test_label_names_passed_through(
         self, labeled_activation_store, labeled_dataset
@@ -870,9 +878,9 @@ class TestWeightAblation:
         r = Results()
         r["prompts"] = PromptBatch(prompts=["prompt"])
         r["steering"] = SteeringResult(
-            direction_per_layer={0: torch.ones(4)},
-            separation_scores={0: 1.0},
-            best_layer=0,
+            direction_per_layer={(0, "residual"): torch.ones(4)},
+            separation_scores={(0, "residual"): 1.0},
+            best_layer=(0, "residual"),
         )
 
         with pytest.raises(RuntimeError, match="save failed"):

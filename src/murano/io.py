@@ -156,7 +156,7 @@ def save_probe(probe_result: Any, path: Path) -> None:
             str(k): v for k, v in probe_result.accuracy_per_layer.items()
         },
         "cv_scores": {str(k): v.tolist() for k, v in probe_result.cv_scores.items()},
-        "best_layer": probe_result.best_layer,
+        "best_layer": str(probe_result.best_layer),
         "label_names": probe_result.label_names,
     }
     path.write_text(json.dumps(data, indent=2))
@@ -229,6 +229,10 @@ def save_activation_store(activation_store: Any, path: Path) -> None:
         {
             "positive": activation_store.positive,
             "negative": activation_store.negative,
+            "position": activation_store.position,
+            "per_head": activation_store.per_head,
+            "positive_token_mask": activation_store.positive_token_mask,
+            "negative_token_mask": activation_store.negative_token_mask,
         },
         path,
     )
@@ -247,7 +251,14 @@ def load_activation_store(path: str | Path) -> Any:
     from murano.steps.record import ActivationStore
 
     data = torch.load(path, weights_only=False)
-    return ActivationStore(positive=data["positive"], negative=data["negative"])
+    return ActivationStore(
+        positive=data["positive"],
+        negative=data["negative"],
+        position=data.get("position", "last"),
+        per_head=data.get("per_head", False),
+        positive_token_mask=data.get("positive_token_mask"),
+        negative_token_mask=data.get("negative_token_mask"),
+    )
 
 
 def save_labeled_activation_store(labeled_store: Any, path: Path) -> None:
@@ -264,6 +275,9 @@ def save_labeled_activation_store(labeled_store: Any, path: Path) -> None:
         {
             "activations": labeled_store.activations,
             "labels": labeled_store.labels,
+            "position": labeled_store.position,
+            "per_head": labeled_store.per_head,
+            "token_mask": labeled_store.token_mask,
         },
         path,
     )
@@ -283,7 +297,11 @@ def load_labeled_activation_store(path: str | Path) -> Any:
 
     data = torch.load(path, weights_only=False)
     return LabeledActivationStore(
-        activations=data["activations"], labels=data["labels"]
+        activations=data["activations"],
+        labels=data["labels"],
+        position=data.get("position", "last"),
+        per_head=data.get("per_head", False),
+        token_mask=data.get("token_mask"),
     )
 
 
@@ -492,8 +510,10 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         filename = "steering.pt" if key == "steering" else f"{key}.pt"
         save_steering(steering, out / "direction" / filename)
         metadata[key] = {
-            "best_layer": steering.best_layer,
-            "separation_scores": steering.separation_scores,
+            "best_layer": str(steering.best_layer),
+            "separation_scores": {
+                str(k): v for k, v in steering.separation_scores.items()
+            },
         }
 
     def serialize_generations(
@@ -554,8 +574,10 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         filename = "probe.json" if key == "probe" else f"{key}.json"
         save_probe(probe, out / "probe" / filename)
         metadata[key] = {
-            "best_layer": probe.best_layer,
-            "accuracy_per_layer": probe.accuracy_per_layer,
+            "best_layer": str(probe.best_layer),
+            "accuracy_per_layer": {
+                str(k): v for k, v in probe.accuracy_per_layer.items()
+            },
         }
 
     def serialize_logit_lens(
@@ -587,6 +609,8 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         metadata[key] = {
             "kind": "contrastive",
             "keys": [str(k) for k in store.positive],
+            "position": str(store.position),
+            "per_head": store.per_head,
             "n_positive": pos.shape[0] if pos is not None else 0,
             "n_negative": neg.shape[0] if neg is not None else 0,
         }
@@ -603,6 +627,8 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         metadata[key] = {
             "kind": "labeled",
             "keys": [str(k) for k in store.activations],
+            "position": str(store.position),
+            "per_head": store.per_head,
             "n_examples": store.labels.shape[0],
         }
 

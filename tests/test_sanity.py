@@ -69,7 +69,7 @@ def test_cross_architecture_end_to_end(murano_model):
     """
     # 1. Record
     acts = murano_model.record("Hello world", layers=[0], position="last")
-    assert len(acts.positive[0]) > 0
+    assert len(acts.positive[(0, "residual")]) > 0
 
     # 2. Find direction
     direction = murano_model.find_direction(
@@ -77,7 +77,7 @@ def test_cross_architecture_end_to_end(murano_model):
         negative=["I am bad"],
         layers=[0],
     )
-    assert direction.best_layer == 0
+    assert direction.best_layer == (0, "residual")
 
     # 3. Intervene via ablation
     ablated_text = murano_model.generate(

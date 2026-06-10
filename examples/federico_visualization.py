@@ -39,18 +39,29 @@ class PlotterLens:
     def observe(
         self,
         store: ActivationStore,
-        layer: int,
+        layer: int | tuple[int, str],
         title: str = "Activation Visualization",
     ) -> None:
         """Reduce activations for a single layer and plot.
 
         Args:
             store: ActivationStore produced by the Record step.
-            layer: Which layer index to visualise.
+            layer: A full ``(layer, module)`` key, or a bare layer index that
+                is resolved to its key when a single module was recorded.
             title: Plot title.
         """
-        pos = store.positive[layer]  # [N_pos, d_model]
-        neg = store.negative[layer]  # [N_neg, d_model]
+        if isinstance(layer, tuple):
+            key: int | tuple[int, str] = layer
+        else:
+            matches = [k for k in store.positive if k[0] == layer]
+            if len(matches) != 1:
+                raise KeyError(
+                    f"Layer {layer} maps to {len(matches)} keys ({matches}); "
+                    f"pass an explicit (layer, module) key."
+                )
+            key = matches[0]
+        pos = store.positive[key]  # [N_pos, d_model]
+        neg = store.negative[key]  # [N_neg, d_model]
 
         X = torch.cat([pos, neg], dim=0).numpy()
         y = ["positive"] * len(pos) + ["negative"] * len(neg)
