@@ -11,6 +11,7 @@ from typing import Literal
 import torch
 import torch.nn.functional as F
 
+from murano import keys
 from murano.results import Results
 from murano.steps.base import Step
 
@@ -33,9 +34,9 @@ class CrossEntropyLossStep(Step):
 
     def __init__(
         self,
-        logits_key: str = "final_logits",
-        targets_key: str = "target_ids",
-        output_key: str = "loss",
+        logits_key: str = keys.FINAL_LOGITS,
+        targets_key: str = keys.TARGET_IDS,
+        output_key: str = keys.LOSS,
         reduction: Literal["mean", "sum", "none"] = "mean",
     ):
         self.logits_key = logits_key
@@ -83,9 +84,9 @@ class AccuracyStep(Step):
 
     def __init__(
         self,
-        logits_key: str = "final_logits",
-        targets_key: str = "target_ids",
-        output_key: str = "accuracy",
+        logits_key: str = keys.FINAL_LOGITS,
+        targets_key: str = keys.TARGET_IDS,
+        output_key: str = keys.ACCURACY,
     ):
         self.logits_key = logits_key
         self.targets_key = targets_key

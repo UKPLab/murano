@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from torch import Tensor, no_grad  # pyright: ignore[reportPrivateImportUsage]
 
+from murano import keys
 from murano.artifacts import PromptBatch
 from murano.logging import logger
 from murano.results import Results
@@ -227,10 +228,10 @@ class SAEEncode(Step):
             point (e.g. ``hook_z``).
     """
 
-    reads = ["prompts"]
-    writes = ["sae_record"]
-    read_types = {"prompts": PromptBatch}
-    write_types = {"sae_record": SAEActivationStore}
+    reads = [keys.PROMPTS]
+    writes = [keys.SAE_RECORD]
+    read_types = {keys.PROMPTS: PromptBatch}
+    write_types = {keys.SAE_RECORD: SAEActivationStore}
 
     def __init__(
         self,
@@ -244,7 +245,7 @@ class SAEEncode(Step):
         self.sae_model = SAEModel(release=release, sae_id=sae_id)
 
     def __call__(self, results: Results) -> Results:
-        prompts = results["prompts"].prompts
+        prompts = results[keys.PROMPTS].prompts
 
         self.sae_model._ensure_loaded()
         hook_layer, hook_kind = _resolve_hook(self.sae_model)
@@ -267,7 +268,7 @@ class SAEEncode(Step):
         with no_grad():
             sae_acts = self.sae_model.encode(residual)
 
-        results["sae_record"] = SAEActivationStore(
+        results[keys.SAE_RECORD] = SAEActivationStore(
             activations=sae_acts.detach().cpu(),
             tokens=cast(Tensor, tokens["input_ids"]).detach().cpu(),
             attention_mask=cast(Tensor, tokens["attention_mask"]).detach().cpu(),
@@ -310,10 +311,10 @@ class SAETopActivations(Step):
             is out of range.
     """
 
-    reads = ["sae_record"]
-    writes = ["feature_examples"]
-    read_types = {"sae_record": SAEActivationStore}
-    write_types = {"feature_examples": SAEFeatureExamples}
+    reads = [keys.SAE_RECORD]
+    writes = [keys.FEATURE_EXAMPLES]
+    read_types = {keys.SAE_RECORD: SAEActivationStore}
+    write_types = {keys.FEATURE_EXAMPLES: SAEFeatureExamples}
 
     def __init__(
         self,
@@ -330,7 +331,7 @@ class SAETopActivations(Step):
         self.skip_bos = skip_bos
 
     def __call__(self, results: Results) -> Results:
-        store: SAEActivationStore = results["sae_record"]
+        store: SAEActivationStore = results[keys.SAE_RECORD]
         acts = store.activations
         if acts.dim() != 3:
             raise ValueError(
@@ -380,7 +381,7 @@ class SAETopActivations(Step):
             store.layer,
         )
 
-        results["feature_examples"] = SAEFeatureExamples(
+        results[keys.FEATURE_EXAMPLES] = SAEFeatureExamples(
             feat_ids=feat_ids,
             contexts=contexts,
             tokens=tokens,

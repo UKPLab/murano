@@ -7,6 +7,7 @@ in murano/steps/ directly.
 
 from __future__ import annotations
 
+from murano import keys
 from murano.artifacts import GenerationComparison, MetricResult
 from murano.evaluation import REFUSAL_PHRASES, is_refusal, score_generations
 from murano.logging import logger
@@ -68,10 +69,10 @@ class ComplianceRate(Step):
         ValueError: If ``method`` is not a supported value.
     """
 
-    reads = ["intervene"]
-    writes = ["eval"]
-    read_types = {"intervene": GenerationComparison}
-    write_types = {"eval": EvalResult}
+    reads = [keys.INTERVENE]
+    writes = [keys.EVAL]
+    read_types = {keys.INTERVENE: GenerationComparison}
+    write_types = {keys.EVAL: EvalResult}
 
     def __init__(self, method: str = "keyword", context_window: int = 300):
         if method != "keyword":
@@ -80,14 +81,14 @@ class ComplianceRate(Step):
         self.context_window = context_window
 
     def __call__(self, results: Results) -> Results:
-        intervene = results["intervene"]
+        intervene = results[keys.INTERVENE]
         clean_scores = [self._score_one(text) for text in intervene.clean_generations]
         ablated_scores = [
             self._score_one(text) for text in intervene.modified_generations
         ]
         clean_compliance = self._score(intervene.clean_generations)
         ablated_compliance = self._score(intervene.modified_generations)
-        results["eval"] = EvalResult(
+        results[keys.EVAL] = EvalResult(
             clean_compliance=clean_compliance,
             ablated_compliance=ablated_compliance,
             clean_scores=clean_scores,

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from torch import Tensor, arange, cat, full_like, long, tensor  # pyright: ignore[reportPrivateImportUsage]
 
+from murano import keys
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
@@ -237,8 +238,8 @@ class Record(Step):
         ``layers="all"``, multiple modules, and large batches is memory-bound.
     """
 
-    reads = ["dataset"]
-    writes = ["record"]
+    reads = [keys.DATASET]
+    writes = [keys.RECORD]
     read_types = {}
 
     def __init__(
@@ -303,7 +304,7 @@ class Record(Step):
         """Return ``{"dataset": (MuranoDataset, LabeledDataset)}``."""
         from murano.dataset import LabeledDataset, MuranoDataset
 
-        return {"dataset": (MuranoDataset, LabeledDataset)}
+        return {keys.DATASET: (MuranoDataset, LabeledDataset)}
 
     def expected_write_types(self, results=None, available_types=None):
         """Return the write type for ``record``, narrowed by the upstream dataset type.
@@ -316,13 +317,13 @@ class Record(Step):
         from murano.dataset import LabeledDataset, MuranoDataset
 
         dataset_type = None
-        if results is not None and "dataset" in results:
-            dataset_type = type(results["dataset"])
+        if results is not None and keys.DATASET in results:
+            dataset_type = type(results[keys.DATASET])
         elif available_types is not None:
-            dataset_type = available_types.get("dataset")
+            dataset_type = available_types.get(keys.DATASET)
 
         if dataset_type is None:
-            return {"record": (ActivationStore, LabeledActivationStore)}
+            return {keys.RECORD: (ActivationStore, LabeledActivationStore)}
 
         candidate_types = (
             dataset_type if isinstance(dataset_type, tuple) else (dataset_type,)
@@ -334,15 +335,15 @@ class Record(Step):
         ]
 
         if all(is_labeled):
-            return {"record": LabeledActivationStore}
+            return {keys.RECORD: LabeledActivationStore}
         if all(is_contrastive):
-            return {"record": ActivationStore}
-        return {"record": (ActivationStore, LabeledActivationStore)}
+            return {keys.RECORD: ActivationStore}
+        return {keys.RECORD: (ActivationStore, LabeledActivationStore)}
 
     def __call__(self, results: Results) -> Results:
         from murano.dataset import LabeledDataset
 
-        dataset = results["dataset"]
+        dataset = results[keys.DATASET]
 
         if isinstance(dataset, LabeledDataset):
             logger.info(
@@ -352,7 +353,7 @@ class Record(Step):
             )
             acts, mask = self._collect(dataset.texts)
             labels_tensor = tensor(dataset.labels, dtype=long)
-            results["record"] = LabeledActivationStore(
+            results[keys.RECORD] = LabeledActivationStore(
                 activations=acts,
                 labels=labels_tensor,
                 position=self.position,
@@ -376,7 +377,7 @@ class Record(Step):
                 if dataset.negative_texts
                 else ({}, None)
             )
-            results["record"] = ActivationStore(
+            results[keys.RECORD] = ActivationStore(
                 positive=pos_acts,
                 negative=neg_acts,
                 position=self.position,

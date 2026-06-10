@@ -8,6 +8,7 @@ from typing import Any
 
 from numpy import ndarray
 
+from murano import keys
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
@@ -55,10 +56,10 @@ class Probe(Step):
                in ProbeResult.classifiers.
     """
 
-    reads = ["record"]
-    writes = ["probe"]
-    read_types = {"record": LabeledActivationStore}
-    write_types = {"probe": ProbeResult}
+    reads = [keys.RECORD]
+    writes = [keys.PROBE]
+    read_types = {keys.RECORD: LabeledActivationStore}
+    write_types = {keys.PROBE: ProbeResult}
 
     def __init__(
         self,
@@ -75,7 +76,7 @@ class Probe(Step):
         from sklearn.model_selection import cross_val_score
         from sklearn.base import clone
 
-        store = results["record"]
+        store = results[keys.RECORD]
         if not isinstance(store, LabeledActivationStore):
             raise TypeError(
                 f"Probe requires LabeledActivationStore in results['record'], "
@@ -134,11 +135,11 @@ class Probe(Step):
         best_layer = max(accuracy_per_layer, key=lambda k: accuracy_per_layer[k])
 
         label_names = None
-        dataset = results.get("dataset")
+        dataset = results.get(keys.DATASET)
         if dataset is not None and hasattr(dataset, "label_names"):
             label_names = dataset.label_names
 
-        results["probe"] = ProbeResult(
+        results[keys.PROBE] = ProbeResult(
             accuracy_per_layer=accuracy_per_layer,
             cv_scores=cv_scores,
             best_layer=best_layer,

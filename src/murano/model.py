@@ -10,6 +10,7 @@ from torch import Tensor, bfloat16  # pyright: ignore[reportPrivateImportUsage]
 from torch import dtype as TorchDtype  # pyright: ignore[reportPrivateImportUsage]
 from nnterp import StandardizedTransformer
 
+from murano import keys
 from murano.logging import logger
 from murano.steps.record import ActivationKey
 
@@ -237,7 +238,7 @@ class MuranoModel:
 
         texts, _ = self._coerce_texts(text)
         results = Results()
-        results["dataset"] = MuranoDataset(positive_texts=texts, negative_texts=[])
+        results[keys.DATASET] = MuranoDataset(positive_texts=texts, negative_texts=[])
         results = Record(
             self,
             layers=layers,
@@ -246,7 +247,7 @@ class MuranoModel:
             batch_size=batch_size,
             per_head=per_head,
         )(results)
-        return results["record"]
+        return results[keys.RECORD]
 
     def find_direction(
         self,
@@ -279,7 +280,7 @@ class MuranoModel:
         from murano.steps.train import SteeringVector
 
         results = Results()
-        results["dataset"] = MuranoDataset.contrastive(
+        results[keys.DATASET] = MuranoDataset.contrastive(
             positive=list(positive),
             negative=list(negative),
         )
@@ -291,7 +292,7 @@ class MuranoModel:
             batch_size=batch_size,
         )(results)
         results = SteeringVector(normalize=normalize)(results)
-        return results["steering"]
+        return results[keys.STEERING]
 
     def generate(
         self,

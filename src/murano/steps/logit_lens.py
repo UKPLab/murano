@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, cast
 from torch import Tensor, no_grad, stack  # pyright: ignore[reportPrivateImportUsage]
 from torch.nn.functional import softmax
 
+from murano import keys
 from murano.artifacts import PromptBatch
 from murano.logging import logger
 from murano.results import Results
@@ -68,10 +69,10 @@ class LogitLens(Step):
         ValueError: If ``layers`` is a string other than ``"all"``.
     """
 
-    reads = ["prompts"]
-    writes = ["logit_lens"]
-    read_types = {"prompts": PromptBatch}
-    write_types = {"logit_lens": LogitLensResult}
+    reads = [keys.PROMPTS]
+    writes = [keys.LOGIT_LENS]
+    read_types = {keys.PROMPTS: PromptBatch}
+    write_types = {keys.LOGIT_LENS: LogitLensResult}
 
     def __init__(
         self,
@@ -87,7 +88,7 @@ class LogitLens(Step):
             self.layers = list(layers)
 
     def __call__(self, results: Results) -> Results:
-        prompt_batch: PromptBatch = results["prompts"]
+        prompt_batch: PromptBatch = results[keys.PROMPTS]
         prompts = prompt_batch.prompts
         logger.info("LogitLens: %d prompts, %d layers", len(prompts), len(self.layers))
 
@@ -134,7 +135,7 @@ class LogitLens(Step):
             for layer in predicted_tokens
         ]
 
-        results["logit_lens"] = LogitLensResult(
+        results[keys.LOGIT_LENS] = LogitLensResult(
             all_probs=all_probs,
             max_probs=max_probs,
             predicted_tokens=predicted_tokens,

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Callable
 from torch import Tensor, isfinite  # pyright: ignore[reportPrivateImportUsage]
 from tqdm import tqdm
 
+from murano import keys
 from murano.artifacts import GenerationComparison, PromptBatch
 from murano.logging import logger
 from murano.results import Results
@@ -124,13 +125,13 @@ class Intervene(Step):
         gen_kwargs: Keyword arguments for model.generate().
     """
 
-    reads = ["prompts"]
-    writes = ["intervene"]
-    write_types = {"intervene": InterveneResult}
+    reads = [keys.PROMPTS]
+    writes = [keys.INTERVENE]
+    write_types = {keys.INTERVENE: InterveneResult}
 
     def expected_read_types(self, results=None, available_types=None):
         """Return ``{"prompts": PromptBatch}``."""
-        return {"prompts": PromptBatch}
+        return {keys.PROMPTS: PromptBatch}
 
     def __init__(
         self,
@@ -152,7 +153,7 @@ class Intervene(Step):
         self.gen_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
 
     def __call__(self, results: Results) -> Results:
-        prompt_batch = results["prompts"]
+        prompt_batch = results[keys.PROMPTS]
         prompts = prompt_batch.prompts
         clean_gens = []
         modified_gens = []
@@ -161,7 +162,7 @@ class Intervene(Step):
             clean_gens.append(self._generate_clean(prompt))
             modified_gens.append(self._generate_ablated(prompt))
 
-        results["intervene"] = InterveneResult(
+        results[keys.INTERVENE] = InterveneResult(
             clean_generations=clean_gens,
             modified_generations=modified_gens,
             prompts=(
