@@ -9,7 +9,7 @@ from torch import Tensor
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
-from murano.steps.record import ActivationStore, ActivationKey
+from murano.steps.record import ActivationStore, ActivationKey, _require_reduced_store
 
 
 @dataclass
@@ -17,10 +17,8 @@ class SteeringResult:
     """Output of SteeringVector step.
 
     Attributes:
-        direction_per_layer: {key: tensor [d_model]} normalized direction.
-                             Keys are ``int`` (layer index) when a single
-                             module was recorded, or ``(int, str)``
-                             (layer, module_name) for multiple modules.
+        direction_per_layer: {(layer, module): tensor [d_model]} normalized
+                             direction, keyed by ``(layer_index, module_name)``.
         separation_scores: {key: float} how well the direction separates classes.
         best_layer: Key with highest separation score.
     """
@@ -63,6 +61,7 @@ class SteeringVector(Step):
 
     def __call__(self, results: Results) -> Results:
         store = results["record"]
+        _require_reduced_store(store, "SteeringVector")
         directions: dict[ActivationKey, Tensor] = {}
         scores: dict[ActivationKey, float] = {}
 

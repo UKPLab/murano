@@ -161,10 +161,10 @@ class TestRecordIntervene:
         results = pipe.run()
         steering: SteeringResult = results["steering"]
 
-        assert 0 in steering.direction_per_layer
-        assert steering.direction_per_layer[0].shape == (model.d_model,)
-        assert 0 in steering.separation_scores
-        assert steering.best_layer == 0
+        assert (0, "residual") in steering.direction_per_layer
+        assert steering.direction_per_layer[(0, "residual")].shape == (model.d_model,)
+        assert (0, "residual") in steering.separation_scores
+        assert steering.best_layer == (0, "residual")
 
     def test_pipeline_intervene(self, model, contrastive_dataset):
         """Pipeline: Load → Intervene should produce InterveneResult."""

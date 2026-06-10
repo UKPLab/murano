@@ -65,8 +65,7 @@ def ablate_direction(directions: dict[ActivationKey, Tensor]) -> Callable:
 
     Args:
         directions: {key: tensor [d_model]} directions to ablate.
-                    Keys are ``int`` (layer index) or ``(int, str)``
-                    (layer, module_name).
+                    Keys are ``(layer, module_name)`` tuples.
 
     Returns:
         Callable(activation, key) -> modified activation.
@@ -90,8 +89,7 @@ def steer_direction(directions: dict[ActivationKey, Tensor], alpha: float) -> Ca
 
     Args:
         directions: {key: tensor [d_model]} directions to add.
-                    Keys are ``int`` (layer index) or ``(int, str)``
-                    (layer, module_name).
+                    Keys are ``(layer, module_name)`` tuples.
         alpha: Scaling factor. Positive = strengthen, negative = suppress.
 
     Returns:

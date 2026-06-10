@@ -11,7 +11,11 @@ from numpy import ndarray
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
-from murano.steps.record import ActivationKey, LabeledActivationStore
+from murano.steps.record import (
+    ActivationKey,
+    LabeledActivationStore,
+    _require_reduced_store,
+)
 
 
 @dataclass
@@ -78,6 +82,7 @@ class Probe(Step):
                 f"got {type(store).__name__}. "
                 f"Did you use a LabeledDataset with the Load step?"
             )
+        _require_reduced_store(store, "Probe")
 
         classifier = self._classifier_template or LogisticRegression(
             max_iter=1000,
@@ -141,7 +146,7 @@ class Probe(Step):
             label_names=label_names,
         )
         logger.info(
-            "Best layer: %d (accuracy=%.4f)",
+            "Best layer: %s (accuracy=%.4f)",
             best_layer,
             accuracy_per_layer[best_layer],
         )

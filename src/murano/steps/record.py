@@ -16,10 +16,10 @@ if TYPE_CHECKING:
     from murano.model import MuranoModel
 
 
-# Key type for activation dictionaries.
-# When a single module is targeted, keys are plain layer indices (int).
-# When multiple modules are targeted, keys are (layer_idx, module_name) tuples.
-ActivationKey = int | tuple[int, str]
+# Key type for activation dictionaries: always ``(layer_index, module_name)``.
+# Normalized to a tuple in every case (single- and multi-module records alike)
+# so consumers never branch on key shape.
+ActivationKey = tuple[int, str]
 
 
 @dataclass
@@ -27,31 +27,74 @@ class ActivationStore:
     """Stores per-layer/module activations for contrastive dataset splits.
 
     Attributes:
-        positive: {key: tensor [N, d_model]} for positive texts.
-                  Keys are ``int`` (layer index) when a single module is
-                  targeted, or ``(int, str)`` (layer, module_name) when
-                  multiple modules are targeted.
-        negative: {key: tensor [N, d_model]} for negative texts.
+        positive: ``{(layer, module): tensor}`` for positive texts.
+        negative: ``{(layer, module): tensor}`` for negative texts.
+        position: Token-position selection applied at record time
+            (``"last"`` / ``"first"`` / ``"mean"`` / int, or ``"none"`` to keep
+            every position). Sets the tensor rank: reduced modes give
+            ``[N, d_model]``; ``"none"`` gives ``[N, seq, d_model]``.
+        per_head: Whether activations are split per attention head, which adds a
+            trailing ``[..., n_heads, head_dim]`` pair of dims.
+        positive_token_mask: ``[N, seq]`` valid-token mask for ``positive`` when
+            ``position="none"``; ``None`` otherwise.
+        negative_token_mask: ``[N, seq]`` valid-token mask for ``negative`` when
+            ``position="none"``; ``None`` otherwise.
     """
 
     positive: dict[ActivationKey, Tensor]
     negative: dict[ActivationKey, Tensor]
+    position: str | int = "last"
+    per_head: bool = False
+    positive_token_mask: Tensor | None = None
+    negative_token_mask: Tensor | None = None
 
 
 @dataclass
 class LabeledActivationStore:
-    """Stores per-layer/module activations with associated labels for probing.
+    """Stores per-layer/module activations with associated per-example labels.
 
     Attributes:
-        activations: {key: tensor [N, d_model]} token-position activations.
-                     Keys are ``int`` (layer index) when a single module is
-                     targeted, or ``(int, str)`` (layer, module_name) when
-                     multiple modules are targeted.
+        activations: ``{(layer, module): tensor}`` token-position activations.
         labels: tensor [N] integer labels.
+        position: Token-position selection applied at record time (see
+            :class:`ActivationStore`).
+        per_head: Whether activations are split per attention head.
+        token_mask: ``[N, seq]`` valid-token mask when ``position="none"``;
+            ``None`` otherwise.
     """
 
     activations: dict[ActivationKey, Tensor]
     labels: Tensor
+    position: str | int = "last"
+    per_head: bool = False
+    token_mask: Tensor | None = None
+
+
+def _require_reduced_store(
+    store: ActivationStore | LabeledActivationStore, step_name: str
+) -> None:
+    """Raise if the store holds full-position or per-head activations.
+
+    Steps that consume reduced ``[N, d_model]`` activations call this to reject
+    stores recorded with ``position="none"`` or ``per_head=True``: those carry
+    extra dimensions that would silently produce wrong results. The caller
+    identifies itself via ``step_name`` for the error message.
+
+    Args:
+        store: The activation store to validate.
+        step_name: Name of the calling step, used in the error message.
+
+    Raises:
+        ValueError: If ``store.position == "none"`` or ``store.per_head``.
+    """
+    if store.position == "none" or store.per_head:
+        raise ValueError(
+            f"{step_name} requires a reduced activation store "
+            f"(position != 'none' and per_head=False); got "
+            f"position={store.position!r}, per_head={store.per_head}. "
+            f"Record with a reduced position (e.g. 'last' or 'mean') and "
+            f"per_head=False."
+        )
 
 
 def _batched(iterable, n):
@@ -69,28 +112,66 @@ def _rank_positions(attention_mask: Tensor) -> Tensor:
     return attention_mask.cumsum(dim=1) - 1
 
 
+# Known names for an attention module's output projection, tried in order when
+# splitting per-head activations. A general per-architecture resolver is future
+# work; until then unknown architectures raise from _attn_out_proj.
+_ATTN_OUT_PROJ_NAMES = ("o_proj", "out_proj", "c_proj", "dense", "wo")
+
+
+def _unwrap_traced(saved) -> Tensor:
+    """Resolve an nnsight ``.save()`` handle to its underlying tensor.
+
+    Reads ``.value`` when present, then unwraps any tuple nesting (decoder
+    layers return ``(hidden_states, ...)``; module inputs may be ``(args, ...)``)
+    down to the first tensor.
+    """
+    val = saved.value if hasattr(saved, "value") else saved
+    while isinstance(val, tuple):
+        val = val[0]
+    if not isinstance(val, Tensor):
+        raise TypeError(
+            f"Expected a tensor from the traced handle, got {type(val).__name__}; "
+            f"the module's output/input layout is not supported."
+        )
+    return val
+
+
 def _select_token_activations(
     output: Tensor,
     attention_mask: Tensor,
     position: str | int,
 ) -> Tensor:
-    """Select per-sequence activations according to the requested position."""
-    if output.dim() != 3:
+    """Select per-sequence activations according to the requested position.
+
+    ``output`` is ``[batch, seq, d_model]`` for whole-module activations, or
+    ``[batch, seq, n_heads, head_dim]`` when recording per head. Reductions
+    operate over the sequence dimension and preserve any trailing dims;
+    ``position="none"`` returns the full positional tensor unchanged.
+    """
+    if output.dim() not in (3, 4):
         raise ValueError(
-            f"Expected [batch, seq, d_model] output, got {tuple(output.shape)}"
+            f"Expected [batch, seq, ...] output of rank 3 or 4, "
+            f"got {tuple(output.shape)}"
         )
 
+    # Keep mask and indexing tensors on the activation's device.
+    attention_mask = attention_mask.to(device=output.device)
     batch_indices = arange(output.shape[0], device=output.device)
     mask_bool = attention_mask.bool()
     seq_len = attention_mask.shape[1]
 
+    if position == "none":
+        return output
+
     if position == "mean":
-        mask = attention_mask.unsqueeze(-1).to(output.dtype)
+        mask = mask_bool.to(output.dtype)
+        while mask.dim() < output.dim():
+            mask = mask.unsqueeze(-1)
         return (output * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
 
     if position == "first":
         first_pos = mask_bool.int().argmax(dim=1)
-        return output[batch_indices, first_pos, :]
+        return output[batch_indices, first_pos]
 
     indices = (
         arange(seq_len, device=output.device).unsqueeze(0).expand_as(attention_mask)
@@ -99,7 +180,7 @@ def _select_token_activations(
 
     if position == "last":
         selected_positions = masked_indices.max(dim=1).values
-        return output[batch_indices, selected_positions, :]
+        return output[batch_indices, selected_positions]
 
     if isinstance(position, int):
         lengths = attention_mask.sum(dim=1)
@@ -115,10 +196,11 @@ def _select_token_activations(
         ranks = _rank_positions(attention_mask)
         target_mask = mask_bool & (ranks == target_rank.unsqueeze(1))
         selected_positions = target_mask.int().argmax(dim=1)
-        return output[batch_indices, selected_positions, :]
+        return output[batch_indices, selected_positions]
 
     raise ValueError(
-        "position must be one of 'last', 'first', 'mean', or an integer token index"
+        "position must be one of 'last', 'first', 'mean', 'none', or an "
+        "integer token index"
     )
 
 
@@ -134,13 +216,25 @@ class Record(Step):
     Args:
         model: Wrapped model to record from.
         layers: Layer indices to record, or ``"all"`` for every layer.
-        position: Token position to record at. One of ``"last"``,
-            ``"first"``, ``"mean"``, or an integer token index.
+        position: Token position to record at. One of ``"last"``, ``"first"``,
+            ``"mean"``, an integer token index, or ``"none"`` to keep every
+            position (full-position recording).
         batch_size: Forward-pass batch size; must be ``>= 1``.
+        per_head: If True, split attention activations per head, producing a
+            trailing ``[..., n_heads, head_dim]`` pair of dims. Only valid for
+            attention modules; the per-head signal is the input to the
+            attention output projection (the concatenated head outputs).
 
     Raises:
         ValueError: If ``position`` or ``batch_size`` is invalid, or
             ``layers`` is a string other than ``"all"``.
+        NotImplementedError: If ``per_head`` is set for a module whose
+            architecture's attention output projection is not recognized.
+
+    Note:
+        Full-position (``position="none"``) and per-head recording accumulate
+        larger tensors in CPU memory than reduced recording; combining them with
+        ``layers="all"``, multiple modules, and large batches is memory-bound.
     """
 
     reads = ["dataset"]
@@ -154,10 +248,14 @@ class Record(Step):
         modules: str | list[str] = "residual",
         position: str | int = "last",
         batch_size: int = 8,
+        per_head: bool = False,
     ):
-        if not (isinstance(position, int) or position in {"last", "first", "mean"}):
+        if not (
+            isinstance(position, int) or position in {"last", "first", "mean", "none"}
+        ):
             raise ValueError(
-                "position must be 'last', 'first', 'mean', or an integer token index"
+                "position must be 'last', 'first', 'mean', 'none', or an "
+                "integer token index"
             )
         if batch_size < 1:
             raise ValueError(f"batch_size must be >= 1, got {batch_size}")
@@ -172,6 +270,34 @@ class Record(Step):
         self.modules: list[str] = [modules] if isinstance(modules, str) else modules
         self.position = position
         self.batch_size = batch_size
+        self.per_head = per_head
+
+    def _attn_out_proj(self, layer_proxy, mod_str: str):
+        """Resolve the attention output-projection submodule for per-head capture.
+
+        Args:
+            layer_proxy: nnsight proxy for the decoder layer.
+            mod_str: Module name expected to resolve to an attention module.
+
+        Returns:
+            nnsight proxy for the attention output projection, whose input is
+            the concatenated per-head outputs.
+
+        Raises:
+            NotImplementedError: If no known output-projection name is found
+                (e.g. the module is not attention, or the architecture is
+                unsupported for per-head capture).
+        """
+        attn = self.model._resolve_module(layer_proxy, mod_str)
+        for name in _ATTN_OUT_PROJ_NAMES:
+            if hasattr(attn, name):
+                return getattr(attn, name)
+        raise NotImplementedError(
+            f"per_head=True requires an attention module exposing a known output "
+            f"projection {_ATTN_OUT_PROJ_NAMES}; module {mod_str!r} has none on "
+            f"this architecture. Per-architecture per-head support arrives with "
+            f"the ModelBackend protocol."
+        )
 
     def expected_read_types(self, results=None, available_types=None):
         """Return ``{"dataset": (MuranoDataset, LabeledDataset)}``."""
@@ -224,11 +350,14 @@ class Record(Step):
                 len(dataset.texts),
                 len(self.layers),
             )
-            acts = self._collect(dataset.texts)
+            acts, mask = self._collect(dataset.texts)
             labels_tensor = tensor(dataset.labels, dtype=long)
             results["record"] = LabeledActivationStore(
                 activations=acts,
                 labels=labels_tensor,
+                position=self.position,
+                per_head=self.per_head,
+                token_mask=mask,
             )
         else:
             logger.info(
@@ -237,17 +366,30 @@ class Record(Step):
                 len(dataset.negative_texts),
                 len(self.layers),
             )
-            pos_acts = (
-                self._collect(dataset.positive_texts) if dataset.positive_texts else {}
+            pos_acts, pos_mask = (
+                self._collect(dataset.positive_texts)
+                if dataset.positive_texts
+                else ({}, None)
             )
-            neg_acts = (
-                self._collect(dataset.negative_texts) if dataset.negative_texts else {}
+            neg_acts, neg_mask = (
+                self._collect(dataset.negative_texts)
+                if dataset.negative_texts
+                else ({}, None)
             )
-            results["record"] = ActivationStore(positive=pos_acts, negative=neg_acts)
+            results["record"] = ActivationStore(
+                positive=pos_acts,
+                negative=neg_acts,
+                position=self.position,
+                per_head=self.per_head,
+                positive_token_mask=pos_mask,
+                negative_token_mask=neg_mask,
+            )
 
         return results
 
-    def _collect(self, texts: list[str]) -> dict[ActivationKey, Tensor]:
+    def _collect(
+        self, texts: list[str]
+    ) -> tuple[dict[ActivationKey, Tensor], Tensor | None]:
         """Run texts through model and capture activations per layer/module.
 
         Runs a separate nnsight trace per module to avoid ``OutOfOrderError``
@@ -255,18 +397,38 @@ class Record(Step):
         ``layer.mlp.output``) in the same trace.
 
         Returns:
-            {key: tensor [N, d_model]} with selected-token activations.
-            Keys are ``int`` (layer index) when a single module is targeted,
-            or ``(int, str)`` (layer, module_name) when multiple modules
-            are targeted.
+            A pair ``(activations, mask)``. ``activations`` is
+            ``{(layer, module): tensor}`` keyed uniformly by
+            ``(layer_index, module_name)``; the tensor rank follows
+            ``position`` / ``per_head`` (see :class:`Record`). ``mask`` is the
+            ``[N, seq]`` valid-token mask when ``position="none"`` (so positions
+            stay interpretable across the concatenated batches), else ``None``.
         """
+        keep_positions = self.position == "none"
+        if keep_positions:
+            # Pad every batch to one global width so full-position tensors from
+            # different batches concatenate along the example dim.
+            raw_ids = self.model.tokenizer(
+                texts, truncation=True, return_token_type_ids=False
+            )["input_ids"]
+            global_max = max(len(ids) for ids in raw_ids)
+            pad_kwargs = {"padding": "max_length", "max_length": global_max}
+        else:
+            pad_kwargs = {"padding": True}
+
+        n_heads = self.model._lm.config.num_attention_heads
+
+        if self.per_head:
+            # Fail fast (outside any trace) if a module lacks a known
+            # attention output projection, so the error propagates cleanly.
+            for mod_str in self.modules:
+                self._attn_out_proj(self.model.layer(self.layers[0]), mod_str)
+
         all_acts: dict[ActivationKey, list[Tensor]] = {}
         for layer in self.layers:
             for mod_str in self.modules:
-                key: ActivationKey = (
-                    layer if len(self.modules) == 1 else (layer, mod_str)
-                )
-                all_acts[key] = []
+                all_acts[(layer, mod_str)] = []
+        masks: list[Tensor] = []
 
         # Run a separate trace per module to avoid nnsight conflicts when
         # saving outputs from nested submodules in the same trace.
@@ -275,34 +437,46 @@ class Record(Step):
                 tokens = self.model.tokenizer(
                     batch,
                     return_tensors="pt",
-                    padding=True,
                     truncation=True,
                     return_token_type_ids=False,
+                    **pad_kwargs,
                 )
                 attention_mask = cast(Tensor, tokens["attention_mask"])
+                # Masks are identical across modules; collect them once.
+                if keep_positions and mod_str == self.modules[0]:
+                    masks.append(attention_mask.detach().cpu())
 
                 saved = {}
                 with self.model._lm.trace(tokens):
                     for layer in self.layers:
-                        mod_proxy = self.model._resolve_module(
-                            self.model.layer(layer), mod_str
-                        )
-                        saved[layer] = mod_proxy.output.save()
+                        if self.per_head:
+                            proj = self._attn_out_proj(self.model.layer(layer), mod_str)
+                            saved[layer] = proj.input.save()
+                        else:
+                            mod_proxy = self.model._resolve_module(
+                                self.model.layer(layer), mod_str
+                            )
+                            saved[layer] = mod_proxy.output.save()
 
                 for layer in self.layers:
-                    key: ActivationKey = (
-                        layer if len(self.modules) == 1 else (layer, mod_str)
-                    )
-                    output = (
-                        saved[layer].value
-                        if hasattr(saved[layer], "value")
-                        else saved[layer]
-                    )
-                    # Some transformers versions return (hidden_states, ...) tuples
-                    # from decoder layers; older (<5.0) Llama is one. Unwrap here.
-                    if isinstance(output, tuple):
-                        output = output[0]
-                    # output: [batch, seq, d_model]
+                    key: ActivationKey = (layer, mod_str)
+                    output = _unwrap_traced(saved[layer])
+                    if self.per_head:
+                        # [batch, seq, n_heads * head_dim] -> per-head split.
+                        if output.dim() != 3:
+                            raise ValueError(
+                                f"Per-head capture expects a rank-3 projection "
+                                f"input [batch, seq, n_heads*head_dim] for module "
+                                f"{mod_str!r}, got shape {tuple(output.shape)}."
+                            )
+                        b, s, d = output.shape
+                        if d % n_heads != 0:
+                            raise ValueError(
+                                f"Cannot split module {mod_str!r} per head: "
+                                f"projection input width {d} is not divisible by "
+                                f"n_heads={n_heads}."
+                            )
+                        output = output.reshape(b, s, n_heads, d // n_heads)
                     selected_acts = _select_token_activations(
                         output=output,
                         attention_mask=attention_mask,
@@ -310,4 +484,6 @@ class Record(Step):
                     )
                     all_acts[key].append(selected_acts.detach().cpu())
 
-        return {key: cat(all_acts[key]) for key in all_acts}
+        acts = {key: cat(all_acts[key]) for key in all_acts}
+        mask = cat(masks) if keep_positions else None
+        return acts, mask

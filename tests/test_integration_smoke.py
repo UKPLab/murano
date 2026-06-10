@@ -75,7 +75,7 @@ def test_quick_api_smoke_with_local_model(tmp_path):
         batch_size=2,
     )
     assert isinstance(record, ActivationStore)
-    assert record.positive[0].shape == (2, model.d_model)
+    assert record.positive[(0, "residual")].shape == (2, model.d_model)
     assert record.negative == {}
 
     steering = model.find_direction(
@@ -86,8 +86,8 @@ def test_quick_api_smoke_with_local_model(tmp_path):
         batch_size=1,
     )
     assert isinstance(steering, SteeringResult)
-    assert steering.best_layer == 0
-    assert steering.direction_per_layer[0].shape == (model.d_model,)
+    assert steering.best_layer == (0, "residual")
+    assert steering.direction_per_layer[(0, "residual")].shape == (model.d_model,)
 
     generation = model.generate(
         "hello",
