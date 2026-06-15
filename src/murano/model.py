@@ -101,6 +101,12 @@ class MuranoModel:
                 f"n_heads={self.n_heads}; cannot derive head_dim."
             )
         self.head_dim = self.d_model // self.n_heads
+        # Bind nnsight's trace directly instead of wrapping it in a method.
+        # nnsight inspects the caller's frame to locate the `with` block, so a
+        # wrapper method would sit between the step's `with model.trace(...)`
+        # and nnsight and hide the block, which fails on some Python versions
+        # (WithBlockNotFoundError).
+        self.trace = self._lm.trace
         logger.info(
             "Loaded %s (%d layers, d=%d)", model_id, self.n_layers, self.d_model
         )
@@ -152,10 +158,6 @@ class MuranoModel:
             f"output projection {_ATTN_OUT_PROJ_NAMES}; module {module!r} has "
             f"none on this architecture."
         )
-
-    def trace(self, tokens):
-        """Open an nnsight trace context over ``tokens``."""
-        return self._lm.trace(tokens)
 
     def project_on_vocab(self, hidden: Tensor) -> Tensor:
         """Project hidden states onto the vocabulary.
