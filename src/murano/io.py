@@ -14,7 +14,7 @@ from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
 from murano.logging import logger
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
 
 
 ArtifactSerializer = Callable[[str, Any, Path, Any, dict[str, Any]], None]
@@ -116,7 +116,7 @@ def save_eval(eval_result: Any, path: Path) -> None:
     logger.info("Saved eval result to %s", path)
 
 
-def save_ablated_model(model: MuranoModel, save_dir: str | Path) -> Path:
+def save_ablated_model(model: ModelBackend, save_dir: str | Path) -> Path:
     """Save the current (ablated) model weights in HF format.
 
     Saves model weights and tokenizer so the ablated model can be
@@ -133,7 +133,7 @@ def save_ablated_model(model: MuranoModel, save_dir: str | Path) -> Path:
     save_dir.mkdir(parents=True, exist_ok=True)
     # nnsight Envoy forwards .save_pretrained to the underlying HF model at runtime;
     # its static type signature doesn't reflect that.
-    hf_model: Any = model._lm.model
+    hf_model: Any = model.hf_model
     hf_model.save_pretrained(str(save_dir))
     model.tokenizer.save_pretrained(str(save_dir))
     logger.info("Saved ablated model to %s", save_dir)

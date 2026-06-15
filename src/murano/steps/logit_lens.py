@@ -21,7 +21,7 @@ from murano.results import Results
 from murano.steps.base import Step
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
 
 
 @dataclass
@@ -76,7 +76,7 @@ class LogitLens(Step):
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         layers: list[int] | str = "all",
     ):
         self.model = model
@@ -103,7 +103,7 @@ class LogitLens(Step):
         attention_mask = cast(Tensor, tokens["attention_mask"])
 
         saved = {}
-        with self.model._lm.trace(tokens):
+        with self.model.trace(tokens):
             for layer in self.layers:
                 saved[layer] = self.model.layer(layer).output.save()
 
@@ -117,9 +117,8 @@ class LogitLens(Step):
                 )
                 if isinstance(output, tuple):
                     output = output[0]
-                # output: [n_inputs, seq, d_model]; project to vocab via nnterp.
-                hidden = self.model._lm.ln_final(output)
-                logits = self.model._lm.lm_head(hidden)
+                # output: [n_inputs, seq, d_model]; project to vocab.
+                logits = self.model.project_on_vocab(output)
                 layer_probs.append(softmax(logits, dim=-1).detach().cpu())
 
         # all_probs: [n_layers, n_inputs, seq, vocab]

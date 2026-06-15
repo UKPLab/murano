@@ -861,6 +861,10 @@ class TestWeightAblation:
                 self.n_layers = 1
                 self._lm = type("LM", (), {"model": DummyHFModel()})()
 
+            @property
+            def hf_model(self):
+                return self._lm.model
+
         model = DummyModel()
         step = weight_ablation_module.WeightAblation(model, save_dir="ablated")
         monkeypatch.setattr(step, "_generate", lambda _text: "ok")
