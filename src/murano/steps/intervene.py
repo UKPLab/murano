@@ -15,7 +15,7 @@ from murano.steps.base import Step
 from murano.steps.record import ActivationKey
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
 
 
 class InterveneResult(GenerationComparison):
@@ -135,7 +135,7 @@ class Intervene(Step):
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         fn: Callable,
         layers: list[int] | str = "all",
         modules: str | list[str] = "residual",
@@ -179,11 +179,11 @@ class Intervene(Step):
 
     def _generate_clean(self, text: str) -> str:
         """Generate without any intervention."""
-        return self.model._generate_single(text, gen_kwargs=self.gen_kwargs)
+        return self.model.generate_with_hooks(text, gen_kwargs=self.gen_kwargs)
 
     def _generate_ablated(self, text: str) -> str:
         """Generate with the intervention applied at each layer/module."""
-        return self.model._generate_single(
+        return self.model.generate_with_hooks(
             text,
             fn=self.fn,
             layers=self.layers,

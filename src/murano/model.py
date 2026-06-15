@@ -19,6 +19,12 @@ if TYPE_CHECKING:
     from murano.steps.train import SteeringResult
 
 
+# Known names for an attention module's output projection, tried in order when
+# resolving the per-head split point. A general per-architecture resolver is
+# future work; until then unknown architectures raise from ``attn_out_proj``.
+_ATTN_OUT_PROJ_NAMES = ("o_proj", "out_proj", "c_proj", "dense", "wo")
+
+
 def _ensure_downloaded(model_id: str) -> str:
     """Ensure the model is fully downloaded and return the local snapshot path.
 
@@ -88,6 +94,19 @@ class MuranoModel:
             raise RuntimeError(f"Loaded model {model_id} has no config.")
         self.n_layers = config.num_hidden_layers
         self.d_model = config.hidden_size
+        self.n_heads = config.num_attention_heads
+        if self.d_model % self.n_heads != 0:
+            raise RuntimeError(
+                f"Model {model_id} has d_model={self.d_model} not divisible by "
+                f"n_heads={self.n_heads}; cannot derive head_dim."
+            )
+        self.head_dim = self.d_model // self.n_heads
+        # Bind nnsight's trace directly instead of wrapping it in a method.
+        # nnsight inspects the caller's frame to locate the `with` block, so a
+        # wrapper method would sit between the step's `with model.trace(...)`
+        # and nnsight and hide the block, which fails on some Python versions
+        # (WithBlockNotFoundError).
+        self.trace = self._lm.trace
         logger.info(
             "Loaded %s (%d layers, d=%d)", model_id, self.n_layers, self.d_model
         )
@@ -95,6 +114,75 @@ class MuranoModel:
     def layer(self, idx: int):
         """Return the nnterp module proxy for a decoder layer."""
         return self._lm.layers[idx]  # pyright: ignore[reportIndexIssue,reportArgumentType]
+
+    def resolve_module(self, layer_idx: int, module: str):
+        """Resolve a submodule proxy by name at a given layer.
+
+        Args:
+            layer_idx: Decoder layer index.
+            module: Module name to resolve, e.g. ``"residual"``, ``"mlp"``, or
+                a dotted path like ``"mlp.gate_proj"``.
+
+        Returns:
+            nnsight proxy for the requested submodule.
+
+        Raises:
+            ValueError: If any part of the dotted path does not exist.
+        """
+        return self._resolve_module(self.layer(layer_idx), module)
+
+    def attn_out_proj(self, layer_idx: int, module: str):
+        """Resolve an attention module's output projection for per-head capture.
+
+        The input to this projection is the concatenated per-head outputs, so
+        callers reshape it to recover per-head activations.
+
+        Args:
+            layer_idx: Decoder layer index.
+            module: Module name expected to resolve to an attention module.
+
+        Returns:
+            nnsight proxy for the attention output projection.
+
+        Raises:
+            NotImplementedError: If the module exposes no known output
+                projection (e.g. it is not attention, or the architecture is
+                unsupported for per-head capture).
+        """
+        attn = self._resolve_module(self.layer(layer_idx), module)
+        for name in _ATTN_OUT_PROJ_NAMES:
+            if hasattr(attn, name):
+                return getattr(attn, name)
+        raise NotImplementedError(
+            f"per_head capture requires an attention module exposing a known "
+            f"output projection {_ATTN_OUT_PROJ_NAMES}; module {module!r} has "
+            f"none on this architecture."
+        )
+
+    def project_on_vocab(self, hidden: Tensor) -> Tensor:
+        """Project hidden states onto the vocabulary.
+
+        Applies the standardized final norm and unembedding,
+        ``lm_head(ln_final(hidden))``, matching the logit-lens computation.
+
+        Args:
+            hidden: Hidden states ``[..., d_model]``.
+
+        Returns:
+            Vocabulary logits ``[..., vocab_size]``.
+        """
+        return self._lm.lm_head(self._lm.ln_final(hidden))
+
+    @property
+    def hf_model(self):
+        """Underlying HuggingFace module.
+
+        Note:
+            Transitional accessor so weight-level steps need not import
+            ``_lm``. It still exposes HF module internals, so it does not make
+            weight editing backend-neutral.
+        """
+        return self._lm.model
 
     def _coerce_texts(self, text: str | Sequence[str]) -> tuple[list[str], bool]:
         if isinstance(text, str):
@@ -206,6 +294,35 @@ class MuranoModel:
         generated = out[0, input_len:]
         # nnsight returns a proxy; tokenizer.decode accepts it at runtime.
         return cast(str, self.tokenizer.decode(generated, skip_special_tokens=True))  # pyright: ignore[reportArgumentType]
+
+    def generate_with_hooks(
+        self,
+        text: str,
+        fn: Callable[[Tensor, ActivationKey], Tensor] | None = None,
+        layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
+        gen_kwargs: dict[str, Any] | None = None,
+    ) -> str:
+        """Generate from ``text``, optionally applying ``fn`` per layer/module.
+
+        Args:
+            text: Prompt to generate from.
+            fn: ``(activation, key) -> activation`` applied to each target
+                module's output during generation; ``None`` runs unmodified.
+            layers: Layer indices to hook, or ``"all"``.
+            modules: Module name(s) to hook at each layer.
+            gen_kwargs: Forwarded to the underlying generation call.
+
+        Returns:
+            The decoded continuation, excluding the prompt.
+        """
+        return self._generate_single(
+            text,
+            fn=fn,
+            layers=layers,
+            modules=modules,
+            gen_kwargs=gen_kwargs,
+        )
 
     def record(
         self,

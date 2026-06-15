@@ -1,0 +1,88 @@
+"""ModelBackend: the model surface that pipeline steps depend on.
+
+Steps interact with the model only through this protocol, never by reaching
+into the underlying nnterp/nnsight objects. :class:`murano.model.MuranoModel`
+is the sole implementation today; the protocol records the surface a future
+backend would have to provide.
+
+Note:
+    This wraps nnterp/nnsight and is not a backend-agnostic abstraction.
+    ``trace``, ``layer``, ``resolve_module``, and ``attn_out_proj`` return
+    nnsight-compatible proxy objects, and steps still rely on nnsight proxy
+    semantics (``.output.save()``, ``.input.save()``, assigning to
+    ``mod_proxy.output``). A non-nnsight backend would have to reproduce those
+    proxy semantics, so this protocol is a prerequisite for backend
+    independence, not backend independence itself.
+"""
+
+from __future__ import annotations
+
+from contextlib import AbstractContextManager
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+from torch import Tensor
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from murano.steps.record import ActivationKey
+
+
+@runtime_checkable
+class ModelBackend(Protocol):
+    """Surface a model must expose for Murano's pipeline steps.
+
+    Members that return nnsight proxies are typed ``Any`` on purpose: the
+    proxy types are not worth fighting the type checker over, and steps consume
+    them through nnsight's runtime proxy semantics (see the module note).
+
+    Attributes:
+        n_layers: Number of decoder layers.
+        d_model: Residual-stream width.
+        n_heads: Number of attention heads.
+        head_dim: Per-head width (``d_model // n_heads``).
+        tokenizer: The model's tokenizer.
+        hf_model: Underlying HuggingFace module, for weight-level access.
+    """
+
+    n_layers: int
+    d_model: int
+    n_heads: int
+    head_dim: int
+    tokenizer: Any
+    hf_model: Any
+
+    def layer(self, idx: int) -> Any:
+        """Return the module proxy for decoder layer ``idx``."""
+        ...
+
+    def resolve_module(self, layer_idx: int, module: str) -> Any:
+        """Return the submodule proxy named ``module`` at layer ``layer_idx``."""
+        ...
+
+    def attn_out_proj(self, layer_idx: int, module: str) -> Any:
+        """Return the attention output-projection proxy for per-head capture."""
+        ...
+
+    def trace(self, tokens: Any) -> AbstractContextManager[Any]:
+        """Open a tracing context over ``tokens``."""
+        ...
+
+    def project_on_vocab(self, hidden: Tensor) -> Tensor:
+        """Project hidden states onto the vocabulary."""
+        ...
+
+    def generate_with_hooks(
+        self,
+        text: str,
+        fn: "Callable[[Tensor, ActivationKey], Tensor] | None" = None,
+        layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
+        gen_kwargs: dict[str, Any] | None = None,
+    ) -> str:
+        """Generate from ``text``, optionally applying ``fn`` per layer/module."""
+        ...
+
+    def chat_template(self, messages: list[dict[str, Any]]) -> str:
+        """Render ``messages`` through the tokenizer's chat template."""
+        ...

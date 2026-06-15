@@ -14,7 +14,7 @@ from murano.results import Results
 from murano.steps.base import Step
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
 
 
 # Key type for activation dictionaries: always ``(layer_index, module_name)``.
@@ -111,12 +111,6 @@ def _batched(iterable, n):
 def _rank_positions(attention_mask: Tensor) -> Tensor:
     """Return token ranks within each sequence, ignoring padding."""
     return attention_mask.cumsum(dim=1) - 1
-
-
-# Known names for an attention module's output projection, tried in order when
-# splitting per-head activations. A general per-architecture resolver is future
-# work; until then unknown architectures raise from _attn_out_proj.
-_ATTN_OUT_PROJ_NAMES = ("o_proj", "out_proj", "c_proj", "dense", "wo")
 
 
 def _unwrap_traced(saved) -> Tensor:
@@ -244,7 +238,7 @@ class Record(Step):
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         layers: list[int] | str = "all",
         modules: str | list[str] = "residual",
         position: str | int = "last",
@@ -272,33 +266,6 @@ class Record(Step):
         self.position = position
         self.batch_size = batch_size
         self.per_head = per_head
-
-    def _attn_out_proj(self, layer_proxy, mod_str: str):
-        """Resolve the attention output-projection submodule for per-head capture.
-
-        Args:
-            layer_proxy: nnsight proxy for the decoder layer.
-            mod_str: Module name expected to resolve to an attention module.
-
-        Returns:
-            nnsight proxy for the attention output projection, whose input is
-            the concatenated per-head outputs.
-
-        Raises:
-            NotImplementedError: If no known output-projection name is found
-                (e.g. the module is not attention, or the architecture is
-                unsupported for per-head capture).
-        """
-        attn = self.model._resolve_module(layer_proxy, mod_str)
-        for name in _ATTN_OUT_PROJ_NAMES:
-            if hasattr(attn, name):
-                return getattr(attn, name)
-        raise NotImplementedError(
-            f"per_head=True requires an attention module exposing a known output "
-            f"projection {_ATTN_OUT_PROJ_NAMES}; module {mod_str!r} has none on "
-            f"this architecture. Per-architecture per-head support arrives with "
-            f"the ModelBackend protocol."
-        )
 
     def expected_read_types(self, results=None, available_types=None):
         """Return ``{"dataset": (MuranoDataset, LabeledDataset)}``."""
@@ -418,13 +385,13 @@ class Record(Step):
             padding = "max_length"
             max_length = max(len(ids) for ids in raw_ids)
 
-        n_heads = self.model._lm.config.num_attention_heads
+        n_heads = self.model.n_heads
 
         if self.per_head:
             # Fail fast (outside any trace) if a module lacks a known
             # attention output projection, so the error propagates cleanly.
             for mod_str in self.modules:
-                self._attn_out_proj(self.model.layer(self.layers[0]), mod_str)
+                self.model.attn_out_proj(self.layers[0], mod_str)
 
         all_acts: dict[ActivationKey, list[Tensor]] = {}
         for layer in self.layers:
@@ -450,15 +417,13 @@ class Record(Step):
                     masks.append(attention_mask.detach().cpu())
 
                 saved = {}
-                with self.model._lm.trace(tokens):
+                with self.model.trace(tokens):
                     for layer in self.layers:
                         if self.per_head:
-                            proj = self._attn_out_proj(self.model.layer(layer), mod_str)
+                            proj = self.model.attn_out_proj(layer, mod_str)
                             saved[layer] = proj.input.save()
                         else:
-                            mod_proxy = self.model._resolve_module(
-                                self.model.layer(layer), mod_str
-                            )
+                            mod_proxy = self.model.resolve_module(layer, mod_str)
                             saved[layer] = mod_proxy.output.save()
 
                 for layer in self.layers:

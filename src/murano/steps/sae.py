@@ -15,7 +15,7 @@ from murano.results import Results
 from murano.steps.base import Step
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
 
 
 _LAYER_RE = re.compile(r"(?:blocks|layer)[._](\d+)")
@@ -78,24 +78,24 @@ def _resolve_hook(sae_model: SAEModel) -> tuple[int, str]:
 
 
 def _capture_residual(
-    model: MuranoModel, tokens: Any, hook_layer: int, hook_kind: str
+    model: ModelBackend, tokens: Any, hook_layer: int, hook_kind: str
 ) -> Tensor:
     """Trace ``tokens`` through ``model`` and return the residual the SAE expects."""
     saved: dict[str, Any] = {}
-    with model._lm.trace(tokens):
+    with model.trace(tokens):
         layer = model.layer(hook_layer)
         if hook_kind == "resid_pre":
             saved["main"] = layer.input.save()
         elif hook_kind == "resid_post":
             saved["main"] = layer.output.save()
         elif hook_kind == "mlp_out":
-            saved["main"] = model._resolve_module(layer, "mlp").output.save()
+            saved["main"] = model.resolve_module(hook_layer, "mlp").output.save()
         elif hook_kind == "attn_out":
-            saved["main"] = model._resolve_module(layer, "self_attn").output.save()
+            saved["main"] = model.resolve_module(hook_layer, "self_attn").output.save()
         else:  # resid_mid
             # resid_mid = resid_pre + attn_out (post-attention, pre-MLP).
             saved["main"] = layer.input.save()
-            saved["extra"] = model._resolve_module(layer, "self_attn").output.save()
+            saved["extra"] = model.resolve_module(hook_layer, "self_attn").output.save()
 
     residual = _unwrap(saved["main"])
     if "extra" in saved:
@@ -235,7 +235,7 @@ class SAEEncode(Step):
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         release: str,
         sae_id: str,
         max_length: int | None = None,
@@ -318,7 +318,7 @@ class SAETopActivations(Step):
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         k: int = 10,
         feat_ids: list[int] | None = None,
         skip_bos: bool = True,
