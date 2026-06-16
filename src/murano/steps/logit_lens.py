@@ -17,6 +17,7 @@ from torch.nn.functional import softmax
 from murano import keys
 from murano.artifacts import PromptBatch
 from murano.logging import logger
+from murano.nodes import RESID_POST, Node
 from murano.results import Results
 from murano.steps.base import Step
 
@@ -36,7 +37,9 @@ class LogitLensResult:
         input_words: Decoded input tokens, shape [n_inputs][seq].
         attention_mask: Tensor [n_inputs, seq] marking real (1) vs padding (0)
             positions; useful for masking padded columns at visualization time.
-        layer_indices: Layer indices included in the result.
+        addresses: Component addresses (one :class:`Node` per layer) the rows
+            of the tensors correspond to. The lens reads each layer's block
+            output, so these are ``resid_post`` nodes.
     """
 
     all_probs: Tensor
@@ -45,7 +48,10 @@ class LogitLensResult:
     predicted_words: list[list[list[str]]]
     input_words: list[list[str]]
     attention_mask: Tensor
-    layer_indices: list[int]
+    addresses: list[Node]
+
+    def __post_init__(self) -> None:
+        self.addresses = [Node.coerce(address) for address in self.addresses]
 
 
 class LogitLens(Step):
@@ -141,6 +147,6 @@ class LogitLens(Step):
             predicted_words=predicted_words,
             input_words=input_words,
             attention_mask=attention_mask.detach().cpu(),
-            layer_indices=list(self.layers),
+            addresses=[Node(layer, RESID_POST) for layer in self.layers],
         )
         return results

@@ -10,6 +10,7 @@ import pytest
 import torch
 
 from murano.artifacts import MetricResult, PromptBatch
+from murano.nodes import Node
 from murano.results import Results
 from murano.pipeline import Pipeline
 from murano.steps.base import Step
@@ -379,7 +380,7 @@ class TestSteeringVector:
 
     def test_best_layer_is_valid(self, results_with_activations, n_layers):
         results = SteeringVector()(results_with_activations)
-        valid_keys = {(layer, "residual") for layer in range(n_layers)}
+        valid_keys = {Node.coerce(layer) for layer in range(n_layers)}
         assert results["steering"].best_layer in valid_keys
 
     def test_best_layer_has_highest_score(self, results_with_activations, n_examples):
@@ -765,7 +766,7 @@ class TestProbe:
         r["dataset"] = labeled_dataset
         r["record"] = labeled_activation_store
         results = Probe(cv=2)(r)
-        valid_keys = {(layer, "residual") for layer in range(n_layers)}
+        valid_keys = {Node.coerce(layer) for layer in range(n_layers)}
         assert results["probe"].best_layer in valid_keys
 
     def test_best_layer_has_highest_accuracy(

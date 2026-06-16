@@ -12,7 +12,14 @@ from nnterp import StandardizedTransformer
 
 from murano import keys
 from murano.logging import logger
-from murano.steps.record import ActivationKey
+from murano.nodes import (
+    RESID_MID,
+    RESID_POST,
+    RESID_PRE,
+    Node,
+    NodeDict,
+    canonical_module,
+)
 
 if TYPE_CHECKING:
     from murano.steps.record import ActivationStore
@@ -189,38 +196,63 @@ class MuranoModel:
             return [text], True
         return list(text), False
 
-    def _coerce_directions(self, direction_like: Any) -> dict[ActivationKey, Tensor]:
+    def _coerce_directions(self, direction_like: Any) -> dict[Node, Tensor]:
         if hasattr(direction_like, "direction_per_layer"):
             directions = direction_like.direction_per_layer
         elif isinstance(direction_like, dict):
             directions = direction_like
         else:
             raise TypeError(
-                "Expected a SteeringResult or {key: tensor} mapping for the "
+                "Expected a SteeringResult or {address: tensor} mapping for the "
                 "intervention directions."
             )
-        # Interventions are applied under (layer, module) keys; a key that is
-        # not exactly (int, str) would never match and the intervention would
-        # silently do nothing. The module of a pre-normalization int key is
-        # unknowable, so reject rather than guess.
-        bad = [
-            k
-            for k in directions
-            if not (
-                isinstance(k, tuple)
-                and len(k) == 2
-                and isinstance(k[0], int)
-                and isinstance(k[1], str)
-            )
-        ]
-        if bad:
+        # Normalize every key to a canonical Node so shorthand (a bare layer int,
+        # a (layer, module) tuple, an address string) resolves to the same
+        # address the generation hooks key by. An uncoercible key fails loudly
+        # here rather than silently never matching during generation.
+        try:
+            return NodeDict(directions)
+        except (TypeError, ValueError) as exc:
             raise ValueError(
-                f"Intervention direction keys must be (layer: int, module: str) "
-                f"tuples; got malformed keys {bad}. Re-key as (layer, module) "
-                f"(e.g. {{(L, 'residual'): tensor}}) or recompute with "
-                f"find_direction()."
+                f"Intervention direction keys must be addresses (an int layer, a "
+                f"(layer, module) tuple, an address string, or a Node); got an "
+                f"uncoercible key ({exc})."
+            ) from exc
+
+    def _check_directions_reachable(
+        self,
+        directions: dict[Node, Tensor],
+        layers: list[int] | str,
+        modules: str | list[str],
+    ) -> None:
+        """Fail loudly if no intervention address matches a hooked site.
+
+        A direction keyed at an address that is never hooked would silently do
+        nothing (e.g. a bare-int key resolves to ``resid_post`` while
+        ``modules="mlp"``). An empty ``directions`` is treated as an intentional
+        no-op and passes.
+
+        Raises:
+            ValueError: If ``directions`` is non-empty yet none of its addresses
+                fall on a hooked (layer, module) site.
+        """
+        if not directions:
+            return
+        module_list = [modules] if isinstance(modules, str) else list(modules)
+        hooked_modules = {Node(0, mod).module for mod in module_list}
+        if isinstance(layers, str):
+            # "all" hooks every layer, so a matching module is sufficient.
+            reachable = any(node.module in hooked_modules for node in directions)
+        else:
+            hooked = {Node(layer, mod) for layer in layers for mod in module_list}
+            reachable = bool(set(directions) & hooked)
+        if not reachable:
+            raise ValueError(
+                f"No intervention address matches a hooked site "
+                f"(layers={layers!r}, modules={modules!r}); the intervention "
+                f"would do nothing. Addresses: {sorted(directions)}. A bare-int "
+                f"direction key targets 'resid_post'."
             )
-        return directions
 
     def _layer_indices(self, layers: list[int] | str) -> list[int]:
         if isinstance(layers, str):
@@ -231,26 +263,39 @@ class MuranoModel:
 
     @staticmethod
     def _resolve_module(layer_proxy, mod_str: str):
-        """Resolve a submodule from a layer proxy by name.
+        """Resolve a submodule from a layer proxy by (canonical) name.
 
-        Handles ``"residual"`` (returns the layer proxy itself),
-        direct children (e.g. ``"mlp"``), and dotted paths
-        (e.g. ``"mlp.gate_proj"``).
+        Accepts the canonical :class:`~murano.Node` module names and their
+        aliases so a stored ``Node``'s module resolves back to a live hook:
+        the block output (:data:`~murano.nodes.RESID_POST`, alias ``residual``)
+        is the layer proxy itself; ``mlp``/``self_attn`` (aliases ``mlp_out``/
+        ``attn_out``) and dotted paths (e.g. ``mlp.gate_proj``) resolve by
+        attribute lookup. The proxy's ``.output`` is the named activation.
 
         Args:
             layer_proxy: nnsight proxy for a decoder layer.
             mod_str: Module name to resolve.
 
         Returns:
-            nnsight proxy for the requested submodule.
+            nnsight proxy whose ``.output`` is the requested activation.
 
         Raises:
-            ValueError: If any part of the dotted path does not exist.
+            ValueError: If ``mod_str`` is a residual-stream point with no single
+                output hook here (``resid_pre``/``resid_mid``), or any part of a
+                dotted path does not exist.
         """
-        if mod_str == "residual":
+        canonical = canonical_module(mod_str)
+        if canonical == RESID_POST:
             return layer_proxy
+        if canonical in (RESID_PRE, RESID_MID):
+            raise ValueError(
+                f"module {mod_str!r} ({canonical}) has no single output hook on "
+                f"this path: resid_pre is the block input and resid_mid is a "
+                f"derived sum. Record/intervene on resid_post, mlp, or self_attn "
+                f"here; the SAE path handles resid_pre/resid_mid."
+            )
         current = layer_proxy
-        for part in mod_str.split("."):
+        for part in canonical.split("."):
             try:
                 current = getattr(current, part)
             except AttributeError:
@@ -264,7 +309,7 @@ class MuranoModel:
     def _generate_single(
         self,
         text: str,
-        fn: Callable[[Tensor, ActivationKey], Tensor] | None = None,
+        fn: Callable[[Tensor, Node], Tensor] | None = None,
         layers: list[int] | str = "all",
         modules: str | list[str] = "residual",
         gen_kwargs: dict[str, Any] | None = None,
@@ -286,8 +331,15 @@ class MuranoModel:
                     for mod_str in module_list:
                         mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
                         h = mod_proxy.output
-                        key: ActivationKey = (layer_idx, mod_str)
-                        mod_proxy.output = fn(h, key)  # pyright: ignore[reportArgumentType]
+                        key = Node(layer_idx, mod_str)
+                        # Decoder-layer outputs are (hidden_states, ...) tuples,
+                        # while submodule outputs (mlp, self_attn) are plain
+                        # tensors. Edit the hidden-states element and write the
+                        # same structure back so the intervention works on either.
+                        if isinstance(h, tuple):
+                            mod_proxy.output = (fn(h[0], key), *h[1:])  # pyright: ignore[reportArgumentType]
+                        else:
+                            mod_proxy.output = fn(h, key)  # pyright: ignore[reportArgumentType]
             output_ids = self._lm.generator.output.save()
 
         out = output_ids.value if hasattr(output_ids, "value") else output_ids
@@ -298,7 +350,7 @@ class MuranoModel:
     def generate_with_hooks(
         self,
         text: str,
-        fn: Callable[[Tensor, ActivationKey], Tensor] | None = None,
+        fn: Callable[[Tensor, Node], Tensor] | None = None,
         layers: list[int] | str = "all",
         modules: str | list[str] = "residual",
         gen_kwargs: dict[str, Any] | None = None,
@@ -448,10 +500,14 @@ class MuranoModel:
         prompts, is_single = self._coerce_texts(text)
         fn = None
         if ablate is not None:
-            fn = ablate_direction(self._coerce_directions(ablate))
+            directions = self._coerce_directions(ablate)
+            self._check_directions_reachable(directions, layers, modules)
+            fn = ablate_direction(directions)
         elif steer is not None:
             direction_like, alpha = steer
-            fn = steer_direction(self._coerce_directions(direction_like), alpha)
+            directions = self._coerce_directions(direction_like)
+            self._check_directions_reachable(directions, layers, modules)
+            fn = steer_direction(directions, alpha)
 
         outputs = [
             self._generate_single(

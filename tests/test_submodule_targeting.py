@@ -10,9 +10,9 @@ from __future__ import annotations
 import pytest
 import torch
 
+from murano.nodes import MLP, Node
 from murano.results import Results
 from murano.steps.record import (
-    ActivationKey,
     ActivationStore,
     LabeledActivationStore,
     Record,
@@ -99,7 +99,7 @@ def dummy_model(n_layers, d_model):
 
 @pytest.fixture
 def multi_module_store(n_layers, d_model):
-    """ActivationStore with tuple[int, str] keys (multiple modules)."""
+    """ActivationStore built from tuple shorthand, stored as Node keys."""
     modules = ["residual", "mlp"]
     pos = {}
     neg = {}
@@ -113,7 +113,7 @@ def multi_module_store(n_layers, d_model):
 
 @pytest.fixture
 def multi_module_labeled_store(n_layers, d_model):
-    """LabeledActivationStore with tuple[int, str] keys."""
+    """LabeledActivationStore built from tuple shorthand, stored as Node keys."""
     modules = ["residual", "attn"]
     acts = {}
     for layer in range(n_layers):
@@ -140,26 +140,27 @@ class TestRecordModules:
         assert Record(dummy_model, layers=[0, 1]).modules == ["residual"]
         assert Record(dummy_model, layers=[0, 1], modules="mlp").modules == ["mlp"]
 
-    def test_multi_module_produces_tuple_keys(self, dummy_model):
-        """A list of modules should produce dict[tuple[int, str], Tensor]."""
+    def test_multi_module_produces_node_keys(self, dummy_model):
+        """A list of modules should record under a Node key per (layer, module)."""
         step = Record(dummy_model, layers=[0, 1], modules=["residual", "mlp"])
         assert step.modules == ["residual", "mlp"]
 
-    def test_activation_store_type_hints_accept_tuple_keys(self):
-        """ActivationStore should accept tuple[int, str] keys."""
+    def test_activation_store_coerces_tuple_keys_to_node(self):
+        """ActivationStore accepts tuple shorthand and stores canonical Nodes."""
         store = ActivationStore(
             positive={(0, "mlp"): torch.randn(4, 64)},
             negative={(0, "mlp"): torch.randn(4, 64)},
         )
-        assert isinstance(list(store.positive.keys())[0], tuple)
+        assert isinstance(list(store.positive.keys())[0], Node)
+        assert list(store.positive.keys())[0] == Node(0, MLP)
 
-    def test_labeled_store_type_hints_accept_tuple_keys(self):
-        """LabeledActivationStore should accept tuple[int, str] keys."""
+    def test_labeled_store_coerces_tuple_keys_to_node(self):
+        """LabeledActivationStore accepts tuple shorthand and stores Nodes."""
         store = LabeledActivationStore(
-            activations={(0, "attn"): torch.randn(4, 64)},
+            activations={(0, "self_attn"): torch.randn(4, 64)},
             labels=torch.tensor([0, 0, 1, 1]),
         )
-        assert isinstance(list(store.activations.keys())[0], tuple)
+        assert isinstance(list(store.activations.keys())[0], Node)
 
 
 # ── SteeringVector Tests ──────────────────────────────────────────────
@@ -194,14 +195,13 @@ class TestSteeringVectorModules:
             SteeringVector()(r)
 
     def test_multi_module_keys_preserved(self, multi_module_store):
-        """With tuple keys, SteeringVector should preserve tuple keys."""
+        """SteeringVector keys its output by canonical Node addresses."""
         r = Results()
         r["record"] = multi_module_store
         results = SteeringVector()(r)
         steering = results["steering"]
         keys = list(steering.direction_per_layer.keys())
-        assert all(isinstance(k, tuple) for k in keys)
-        assert all(len(k) == 2 for k in keys)
+        assert all(isinstance(k, Node) for k in keys)
 
     def test_multi_module_direction_shapes(self, multi_module_store, d_model):
         """Directions should have correct shape regardless of key type."""
@@ -213,7 +213,7 @@ class TestSteeringVectorModules:
             assert direction.shape == (d_model,), f"Key {key}: shape mismatch"
 
     def test_multi_module_directions_normalized(self, multi_module_store):
-        """Directions should be normalized with tuple keys."""
+        """Directions should be normalized (keys given as tuple shorthand)."""
         r = Results()
         r["record"] = multi_module_store
         results = SteeringVector(normalize=True)(r)
@@ -228,16 +228,16 @@ class TestSteeringVectorModules:
         results = SteeringVector()(r)
         scores = results["steering"].separation_scores
         expected_keys = {
-            (layer, mod) for layer in range(n_layers) for mod in ["residual", "mlp"]
+            Node(layer, mod) for layer in range(n_layers) for mod in ["residual", "mlp"]
         }
         assert set(scores.keys()) == expected_keys
 
-    def test_multi_module_best_layer_is_tuple(self, multi_module_store):
-        """best_layer should be a tuple when keys are tuples."""
+    def test_multi_module_best_layer_is_node(self, multi_module_store):
+        """best_layer should be a Node."""
         r = Results()
         r["record"] = multi_module_store
         results = SteeringVector()(r)
-        assert isinstance(results["steering"].best_layer, tuple)
+        assert isinstance(results["steering"].best_layer, Node)
 
     def test_steering_result_type(self, multi_module_store):
         """Output type should be SteeringResult regardless of key type."""
@@ -254,26 +254,26 @@ class TestProbeModules:
     """Probe step with multi-module keys."""
 
     def test_multi_module_accuracy_keys(self, multi_module_labeled_store, n_layers):
-        """Accuracy dict should have tuple keys."""
+        """Accuracy dict should be keyed by Node."""
         ds = LabeledDataset(texts=["a"] * 20, labels=[0] * 10 + [1] * 10)
         r = Results()
         r["dataset"] = ds
         r["record"] = multi_module_labeled_store
         results = Probe(cv=2)(r)
         keys = list(results["probe"].accuracy_per_layer.keys())
-        assert all(isinstance(k, tuple) for k in keys)
+        assert all(isinstance(k, Node) for k in keys)
 
-    def test_multi_module_best_layer_is_tuple(self, multi_module_labeled_store):
-        """best_layer should be a tuple with multi-module keys."""
+    def test_multi_module_best_layer_is_node(self, multi_module_labeled_store):
+        """best_layer should be a Node with multi-module keys."""
         ds = LabeledDataset(texts=["a"] * 20, labels=[0] * 10 + [1] * 10)
         r = Results()
         r["dataset"] = ds
         r["record"] = multi_module_labeled_store
         results = Probe(cv=2)(r)
-        assert isinstance(results["probe"].best_layer, tuple)
+        assert isinstance(results["probe"].best_layer, Node)
 
     def test_multi_module_high_accuracy(self, multi_module_labeled_store):
-        """Well-separated data should yield high accuracy with tuple keys."""
+        """Well-separated data should yield high accuracy (tuple-shorthand keys)."""
         ds = LabeledDataset(texts=["a"] * 20, labels=[0] * 10 + [1] * 10)
         r = Results()
         r["dataset"] = ds
@@ -283,14 +283,14 @@ class TestProbeModules:
         assert best_acc > 0.7
 
     def test_multi_module_refit_classifiers(self, multi_module_labeled_store, n_layers):
-        """Refit should store classifiers under tuple keys."""
+        """Refit should store classifiers under Node keys."""
         ds = LabeledDataset(texts=["a"] * 20, labels=[0] * 10 + [1] * 10)
         r = Results()
         r["dataset"] = ds
         r["record"] = multi_module_labeled_store
         results = Probe(cv=2, refit=True)(r)
         keys = list(results["probe"].classifiers.keys())
-        assert all(isinstance(k, tuple) for k in keys)
+        assert all(isinstance(k, Node) for k in keys)
         assert len(keys) == n_layers * 2  # 2 modules per layer
 
     def test_probe_result_type(self, multi_module_labeled_store):
@@ -333,10 +333,10 @@ class TestProbeModules:
 
 
 class TestInterventionFunctionsModules:
-    """Intervention functions with ActivationKey."""
+    """Intervention functions with Node-coerced direction keys."""
 
     def test_ablate_with_tuple_keys(self, d_model):
-        """ablate_direction should work with tuple keys."""
+        """ablate_direction should accept tuple-shorthand keys."""
         directions = {(0, "mlp"): torch.randn(d_model)}
         fn = ablate_direction(directions)
         activation = torch.randn(1, 1, d_model)
@@ -344,7 +344,7 @@ class TestInterventionFunctionsModules:
         assert result.shape == activation.shape
 
     def test_steer_with_tuple_keys(self, d_model):
-        """steer_direction should work with tuple keys."""
+        """steer_direction should accept tuple-shorthand keys."""
         directions = {(0, "mlp"): torch.randn(d_model)}
         fn = steer_direction(directions, alpha=1.0)
         activation = torch.randn(1, 1, d_model)
@@ -368,7 +368,7 @@ class TestInterventionFunctionsModules:
         assert torch.equal(result, activation)
 
     def test_ablate_removes_component_tuple_key(self, d_model):
-        """Ablation should remove direction component with tuple keys."""
+        """Ablation should remove the direction component (tuple-shorthand keys)."""
         direction = torch.randn(d_model)
         direction = direction / direction.norm()
         fn = ablate_direction({(0, "mlp"): direction})
@@ -378,7 +378,7 @@ class TestInterventionFunctionsModules:
         assert abs(component) < 1e-4
 
     def test_steer_adds_component_tuple_key(self, d_model):
-        """Steering should add direction component with tuple keys."""
+        """Steering should add the direction component (tuple-shorthand keys)."""
         direction = torch.randn(d_model)
         direction = direction / direction.norm()
         alpha = 2.0
@@ -388,33 +388,6 @@ class TestInterventionFunctionsModules:
         expected = alpha * direction
         diff = (result.squeeze() - expected).norm().item()
         assert diff < 1e-4
-
-
-# ── ActivationKey Type Tests ──────────────────────────────────────────
-
-
-class TestActivationKeyType:
-    """Verify ActivationKey behaves correctly as a dict key."""
-
-    def test_int_and_tuple_keys_can_coexist(self):
-        """Dict can hold both int and tuple keys."""
-        d: dict[ActivationKey, str] = {
-            0: "layer_0",
-            (0, "mlp"): "layer_0_mlp",
-        }
-        assert d[0] == "layer_0"
-        assert d[(0, "mlp")] == "layer_0_mlp"
-
-    def test_tuple_key_equality(self):
-        """Tuple keys should compare correctly."""
-        assert (0, "mlp") == (0, "mlp")
-        assert (0, "mlp") != (1, "mlp")
-        assert (0, "mlp") != (0, "attn")
-
-    def test_tuple_key_hashable(self):
-        """Tuple keys should be usable in sets."""
-        s = {(0, "mlp"), (1, "attn"), (0, "mlp")}
-        assert len(s) == 2
 
 
 # ── Real-Model Integration Tests ──────────────────────────────────────
@@ -563,7 +536,7 @@ class TestSubmoduleTargetingRealModel:
         assert store.position == "mean"
 
     def test_record_multi_module(self, tmp_path):
-        """Record with modules=['residual', 'mlp'] produces tuple keys."""
+        """Record with modules=['residual', 'mlp'] produces Node keys."""
         self._build_tiny_model(tmp_path)
         from murano.model import MuranoModel
 
@@ -658,7 +631,7 @@ class TestSubmoduleTargetingRealModel:
             )
 
     def test_steering_vector_with_multi_module(self, tmp_path):
-        """SteeringVector preserves tuple keys from multi-module recording."""
+        """SteeringVector keys multi-module output by Node."""
         self._build_tiny_model(tmp_path)
         from murano.model import MuranoModel
 
@@ -672,7 +645,7 @@ class TestSubmoduleTargetingRealModel:
             batch_size=1,
         )
         keys = list(steering.direction_per_layer.keys())
-        assert all(isinstance(k, tuple) for k in keys)
+        assert all(isinstance(k, Node) for k in keys)
         assert (0, "residual") in steering.direction_per_layer
         assert (0, "mlp") in steering.direction_per_layer
         assert steering.direction_per_layer[(0, "mlp")].shape == (model.d_model,)
@@ -704,19 +677,75 @@ class TestSubmoduleTargetingRealModel:
         # call returning a string.
         assert isinstance(result, str)
 
-    def test_generate_rejects_int_keyed_directions(self, tmp_path):
-        """Bare-int direction keys are rejected, not silently ignored.
+    def test_generate_accepts_int_keyed_directions(self, tmp_path):
+        """A bare-int direction key is accepted as that layer's residual stream.
 
-        Records emit ``(layer, module)`` keys; an int-keyed dict would never
-        match during generation, so it must error rather than no-op.
+        Node coercion maps int ``0`` to ``Node(0, resid_post)``, the exact site
+        the default ``modules="residual"`` hook edits, so the ablation applies
+        and generation runs instead of silently no-opping.
         """
         self._build_tiny_model(tmp_path)
         from murano.model import MuranoModel
 
         model = MuranoModel(str(tmp_path), device_map="cpu", dtype=torch.float32)
-        with pytest.raises(ValueError, match="layer, module"):
+        result = model.generate(
+            "hello",
+            ablate={0: torch.randn(model.d_model)},
+            layers=[0],
+            gen_kwargs={"max_new_tokens": 1, "do_sample": False},
+        )
+        assert isinstance(result, str)
+
+    def test_generate_raises_on_unreachable_directions(self, tmp_path):
+        """Directions that match no hooked site fail loudly, not silently.
+
+        A bare-int key targets ``resid_post``; hooking only ``mlp`` would make
+        the intervention a no-op, so it must error instead.
+        """
+        self._build_tiny_model(tmp_path)
+        from murano.model import MuranoModel
+
+        model = MuranoModel(str(tmp_path), device_map="cpu", dtype=torch.float32)
+        with pytest.raises(ValueError, match="would do nothing"):
             model.generate(
                 "hello",
                 ablate={0: torch.randn(model.d_model)},
+                modules="mlp",
+                layers=[0],
                 gen_kwargs={"max_new_tokens": 1, "do_sample": False},
             )
+
+    def test_canonical_module_round_trips_through_resolver(self, tmp_path):
+        """A stored Node's module feeds back into record/resolve_module.
+
+        Node canonicalizes "residual" -> "resid_post"; the resolver must accept
+        the canonical name so results compose (record a site, reuse its module).
+        """
+        self._build_tiny_model(tmp_path)
+        from murano.model import MuranoModel
+
+        model = MuranoModel(str(tmp_path), device_map="cpu", dtype=torch.float32)
+        store = model.record("hello", layers=[0], position="last")
+        node = next(iter(store.positive))
+        assert node.module == "resid_post"
+
+        # Feeding the stored canonical module back must resolve to a live hook.
+        store2 = model.record(
+            "hello", layers=[node.layer], modules=node.module, position="last"
+        )
+        assert node in store2.positive
+
+        # resolve_module accepts canonical names and aliases.
+        for module in (
+            "resid_post",
+            "residual",
+            "mlp",
+            "mlp_out",
+            "self_attn",
+            "attn_out",
+        ):
+            model.resolve_module(0, module)
+        # resid_pre/resid_mid have no single output hook on this path.
+        for module in ("resid_pre", "resid_mid"):
+            with pytest.raises(ValueError, match="no single output hook"):
+                model.resolve_module(0, module)

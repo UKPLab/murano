@@ -11,6 +11,7 @@ from torch import Tensor, no_grad  # pyright: ignore[reportPrivateImportUsage]
 from murano import keys
 from murano.artifacts import PromptBatch
 from murano.logging import logger
+from murano.nodes import Node
 from murano.results import Results
 from murano.steps.base import Step
 
@@ -112,7 +113,8 @@ class SAEActivationStore:
         tokens: Tensor [N, seq] of input token ids.
         attention_mask: Tensor [N, seq] marking real (1) vs padding (0) positions.
         texts: Input texts paired by index with the N dimension.
-        layer: Layer index where the SAE was applied.
+        hook: Component address (:class:`Node`) the SAE was applied at. Feature
+            indices are a separate space and stay plain ints.
         release: HuggingFace SAE release identifier.
         sae_id: SAE id within the release.
         n_features: SAE width (equals ``activations.shape[-1]``).
@@ -122,10 +124,13 @@ class SAEActivationStore:
     tokens: Tensor
     attention_mask: Tensor
     texts: list[str]
-    layer: int
+    hook: Node
     release: str
     sae_id: str
     n_features: int
+
+    def __post_init__(self) -> None:
+        self.hook = Node.coerce(self.hook)
 
 
 @dataclass
@@ -137,7 +142,7 @@ class SAEFeatureExamples:
         contexts: ``{feat_id: list[str]}`` the K context strings per feature.
         tokens: ``{feat_id: list[str]}`` the K triggering tokens per feature.
         act_vals: ``{feat_id: list[float]}`` the K activation values per feature.
-        layer: Layer index where the SAE was applied.
+        hook: Component address (:class:`Node`) the SAE was applied at.
         release: HuggingFace SAE release identifier.
         sae_id: SAE id within the release.
         k: Top-K cap per feature.
@@ -147,10 +152,13 @@ class SAEFeatureExamples:
     contexts: dict[int, list[str]]
     tokens: dict[int, list[str]]
     act_vals: dict[int, list[float]]
-    layer: int
+    hook: Node
     release: str
     sae_id: str
     k: int
+
+    def __post_init__(self) -> None:
+        self.hook = Node.coerce(self.hook)
 
 
 class SAEModel:
@@ -175,7 +183,8 @@ class SAEModel:
 
     def _ensure_loaded(self) -> None:
         if self._sae is None:
-            from sae_lens import SAE
+            # sae-lens is the optional [sae] extra; absent in the base install.
+            from sae_lens import SAE  # pyright: ignore[reportMissingImports]
 
             self._sae = SAE.from_pretrained(
                 release=self.release,
@@ -273,7 +282,7 @@ class SAEEncode(Step):
             tokens=cast(Tensor, tokens["input_ids"]).detach().cpu(),
             attention_mask=cast(Tensor, tokens["attention_mask"]).detach().cpu(),
             texts=list(prompts),
-            layer=hook_layer,
+            hook=Node(hook_layer, hook_kind),
             release=self.sae_model.release,
             sae_id=self.sae_model.sae_id,
             n_features=sae_acts.shape[-1],
@@ -374,11 +383,11 @@ class SAETopActivations(Step):
                 act_vals[f].append(float(v))
 
         logger.info(
-            "SAETopActivations: %d features, k=%d (capped at %d), layer=%d",
+            "SAETopActivations: %d features, k=%d (capped at %d), hook=%s",
             len(feat_ids),
             self.k,
             k_used,
-            store.layer,
+            store.hook,
         )
 
         results[keys.FEATURE_EXAMPLES] = SAEFeatureExamples(
@@ -386,7 +395,7 @@ class SAETopActivations(Step):
             contexts=contexts,
             tokens=tokens,
             act_vals=act_vals,
-            layer=store.layer,
+            hook=store.hook,
             release=store.release,
             sae_id=store.sae_id,
             k=self.k,

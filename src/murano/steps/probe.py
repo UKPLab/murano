@@ -10,10 +10,10 @@ from numpy import ndarray
 
 from murano import keys
 from murano.logging import logger
+from murano.nodes import Node, NodeDict
 from murano.results import Results
 from murano.steps.base import Step
 from murano.steps.record import (
-    ActivationKey,
     LabeledActivationStore,
     _require_reduced_store,
 )
@@ -24,18 +24,24 @@ class ProbeResult:
     """Output of the Probe step.
 
     Attributes:
-        accuracy_per_layer: {key: float} mean CV accuracy.
-        cv_scores: {key: ndarray} per-fold accuracy scores.
-        best_layer: Key with highest mean accuracy.
-        classifiers: {key: fitted sklearn classifier} (only if refit=True).
+        accuracy_per_layer: ``{Node: float}`` mean CV accuracy.
+        cv_scores: ``{Node: ndarray}`` per-fold accuracy scores.
+        best_layer: :class:`Node` with highest mean accuracy.
+        classifiers: ``{Node: fitted sklearn classifier}`` (only if refit=True).
         label_names: Human-readable label names (passed through from dataset).
     """
 
-    accuracy_per_layer: dict[ActivationKey, float]
-    cv_scores: dict[ActivationKey, ndarray]
-    best_layer: ActivationKey
-    classifiers: dict[ActivationKey, Any] = field(default_factory=dict)
+    accuracy_per_layer: dict[Node, float]
+    cv_scores: dict[Node, ndarray]
+    best_layer: Node
+    classifiers: dict[Node, Any] = field(default_factory=dict)
     label_names: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        self.accuracy_per_layer = NodeDict(self.accuracy_per_layer)
+        self.cv_scores = NodeDict(self.cv_scores)
+        self.classifiers = NodeDict(self.classifiers)
+        self.best_layer = Node.coerce(self.best_layer)
 
 
 class Probe(Step):
@@ -102,9 +108,9 @@ class Probe(Step):
                 f"Reduce cv or add more data."
             )
 
-        accuracy_per_layer: dict[ActivationKey, float] = {}
-        cv_scores: dict[ActivationKey, ndarray] = {}
-        classifiers: dict[ActivationKey, Any] = {}
+        accuracy_per_layer: dict[Node, float] = {}
+        cv_scores: dict[Node, ndarray] = {}
+        classifiers: dict[Node, Any] = {}
 
         for key in sorted(store.activations.keys()):
             X = store.activations[key].float().numpy()

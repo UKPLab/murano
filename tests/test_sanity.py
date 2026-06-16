@@ -3,6 +3,8 @@
 import pytest
 import torch
 
+from murano.nodes import Node
+
 
 # Architectures confirmed to expose nnterp's standardized .mlp and .self_attn.
 # OPT is excluded because nnterp warns it lacks a unified .mlp module. Models are
@@ -108,6 +110,30 @@ def test_cross_architecture_standardization(build_model, tmp_path):
     )
 
 
+def test_residual_intervention_on_tuple_output_arch(tmp_path):
+    """Steering/ablation generation works when ``layer.output`` is a tuple.
+
+    GPT-2-style blocks return ``(hidden_states, ...)`` tuples, so the
+    intervention must edit the hidden-states element rather than treat the whole
+    tuple as a tensor. Llama-style blocks (the default test model) return a plain
+    tensor, so this path is only exercised on a tuple-output architecture.
+    """
+    from murano.model import MuranoModel
+
+    _build_gpt2(tmp_path)
+    _save_tiny_tokenizer(tmp_path)
+    model = MuranoModel(str(tmp_path), device_map="cpu", dtype=torch.float32)
+
+    out = model.generate(
+        "hello world",
+        ablate={0: torch.randn(model.d_model)},
+        layers=[0],
+        modules="residual",
+        gen_kwargs={"max_new_tokens": 2, "do_sample": False},
+    )
+    assert isinstance(out, str)
+
+
 def test_cross_architecture_end_to_end(murano_model):
     """Ensure load -> record -> intervene works with no architecture-specific code.
 
@@ -124,7 +150,7 @@ def test_cross_architecture_end_to_end(murano_model):
         negative=["I am bad"],
         layers=[0],
     )
-    assert direction.best_layer == (0, "residual")
+    assert direction.best_layer == Node.coerce(0)
 
     # 3. Intervene via ablation
     ablated_text = murano_model.generate(
