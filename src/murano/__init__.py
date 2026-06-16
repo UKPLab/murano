@@ -29,6 +29,14 @@ if TYPE_CHECKING:
     )
     from murano.model import MuranoModel
     from murano.model import MuranoModel as Model
+    from murano.nodes import (
+        AddressLike,
+        Edge,
+        Node,
+        NodeDict,
+        NodeSet,
+        Side,
+    )
     from murano.pipeline import Pipeline
     from murano.results import Results
     from murano.steps.base import Step
@@ -45,6 +53,12 @@ if TYPE_CHECKING:
 _LAZY_ATTRS = {
     "MuranoModel": ("murano.model", "MuranoModel"),
     "Model": ("murano.model", "MuranoModel"),
+    "Node": ("murano.nodes", "Node"),
+    "Side": ("murano.nodes", "Side"),
+    "Edge": ("murano.nodes", "Edge"),
+    "NodeSet": ("murano.nodes", "NodeSet"),
+    "NodeDict": ("murano.nodes", "NodeDict"),
+    "AddressLike": ("murano.nodes", "AddressLike"),
     "PromptBatch": ("murano.artifacts", "PromptBatch"),
     "GenerationComparison": ("murano.artifacts", "GenerationComparison"),
     "MetricResult": ("murano.artifacts", "MetricResult"),
@@ -75,6 +89,12 @@ _LAZY_ATTRS = {
 __all__ = [
     "MuranoModel",
     "Model",
+    "Node",
+    "Side",
+    "Edge",
+    "NodeSet",
+    "NodeDict",
+    "AddressLike",
     "PromptBatch",
     "GenerationComparison",
     "MetricResult",

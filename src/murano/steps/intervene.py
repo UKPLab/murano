@@ -10,9 +10,9 @@ from tqdm import tqdm
 from murano import keys
 from murano.artifacts import GenerationComparison, PromptBatch
 from murano.logging import logger
+from murano.nodes import Node, NodeDict
 from murano.results import Results
 from murano.steps.base import Step
-from murano.steps.record import ActivationKey
 
 if TYPE_CHECKING:
     from murano.backend import ModelBackend
@@ -43,11 +43,9 @@ class InterveneResult(GenerationComparison):
         )
 
 
-def _normalize_directions(
-    directions: dict[ActivationKey, Tensor],
-) -> dict[ActivationKey, Tensor]:
-    normalized: dict[ActivationKey, Tensor] = {}
-    for key, direction in directions.items():
+def _normalize_directions(directions: dict[Node, Tensor]) -> NodeDict:
+    normalized = NodeDict()
+    for key, direction in NodeDict(directions).items():
         norm = direction.norm()
         if not isfinite(norm).item() or norm.item() < 1e-10:
             logger.warning(
@@ -59,21 +57,22 @@ def _normalize_directions(
     return normalized
 
 
-def ablate_direction(directions: dict[ActivationKey, Tensor]) -> Callable:
+def ablate_direction(directions: dict[Node, Tensor]) -> Callable:
     """Return an intervention function that projects out a direction.
 
     Removes the component along the direction from the residual stream.
 
     Args:
-        directions: {key: tensor [d_model]} directions to ablate.
-                    Keys are ``(layer, module_name)`` tuples.
+        directions: ``{address: tensor [d_model]}`` directions to ablate. Keys
+            are coerced to canonical :class:`Node` addresses, so shorthand
+            (a layer int, a ``(layer, module)`` tuple, a Node) is accepted.
 
     Returns:
-        Callable(activation, key) -> modified activation.
+        Callable(activation, node) -> modified activation.
     """
     normalized = _normalize_directions(directions)
 
-    def fn(activation: Tensor, key: ActivationKey) -> Tensor:
+    def fn(activation: Tensor, key: Node) -> Tensor:
         if key not in normalized:
             return activation
         d_hat = normalized[key].to(activation.device, activation.dtype)
@@ -83,22 +82,22 @@ def ablate_direction(directions: dict[ActivationKey, Tensor]) -> Callable:
     return fn
 
 
-def steer_direction(directions: dict[ActivationKey, Tensor], alpha: float) -> Callable:
+def steer_direction(directions: dict[Node, Tensor], alpha: float) -> Callable:
     """Return an intervention function that adds a scaled direction.
 
     Adds alpha * direction to the residual stream at each layer/module.
 
     Args:
-        directions: {key: tensor [d_model]} directions to add.
-                    Keys are ``(layer, module_name)`` tuples.
+        directions: ``{address: tensor [d_model]}`` directions to add. Keys are
+            coerced to canonical :class:`Node` addresses.
         alpha: Scaling factor. Positive = strengthen, negative = suppress.
 
     Returns:
-        Callable(activation, key) -> modified activation.
+        Callable(activation, node) -> modified activation.
     """
     normalized = _normalize_directions(directions)
 
-    def fn(activation: Tensor, key: ActivationKey) -> Tensor:
+    def fn(activation: Tensor, key: Node) -> Tensor:
         if key not in normalized:
             return activation
         d_hat = normalized[key].to(activation.device, activation.dtype)

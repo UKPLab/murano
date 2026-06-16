@@ -8,9 +8,10 @@ from torch import Tensor
 
 from murano import keys
 from murano.logging import logger
+from murano.nodes import Node, NodeDict
 from murano.results import Results
 from murano.steps.base import Step
-from murano.steps.record import ActivationStore, ActivationKey, _require_reduced_store
+from murano.steps.record import ActivationStore, _require_reduced_store
 
 
 @dataclass
@@ -18,15 +19,21 @@ class SteeringResult:
     """Output of SteeringVector step.
 
     Attributes:
-        direction_per_layer: {(layer, module): tensor [d_model]} normalized
-                             direction, keyed by ``(layer_index, module_name)``.
-        separation_scores: {key: float} how well the direction separates classes.
-        best_layer: Key with highest separation score.
+        direction_per_layer: ``{Node: tensor [d_model]}`` normalized direction,
+            keyed by component address.
+        separation_scores: ``{Node: float}`` how well the direction separates
+            classes.
+        best_layer: :class:`Node` with the highest separation score.
     """
 
-    direction_per_layer: dict[ActivationKey, Tensor]
-    separation_scores: dict[ActivationKey, float]
-    best_layer: ActivationKey
+    direction_per_layer: dict[Node, Tensor]
+    separation_scores: dict[Node, float]
+    best_layer: Node
+
+    def __post_init__(self) -> None:
+        self.direction_per_layer = NodeDict(self.direction_per_layer)
+        self.separation_scores = NodeDict(self.separation_scores)
+        self.best_layer = Node.coerce(self.best_layer)
 
 
 class SteeringVector(Step):
@@ -63,8 +70,8 @@ class SteeringVector(Step):
     def __call__(self, results: Results) -> Results:
         store = results[keys.RECORD]
         _require_reduced_store(store, "SteeringVector")
-        directions: dict[ActivationKey, Tensor] = {}
-        scores: dict[ActivationKey, float] = {}
+        directions: dict[Node, Tensor] = {}
+        scores: dict[Node, float] = {}
 
         for key in store.positive:
             pos_acts = store.positive[key].float()

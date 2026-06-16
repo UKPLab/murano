@@ -21,6 +21,7 @@ from transformers import LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerFast
 
 from murano import MuranoModel, Pipeline
 from murano.dataset import MuranoDataset
+from murano.nodes import Node
 from murano.steps.intervene import Intervene, InterveneResult, steer_direction
 from murano.steps.load import Load
 from murano.steps.record import ActivationStore, Record
@@ -164,7 +165,7 @@ class TestRecordIntervene:
         assert (0, "residual") in steering.direction_per_layer
         assert steering.direction_per_layer[(0, "residual")].shape == (model.d_model,)
         assert (0, "residual") in steering.separation_scores
-        assert steering.best_layer == (0, "residual")
+        assert steering.best_layer == Node.coerce(0)
 
     def test_pipeline_intervene(self, model, contrastive_dataset):
         """Pipeline: Load → Intervene should produce InterveneResult."""

@@ -167,8 +167,8 @@ def save_logit_lens(logit_lens_result: Any, path: Path) -> None:
     """Save a LogitLensResult to a .pt file.
 
     Persists every field on the dataclass. Per-layer probability tensors,
-    argmax tokens, decoded words, input words, attention mask, and layer
-    indices, so the result can be reloaded for downstream plotting or
+    argmax tokens, decoded words, input words, attention mask, and component
+    addresses, so the result can be reloaded for downstream plotting or
     analysis without re-running the trace.
 
     Args:
@@ -184,7 +184,7 @@ def save_logit_lens(logit_lens_result: Any, path: Path) -> None:
             "predicted_words": logit_lens_result.predicted_words,
             "input_words": logit_lens_result.input_words,
             "attention_mask": logit_lens_result.attention_mask,
-            "layer_indices": logit_lens_result.layer_indices,
+            "addresses": logit_lens_result.addresses,
         },
         path,
     )
@@ -204,6 +204,14 @@ def load_logit_lens(path: str | Path) -> Any:
     from murano.steps.logit_lens import LogitLensResult
 
     data = torch.load(path, weights_only=False)
+    # Old payloads stored "layer_indices" (a list of ints); LogitLensResult
+    # coerces either form to Node addresses.
+    addresses = data.get("addresses", data.get("layer_indices"))
+    if addresses is None:
+        raise ValueError(
+            f"Logit-lens payload at {path} has neither 'addresses' nor the "
+            f"legacy 'layer_indices'; the file is malformed."
+        )
     return LogitLensResult(
         all_probs=data["all_probs"],
         max_probs=data["max_probs"],
@@ -211,7 +219,7 @@ def load_logit_lens(path: str | Path) -> Any:
         predicted_words=data["predicted_words"],
         input_words=data["input_words"],
         attention_mask=data["attention_mask"],
-        layer_indices=data["layer_indices"],
+        addresses=addresses,
     )
 
 
@@ -319,7 +327,7 @@ def save_sae_activations(sae_store: Any, path: Path) -> None:
             "tokens": sae_store.tokens,
             "attention_mask": sae_store.attention_mask,
             "texts": sae_store.texts,
-            "layer": sae_store.layer,
+            "hook": sae_store.hook,
             "release": sae_store.release,
             "sae_id": sae_store.sae_id,
             "n_features": sae_store.n_features,
@@ -346,7 +354,7 @@ def load_sae_activations(path: str | Path) -> Any:
         tokens=data["tokens"],
         attention_mask=data["attention_mask"],
         texts=data["texts"],
-        layer=data["layer"],
+        hook=data.get("hook", data.get("layer")),
         release=data["release"],
         sae_id=data["sae_id"],
         n_features=data["n_features"],
@@ -369,7 +377,7 @@ def save_sae_examples(feature_examples: Any, path: Path) -> None:
         "contexts": {str(k): v for k, v in feature_examples.contexts.items()},
         "tokens": {str(k): v for k, v in feature_examples.tokens.items()},
         "act_vals": {str(k): v for k, v in feature_examples.act_vals.items()},
-        "layer": feature_examples.layer,
+        "hook": str(feature_examples.hook),
         "release": feature_examples.release,
         "sae_id": feature_examples.sae_id,
         "k": feature_examples.k,
@@ -398,7 +406,7 @@ def load_sae_examples(path: str | Path) -> Any:
         contexts={int(k): v for k, v in data["contexts"].items()},
         tokens={int(k): v for k, v in data["tokens"].items()},
         act_vals={int(k): v for k, v in data["act_vals"].items()},
-        layer=data["layer"],
+        hook=data.get("hook", data.get("layer")),
         release=data["release"],
         sae_id=data["sae_id"],
         k=data["k"],
@@ -590,7 +598,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         filename = "logit_lens.pt" if key == keys.LOGIT_LENS else f"{key}.pt"
         save_logit_lens(logit_lens, out / "logit_lens" / filename)
         metadata[key] = {
-            "layer_indices": logit_lens.layer_indices,
+            "addresses": [str(a) for a in logit_lens.addresses],
             "n_layers": logit_lens.all_probs.shape[0],
             "n_inputs": logit_lens.all_probs.shape[1],
         }
@@ -642,7 +650,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         filename = "sae_record.pt" if key == keys.SAE_RECORD else f"{key}.pt"
         save_sae_activations(sae_store, out / "sae" / filename)
         metadata[key] = {
-            "layer": sae_store.layer,
+            "hook": str(sae_store.hook),
             "release": sae_store.release,
             "sae_id": sae_store.sae_id,
             "n_features": sae_store.n_features,
@@ -662,7 +670,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         )
         save_sae_examples(examples, out / "sae" / filename)
         metadata[key] = {
-            "layer": examples.layer,
+            "hook": str(examples.hook),
             "release": examples.release,
             "sae_id": examples.sae_id,
             "k": examples.k,

@@ -17,6 +17,7 @@ from tokenizers.pre_tokenizers import Whitespace
 from transformers import LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerFast
 
 from murano.model import MuranoModel
+from murano.nodes import Node
 from murano.steps.record import ActivationStore
 from murano.steps.train import SteeringResult
 
@@ -86,7 +87,7 @@ def test_quick_api_smoke_with_local_model(tmp_path):
         batch_size=1,
     )
     assert isinstance(steering, SteeringResult)
-    assert steering.best_layer == (0, "residual")
+    assert steering.best_layer == Node.coerce(0)
     assert steering.direction_per_layer[(0, "residual")].shape == (model.d_model,)
 
     generation = model.generate(

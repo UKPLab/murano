@@ -18,6 +18,7 @@ from tokenizers.pre_tokenizers import Whitespace
 from transformers import LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerFast
 
 from murano import MuranoModel, Pipeline
+from murano.nodes import RESID_POST, Node
 from murano.steps import Save
 from murano.steps.logit_lens import LogitLens, LogitLensResult
 from murano.steps.prompts import LoadPrompts
@@ -97,7 +98,7 @@ class TestLogitLensStep:
         assert result.all_probs.shape[3] == model.tokenizer.vocab_size
         assert result.max_probs.shape == result.all_probs.shape[:-1]
         assert result.predicted_tokens.shape == result.all_probs.shape[:-1]
-        assert result.layer_indices == list(range(n_layers))
+        assert result.addresses == [Node(i, RESID_POST) for i in range(n_layers)]
         assert len(result.input_words) == n_inputs
         assert len(result.predicted_words) == n_layers
 
@@ -111,7 +112,7 @@ class TestLogitLensStep:
         results = pipe.run()
         result = results["logit_lens"]
         assert result.all_probs.shape[0] == 1
-        assert result.layer_indices == [0]
+        assert result.addresses == [Node(0, RESID_POST)]
 
     def test_invalid_layers_string_raises(self, model):
         with pytest.raises(ValueError, match="layers as string must be 'all'"):
@@ -158,7 +159,7 @@ class TestLogitLensSave:
         assert torch.equal(loaded["attention_mask"], original.attention_mask)
         assert loaded["predicted_words"] == original.predicted_words
         assert loaded["input_words"] == original.input_words
-        assert loaded["layer_indices"] == original.layer_indices
+        assert loaded["addresses"] == original.addresses
 
     def test_save_records_logit_lens_in_metadata(self, model, tmp_path):
         pipe = Pipeline(
@@ -172,7 +173,7 @@ class TestLogitLensSave:
 
         metadata = json.loads((tmp_path / "metadata.json").read_text())
         assert "logit_lens" in metadata
-        assert metadata["logit_lens"]["layer_indices"] == [0, 1]
+        assert metadata["logit_lens"]["addresses"] == ["L0.resid_post", "L1.resid_post"]
         assert metadata["logit_lens"]["n_layers"] == 2
         assert metadata["logit_lens"]["n_inputs"] == 1
 
@@ -196,7 +197,7 @@ class TestLogitLensSave:
         assert torch.equal(loaded.attention_mask, original.attention_mask)
         assert loaded.predicted_words == original.predicted_words
         assert loaded.input_words == original.input_words
-        assert loaded.layer_indices == original.layer_indices
+        assert loaded.addresses == original.addresses
 
     def test_save_routes_custom_key_to_keyed_filename(self, model, tmp_path):
         from murano.results import Results

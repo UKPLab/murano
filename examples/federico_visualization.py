@@ -19,6 +19,7 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 
 from murano import MuranoModel, Pipeline
 from murano.dataset import MuranoDataset
+from murano.nodes import AddressLike
 from murano.steps.load import Load
 from murano.steps.record import ActivationStore, Record
 
@@ -39,27 +40,29 @@ class PlotterLens:
     def observe(
         self,
         store: ActivationStore,
-        layer: int | tuple[int, str],
+        layer: AddressLike,
         title: str = "Activation Visualization",
     ) -> None:
         """Reduce activations for a single layer and plot.
 
         Args:
             store: ActivationStore produced by the Record step.
-            layer: A full ``(layer, module)`` key, or a bare layer index that
-                is resolved to its key when a single module was recorded.
+            layer: A component address (a :class:`~murano.Node`, a
+                ``(layer, module)`` tuple, or an address string), or a bare
+                layer index that is resolved to its node when a single module
+                was recorded.
             title: Plot title.
         """
-        if isinstance(layer, tuple):
-            key: int | tuple[int, str] = layer
-        else:
-            matches = [k for k in store.positive if k[0] == layer]
+        if isinstance(layer, int) and not isinstance(layer, bool):
+            matches = [node for node in store.positive if node.layer == layer]
             if len(matches) != 1:
                 raise KeyError(
-                    f"Layer {layer} maps to {len(matches)} keys ({matches}); "
-                    f"pass an explicit (layer, module) key."
+                    f"Layer {layer} maps to {len(matches)} nodes ({matches}); "
+                    f"pass an explicit address (e.g. (layer, module) or a Node)."
                 )
-            key = matches[0]
+            key: AddressLike = matches[0]
+        else:
+            key = layer
         pos = store.positive[key]  # [N_pos, d_model]
         neg = store.negative[key]  # [N_neg, d_model]
 

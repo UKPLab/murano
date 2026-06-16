@@ -25,7 +25,7 @@ from torch import Tensor
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from murano.steps.record import ActivationKey
+    from murano.nodes import Node
 
 
 @runtime_checkable
@@ -75,7 +75,7 @@ class ModelBackend(Protocol):
     def generate_with_hooks(
         self,
         text: str,
-        fn: "Callable[[Tensor, ActivationKey], Tensor] | None" = None,
+        fn: "Callable[[Tensor, Node], Tensor] | None" = None,
         layers: list[int] | str = "all",
         modules: str | list[str] = "residual",
         gen_kwargs: dict[str, Any] | None = None,

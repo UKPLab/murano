@@ -10,6 +10,7 @@ from torch import Tensor, arange, cat, full_like, long, tensor  # pyright: ignor
 
 from murano import keys
 from murano.logging import logger
+from murano.nodes import Node, NodeDict
 from murano.results import Results
 from murano.steps.base import Step
 
@@ -17,19 +18,14 @@ if TYPE_CHECKING:
     from murano.backend import ModelBackend
 
 
-# Key type for activation dictionaries: always ``(layer_index, module_name)``.
-# Normalized to a tuple in every case (single- and multi-module records alike)
-# so consumers never branch on key shape.
-ActivationKey = tuple[int, str]
-
-
 @dataclass
 class ActivationStore:
     """Stores per-layer/module activations for contrastive dataset splits.
 
     Attributes:
-        positive: ``{(layer, module): tensor}`` for positive texts.
-        negative: ``{(layer, module): tensor}`` for negative texts.
+        positive: ``{Node: tensor}`` for positive texts, keyed by component
+            address. Accepts shorthand on lookup (``store.positive[5]``).
+        negative: ``{Node: tensor}`` for negative texts.
         position: Token-position selection applied at record time
             (``"last"`` / ``"first"`` / ``"mean"`` / int, or ``"none"`` to keep
             every position). Sets the tensor rank: reduced modes give
@@ -42,12 +38,16 @@ class ActivationStore:
             ``position="none"``; ``None`` otherwise.
     """
 
-    positive: dict[ActivationKey, Tensor]
-    negative: dict[ActivationKey, Tensor]
+    positive: dict[Node, Tensor]
+    negative: dict[Node, Tensor]
     position: str | int = "last"
     per_head: bool = False
     positive_token_mask: Tensor | None = None
     negative_token_mask: Tensor | None = None
+
+    def __post_init__(self) -> None:
+        self.positive = NodeDict(self.positive)
+        self.negative = NodeDict(self.negative)
 
 
 @dataclass
@@ -55,7 +55,8 @@ class LabeledActivationStore:
     """Stores per-layer/module activations with associated per-example labels.
 
     Attributes:
-        activations: ``{(layer, module): tensor}`` token-position activations.
+        activations: ``{Node: tensor}`` token-position activations, keyed by
+            component address. Accepts shorthand on lookup.
         labels: tensor [N] integer labels.
         position: Token-position selection applied at record time (see
             :class:`ActivationStore`).
@@ -64,11 +65,14 @@ class LabeledActivationStore:
             ``None`` otherwise.
     """
 
-    activations: dict[ActivationKey, Tensor]
+    activations: dict[Node, Tensor]
     labels: Tensor
     position: str | int = "last"
     per_head: bool = False
     token_mask: Tensor | None = None
+
+    def __post_init__(self) -> None:
+        self.activations = NodeDict(self.activations)
 
 
 def _require_reduced_store(
@@ -355,9 +359,7 @@ class Record(Step):
 
         return results
 
-    def _collect(
-        self, texts: list[str]
-    ) -> tuple[dict[ActivationKey, Tensor], Tensor | None]:
+    def _collect(self, texts: list[str]) -> tuple[dict[Node, Tensor], Tensor | None]:
         """Run texts through model and capture activations per layer/module.
 
         Runs a separate nnsight trace per module to avoid ``OutOfOrderError``
@@ -365,9 +367,8 @@ class Record(Step):
         ``layer.mlp.output``) in the same trace.
 
         Returns:
-            A pair ``(activations, mask)``. ``activations`` is
-            ``{(layer, module): tensor}`` keyed uniformly by
-            ``(layer_index, module_name)``; the tensor rank follows
+            A pair ``(activations, mask)``. ``activations`` is ``{Node: tensor}``
+            keyed by canonical component address; the tensor rank follows
             ``position`` / ``per_head`` (see :class:`Record`). ``mask`` is the
             ``[N, seq]`` valid-token mask when ``position="none"`` (so positions
             stay interpretable across the concatenated batches), else ``None``.
@@ -393,10 +394,10 @@ class Record(Step):
             for mod_str in self.modules:
                 self.model.attn_out_proj(self.layers[0], mod_str)
 
-        all_acts: dict[ActivationKey, list[Tensor]] = {}
+        all_acts: dict[Node, list[Tensor]] = {}
         for layer in self.layers:
             for mod_str in self.modules:
-                all_acts[(layer, mod_str)] = []
+                all_acts[Node(layer, mod_str)] = []
         masks: list[Tensor] = []
 
         # Run a separate trace per module to avoid nnsight conflicts when
@@ -427,7 +428,7 @@ class Record(Step):
                             saved[layer] = mod_proxy.output.save()
 
                 for layer in self.layers:
-                    key: ActivationKey = (layer, mod_str)
+                    key = Node(layer, mod_str)
                     output = _unwrap_traced(saved[layer])
                     if self.per_head:
                         # [batch, seq, n_heads * head_dim] -> per-head split.
