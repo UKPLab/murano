@@ -113,6 +113,19 @@ class TestModelBackendBehavior:
         assert logits.shape[:-1] == hidden.shape[:-1]
         assert logits.shape[-1] == tiny_model._lm.config.vocab_size
 
+    def test_forward_logits_shape_dtype_device(self, tiny_model):
+        tokens = tiny_model.tokenizer(
+            ["hello world", "good"],
+            return_tensors="pt",
+            padding=True,
+            return_token_type_ids=False,
+        )
+        logits = tiny_model.forward_logits(tokens)
+        assert logits.shape[0] == 2
+        assert logits.shape[-1] == tiny_model._lm.config.vocab_size
+        assert logits.dtype == torch.float32
+        assert logits.device.type == "cpu"
+
     def test_hf_model_is_underlying(self, tiny_model):
         assert tiny_model.hf_model is tiny_model._lm.model
 

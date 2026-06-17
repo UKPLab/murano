@@ -50,6 +50,13 @@ class CrossEntropyLossStep(Step):
         logits: torch.Tensor = results[self.logits_key]
         targets: torch.Tensor = results[self.targets_key]
 
+        # F.cross_entropy ignores the -100 targets that mark padded and
+        # last-position slots, but a mean over an all-ignored batch divides by
+        # zero and returns NaN; report a 0.0 loss for that empty case instead.
+        if self.reduction == "mean" and not (targets != -100).any():
+            results[self.output_key] = logits.new_tensor(0.0)
+            return results
+
         B, S, V = logits.shape
         loss = F.cross_entropy(
             logits.reshape(B * S, V),
@@ -99,7 +106,15 @@ class AccuracyStep(Step):
         targets: torch.Tensor = results[self.targets_key]
 
         predicted = logits.argmax(dim=-1)
-        accuracy = (predicted == targets).float().mean().item()
+        # Score only the real next-token positions; -100 marks padded and
+        # last-position slots that have no target. An all-ignored batch has
+        # nothing to score, so report 0.0 rather than averaging an empty tensor.
+        valid = targets != -100
+        accuracy = (
+            (predicted[valid] == targets[valid]).float().mean().item()
+            if valid.any()
+            else 0.0
+        )
 
         results[self.output_key] = accuracy
         return results
