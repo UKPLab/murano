@@ -180,6 +180,28 @@ class MuranoModel:
         """
         return self._lm.lm_head(self._lm.ln_final(hidden))
 
+    def forward_logits(self, tokens: Any) -> Tensor:
+        """Run a forward pass and return the model's output logits ``[B, S, V]``.
+
+        Returns the model's true unembedding output via nnterp's standardized
+        ``.logits`` accessor, not a re-projection of a captured hidden state
+        (contrast :meth:`project_on_vocab`). The result is detached, cast to
+        float32, and moved to CPU to match the other stores and to keep
+        bf16/fp16 models safe for downstream cross-entropy and argmax.
+
+        Args:
+            tokens: Tokenizer output (or anything :attr:`trace` accepts) to run.
+
+        Returns:
+            Output logits ``[batch, seq, vocab_size]`` on CPU as float32.
+        """
+        with self.trace(tokens):
+            # Inside a trace, nnterp's `.logits` is an nnsight proxy exposing
+            # `.save()`; its stub types it as a plain Tensor, hence the ignore.
+            saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
+        value = saved.value if hasattr(saved, "value") else saved
+        return value.detach().float().cpu()
+
     @property
     def hf_model(self):
         """Underlying HuggingFace module.
@@ -417,6 +439,29 @@ class MuranoModel:
             per_head=per_head,
         )(results)
         return results[keys.RECORD]
+
+    def logits(self, text: str | Sequence[str]) -> Tensor:
+        """Return the model's output logits ``[B, S, V]`` for one or more texts.
+
+        Quick-API counterpart to :meth:`record` and :meth:`generate`: tokenizes
+        ``text`` and runs a single forward pass through the ``Logits`` step.
+
+        Args:
+            text: A single string or a sequence of strings.
+
+        Returns:
+            Output logits ``[batch, seq, vocab_size]`` on CPU as float32, one
+            row per input text.
+        """
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+        from murano.steps.logits import Logits
+
+        texts, _ = self._coerce_texts(text)
+        results = Results()
+        results[keys.PROMPTS] = PromptBatch(prompts=texts)
+        results = Logits(self)(results)
+        return results[keys.FINAL_LOGITS]
 
     def find_direction(
         self,

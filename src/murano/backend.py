@@ -72,6 +72,10 @@ class ModelBackend(Protocol):
         """Project hidden states onto the vocabulary."""
         ...
 
+    def forward_logits(self, tokens: Any) -> Tensor:
+        """Run a forward pass and return output logits ``[B, S, V]``."""
+        ...
+
     def generate_with_hooks(
         self,
         text: str,
