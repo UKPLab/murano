@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         load_logit_lens,
         load_sae_activations,
         load_sae_examples,
+        load_sae_labels,
         load_steering,
         save_ablated_model,
         save_results,
@@ -37,8 +38,13 @@ if TYPE_CHECKING:
         SAEActivationStore,
         SAEEncode,
         SAEFeatureExamples,
+        SAEFeatureLabel,
+        SAEFeatureLabels,
         SAEModel,
         SAETopActivations,
+        sae_steer,
+        top_sae_features_for_tokens,
+        top_sae_features_per_prompt,
     )
 
 
@@ -59,7 +65,12 @@ _LAZY_ATTRS = {
     "SAEActivationStore": ("murano.steps.sae", "SAEActivationStore"),
     "SAEModel": ("murano.steps.sae", "SAEModel"),
     "SAETopActivations": ("murano.steps.sae", "SAETopActivations"),
+    "sae_steer": ("murano.steps.sae", "sae_steer"),
+    "top_sae_features_for_tokens": ("murano.steps.sae", "top_sae_features_for_tokens"),
+    "top_sae_features_per_prompt": ("murano.steps.sae", "top_sae_features_per_prompt"),
     "SAEFeatureExamples": ("murano.steps.sae", "SAEFeatureExamples"),
+    "SAEFeatureLabel": ("murano.steps.sae", "SAEFeatureLabel"),
+    "SAEFeatureLabels": ("murano.steps.sae", "SAEFeatureLabels"),
     "compliance_rate": ("murano.evaluation", "compliance_rate"),
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
@@ -68,6 +79,7 @@ _LAZY_ATTRS = {
     "load_labeled_activation_store": ("murano.io", "load_labeled_activation_store"),
     "load_sae_activations": ("murano.io", "load_sae_activations"),
     "load_sae_examples": ("murano.io", "load_sae_examples"),
+    "load_sae_labels": ("murano.io", "load_sae_labels"),
     "save_ablated_model": ("murano.io", "save_ablated_model"),
 }
 
@@ -88,8 +100,13 @@ __all__ = [
     "SAEActivationStore",
     "SAEEncode",
     "SAEFeatureExamples",
+    "SAEFeatureLabel",
+    "SAEFeatureLabels",
     "SAEModel",
     "SAETopActivations",
+    "sae_steer",
+    "top_sae_features_for_tokens",
+    "top_sae_features_per_prompt",
     "__version__",
     "compliance_rate",
     "setup_logging",
@@ -100,6 +117,7 @@ __all__ = [
     "load_labeled_activation_store",
     "load_sae_activations",
     "load_sae_examples",
+    "load_sae_labels",
     "save_ablated_model",
 ]
 

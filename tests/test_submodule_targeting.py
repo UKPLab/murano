@@ -385,6 +385,67 @@ class TestInterventionFunctionsModules:
         assert diff < 1e-4
 
 
+class TestApplyIntervention:
+    """_apply_intervention preserves tuple-structured module outputs.
+
+    Decoder layers (and attention submodules) return ``(hidden_states, ...)``
+    tuples during generation; the intervention must transform only the
+    hidden-states element and pass the rest of the tuple through untouched.
+    Regression test for steering crashing with
+    ``'tuple' object has no attribute 'device'``.
+    """
+
+    def test_tensor_output_applies_fn_directly(self, d_model):
+        from murano.model import _apply_intervention
+
+        direction = torch.randn(d_model)
+        direction = direction / direction.norm()
+        fn = steer_direction({0: direction}, alpha=2.0)
+        activation = torch.zeros(1, 1, d_model)
+
+        result = _apply_intervention(activation, fn, 0)
+        assert isinstance(result, torch.Tensor)
+        assert (result.squeeze() - 2.0 * direction).norm().item() < 1e-4
+
+    def test_tuple_output_only_transforms_hidden_states(self, d_model):
+        from murano.model import _apply_intervention
+
+        direction = torch.randn(d_model)
+        direction = direction / direction.norm()
+        fn = steer_direction({0: direction}, alpha=2.0)
+
+        hidden = torch.zeros(1, 1, d_model)
+        cache = object()  # stand-in for present_key_values, must pass through
+        output = (hidden, cache)
+
+        result = _apply_intervention(output, fn, 0)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        # hidden states steered ...
+        assert (result[0].squeeze() - 2.0 * direction).norm().item() < 1e-4
+        # ... rest of the tuple is the same object, untouched.
+        assert result[1] is cache
+
+    def test_tuple_with_only_hidden_states(self, d_model):
+        from murano.model import _apply_intervention
+
+        fn = steer_direction({0: torch.randn(d_model)}, alpha=1.0)
+        output = (torch.zeros(1, 1, d_model),)
+        result = _apply_intervention(output, fn, 0)
+        assert isinstance(result, tuple)
+        assert len(result) == 1
+
+    def test_absent_key_is_identity_for_tuple(self, d_model):
+        from murano.model import _apply_intervention
+
+        fn = steer_direction({0: torch.randn(d_model)}, alpha=1.0)
+        hidden = torch.randn(1, 1, d_model)
+        output = (hidden, "kv")
+        result = _apply_intervention(output, fn, 5)  # key 5 not steered
+        assert torch.equal(result[0], hidden)
+        assert result[1] == "kv"
+
+
 # ── ActivationKey Type Tests ──────────────────────────────────────────
 
 

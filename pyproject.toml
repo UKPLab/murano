@@ -44,6 +44,10 @@ plot = [
 sae = [
     "sae-lens>=6.7.0",
 ]
+notebook = [
+    "jupyter>=1.1",
+    "ipykernel>=6.29",
+]
 
 [tool.hatch.version]
 source = "uv-dynamic-versioning"

@@ -36,6 +36,26 @@ def _ensure_downloaded(model_id: str) -> str:
         return snapshot_download(model_id)
 
 
+def _apply_intervention(
+    output: Any,
+    fn: Callable[[Tensor, ActivationKey], Tensor],
+    key: ActivationKey,
+) -> Any:
+    """Apply an intervention ``fn`` to a module's output during generation.
+
+    Decoder layers (and attention submodules) return ``(hidden_states, ...)``
+    tuples rather than a bare tensor, so the intervention must transform only
+    the hidden-states element and leave the rest of the tuple (e.g. cached
+    key/values) untouched. When the output is already a tensor (some submodules
+    and some architectures), ``fn`` is applied directly. This mirrors the
+    ``isinstance(output, tuple)`` unwrapping the record and logit-lens read
+    paths already use.
+    """
+    if isinstance(output, tuple):
+        return (fn(output[0], key),) + tuple(output[1:])
+    return fn(output, key)
+
+
 class MuranoModel:
     """Thin wrapper around nnterp StandardizedTransformer for mechanistic interpretability.
 
@@ -173,11 +193,12 @@ class MuranoModel:
                 for layer_idx in self._layer_indices(layers):
                     for mod_str in module_list:
                         mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
-                        h = mod_proxy.output
                         key: int | tuple[int, str] = (
                             layer_idx if len(module_list) == 1 else (layer_idx, mod_str)
                         )
-                        mod_proxy.output = fn(h, key)  # pyright: ignore[reportArgumentType]
+                        mod_proxy.output = _apply_intervention(  # pyright: ignore[reportAttributeAccessIssue]
+                            mod_proxy.output, fn, key
+                        )
             output_ids = self._lm.generator.output.save()
 
         out = output_ids.value if hasattr(output_ids, "value") else output_ids
