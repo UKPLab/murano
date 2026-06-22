@@ -14,13 +14,15 @@ from typing import TYPE_CHECKING, cast
 from torch import Tensor, no_grad, stack  # pyright: ignore[reportPrivateImportUsage]
 from torch.nn.functional import softmax
 
+from murano import keys
 from murano.artifacts import PromptBatch
 from murano.logging import logger
+from murano.nodes import RESID_POST, Node
 from murano.results import Results
 from murano.steps.base import Step
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
 
 
 @dataclass
@@ -35,7 +37,9 @@ class LogitLensResult:
         input_words: Decoded input tokens, shape [n_inputs][seq].
         attention_mask: Tensor [n_inputs, seq] marking real (1) vs padding (0)
             positions; useful for masking padded columns at visualization time.
-        layer_indices: Layer indices included in the result.
+        addresses: Component addresses (one :class:`Node` per layer) the rows
+            of the tensors correspond to. The lens reads each layer's block
+            output, so these are ``resid_post`` nodes.
     """
 
     all_probs: Tensor
@@ -44,7 +48,10 @@ class LogitLensResult:
     predicted_words: list[list[list[str]]]
     input_words: list[list[str]]
     attention_mask: Tensor
-    layer_indices: list[int]
+    addresses: list[Node]
+
+    def __post_init__(self) -> None:
+        self.addresses = [Node.coerce(address) for address in self.addresses]
 
 
 class LogitLens(Step):
@@ -68,14 +75,14 @@ class LogitLens(Step):
         ValueError: If ``layers`` is a string other than ``"all"``.
     """
 
-    reads = ["prompts"]
-    writes = ["logit_lens"]
-    read_types = {"prompts": PromptBatch}
-    write_types = {"logit_lens": LogitLensResult}
+    reads = [keys.PROMPTS]
+    writes = [keys.LOGIT_LENS]
+    read_types = {keys.PROMPTS: PromptBatch}
+    write_types = {keys.LOGIT_LENS: LogitLensResult}
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         layers: list[int] | str = "all",
     ):
         self.model = model
@@ -87,7 +94,7 @@ class LogitLens(Step):
             self.layers = list(layers)
 
     def __call__(self, results: Results) -> Results:
-        prompt_batch: PromptBatch = results["prompts"]
+        prompt_batch: PromptBatch = results[keys.PROMPTS]
         prompts = prompt_batch.prompts
         logger.info("LogitLens: %d prompts, %d layers", len(prompts), len(self.layers))
 
@@ -102,7 +109,7 @@ class LogitLens(Step):
         attention_mask = cast(Tensor, tokens["attention_mask"])
 
         saved = {}
-        with self.model._lm.trace(tokens):
+        with self.model.trace(tokens):
             for layer in self.layers:
                 saved[layer] = self.model.layer(layer).output.save()
 
@@ -116,9 +123,8 @@ class LogitLens(Step):
                 )
                 if isinstance(output, tuple):
                     output = output[0]
-                # output: [n_inputs, seq, d_model]; project to vocab via nnterp.
-                hidden = self.model._lm.ln_final(output)
-                logits = self.model._lm.lm_head(hidden)
+                # output: [n_inputs, seq, d_model]; project to vocab.
+                logits = self.model.project_on_vocab(output)
                 layer_probs.append(softmax(logits, dim=-1).detach().cpu())
 
         # all_probs: [n_layers, n_inputs, seq, vocab]
@@ -134,13 +140,13 @@ class LogitLens(Step):
             for layer in predicted_tokens
         ]
 
-        results["logit_lens"] = LogitLensResult(
+        results[keys.LOGIT_LENS] = LogitLensResult(
             all_probs=all_probs,
             max_probs=max_probs,
             predicted_tokens=predicted_tokens,
             predicted_words=predicted_words,
             input_words=input_words,
             attention_mask=attention_mask.detach().cpu(),
-            layer_indices=list(self.layers),
+            addresses=[Node(layer, RESID_POST) for layer in self.layers],
         )
         return results

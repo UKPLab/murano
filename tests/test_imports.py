@@ -53,6 +53,26 @@ def test_importing_murano_does_not_import_model():
     assert completed.stdout.strip() == "False"
 
 
+def test_accessing_logits_step_does_not_import_model():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys, murano; "
+                "assert murano.Logits is not None; "
+                "print('murano.model' in sys.modules)"
+            ),
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+        env=_subprocess_env(),
+    )
+    assert completed.stdout.strip() == "False"
+
+
 def test_quick_compliance_rate_does_not_import_model():
     completed = subprocess.run(
         [

@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING, Callable
 from torch import Tensor, isfinite  # pyright: ignore[reportPrivateImportUsage]
 from tqdm import tqdm
 
+from murano import keys
 from murano.artifacts import GenerationComparison, PromptBatch
 from murano.logging import logger
+from murano.nodes import Node, NodeDict
 from murano.results import Results
 from murano.steps.base import Step
-from murano.steps.record import ActivationKey
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
 
 
 class InterveneResult(GenerationComparison):
@@ -42,11 +43,9 @@ class InterveneResult(GenerationComparison):
         )
 
 
-def _normalize_directions(
-    directions: dict[ActivationKey, Tensor],
-) -> dict[ActivationKey, Tensor]:
-    normalized: dict[ActivationKey, Tensor] = {}
-    for key, direction in directions.items():
+def _normalize_directions(directions: dict[Node, Tensor]) -> NodeDict:
+    normalized = NodeDict()
+    for key, direction in NodeDict(directions).items():
         norm = direction.norm()
         if not isfinite(norm).item() or norm.item() < 1e-10:
             logger.warning(
@@ -58,22 +57,22 @@ def _normalize_directions(
     return normalized
 
 
-def ablate_direction(directions: dict[ActivationKey, Tensor]) -> Callable:
+def ablate_direction(directions: dict[Node, Tensor]) -> Callable:
     """Return an intervention function that projects out a direction.
 
     Removes the component along the direction from the residual stream.
 
     Args:
-        directions: {key: tensor [d_model]} directions to ablate.
-                    Keys are ``int`` (layer index) or ``(int, str)``
-                    (layer, module_name).
+        directions: ``{address: tensor [d_model]}`` directions to ablate. Keys
+            are coerced to canonical :class:`Node` addresses, so shorthand
+            (a layer int, a ``(layer, module)`` tuple, a Node) is accepted.
 
     Returns:
-        Callable(activation, key) -> modified activation.
+        Callable(activation, node) -> modified activation.
     """
     normalized = _normalize_directions(directions)
 
-    def fn(activation: Tensor, key: ActivationKey) -> Tensor:
+    def fn(activation: Tensor, key: Node) -> Tensor:
         if key not in normalized:
             return activation
         d_hat = normalized[key].to(activation.device, activation.dtype)
@@ -83,23 +82,22 @@ def ablate_direction(directions: dict[ActivationKey, Tensor]) -> Callable:
     return fn
 
 
-def steer_direction(directions: dict[ActivationKey, Tensor], alpha: float) -> Callable:
+def steer_direction(directions: dict[Node, Tensor], alpha: float) -> Callable:
     """Return an intervention function that adds a scaled direction.
 
     Adds alpha * direction to the residual stream at each layer/module.
 
     Args:
-        directions: {key: tensor [d_model]} directions to add.
-                    Keys are ``int`` (layer index) or ``(int, str)``
-                    (layer, module_name).
+        directions: ``{address: tensor [d_model]}`` directions to add. Keys are
+            coerced to canonical :class:`Node` addresses.
         alpha: Scaling factor. Positive = strengthen, negative = suppress.
 
     Returns:
-        Callable(activation, key) -> modified activation.
+        Callable(activation, node) -> modified activation.
     """
     normalized = _normalize_directions(directions)
 
-    def fn(activation: Tensor, key: ActivationKey) -> Tensor:
+    def fn(activation: Tensor, key: Node) -> Tensor:
         if key not in normalized:
             return activation
         d_hat = normalized[key].to(activation.device, activation.dtype)
@@ -126,17 +124,17 @@ class Intervene(Step):
         gen_kwargs: Keyword arguments for model.generate().
     """
 
-    reads = ["prompts"]
-    writes = ["intervene"]
-    write_types = {"intervene": InterveneResult}
+    reads = [keys.PROMPTS]
+    writes = [keys.INTERVENE]
+    write_types = {keys.INTERVENE: InterveneResult}
 
     def expected_read_types(self, results=None, available_types=None):
         """Return ``{"prompts": PromptBatch}``."""
-        return {"prompts": PromptBatch}
+        return {keys.PROMPTS: PromptBatch}
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         fn: Callable,
         layers: list[int] | str = "all",
         modules: str | list[str] = "residual",
@@ -154,7 +152,7 @@ class Intervene(Step):
         self.gen_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
 
     def __call__(self, results: Results) -> Results:
-        prompt_batch = results["prompts"]
+        prompt_batch = results[keys.PROMPTS]
         prompts = prompt_batch.prompts
         clean_gens = []
         modified_gens = []
@@ -163,7 +161,7 @@ class Intervene(Step):
             clean_gens.append(self._generate_clean(prompt))
             modified_gens.append(self._generate_ablated(prompt))
 
-        results["intervene"] = InterveneResult(
+        results[keys.INTERVENE] = InterveneResult(
             clean_generations=clean_gens,
             modified_generations=modified_gens,
             prompts=(
@@ -180,11 +178,11 @@ class Intervene(Step):
 
     def _generate_clean(self, text: str) -> str:
         """Generate without any intervention."""
-        return self.model._generate_single(text, gen_kwargs=self.gen_kwargs)
+        return self.model.generate_with_hooks(text, gen_kwargs=self.gen_kwargs)
 
     def _generate_ablated(self, text: str) -> str:
         """Generate with the intervention applied at each layer/module."""
-        return self.model._generate_single(
+        return self.model.generate_with_hooks(
             text,
             fn=self.fn,
             layers=self.layers,

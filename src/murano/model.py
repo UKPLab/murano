@@ -10,12 +10,26 @@ from torch import Tensor, bfloat16  # pyright: ignore[reportPrivateImportUsage]
 from torch import dtype as TorchDtype  # pyright: ignore[reportPrivateImportUsage]
 from nnterp import StandardizedTransformer
 
+from murano import keys
 from murano.logging import logger
-from murano.steps.record import ActivationKey
+from murano.nodes import (
+    RESID_MID,
+    RESID_POST,
+    RESID_PRE,
+    Node,
+    NodeDict,
+    canonical_module,
+)
 
 if TYPE_CHECKING:
     from murano.steps.record import ActivationStore
     from murano.steps.train import SteeringResult
+
+
+# Known names for an attention module's output projection, tried in order when
+# resolving the per-head split point. A general per-architecture resolver is
+# future work; until then unknown architectures raise from ``attn_out_proj``.
+_ATTN_OUT_PROJ_NAMES = ("o_proj", "out_proj", "c_proj", "dense", "wo")
 
 
 def _ensure_downloaded(model_id: str) -> str:
@@ -34,26 +48,6 @@ def _ensure_downloaded(model_id: str) -> str:
         return snapshot_download(model_id, local_files_only=True)
     except Exception:
         return snapshot_download(model_id)
-
-
-def _apply_intervention(
-    output: Any,
-    fn: Callable[[Tensor, ActivationKey], Tensor],
-    key: ActivationKey,
-) -> Any:
-    """Apply an intervention ``fn`` to a module's output during generation.
-
-    Decoder layers (and attention submodules) return ``(hidden_states, ...)``
-    tuples rather than a bare tensor, so the intervention must transform only
-    the hidden-states element and leave the rest of the tuple (e.g. cached
-    key/values) untouched. When the output is already a tensor (some submodules
-    and some architectures), ``fn`` is applied directly. This mirrors the
-    ``isinstance(output, tuple)`` unwrapping the record and logit-lens read
-    paths already use.
-    """
-    if isinstance(output, tuple):
-        return (fn(output[0], key),) + tuple(output[1:])
-    return fn(output, key)
 
 
 class MuranoModel:
@@ -107,6 +101,19 @@ class MuranoModel:
             raise RuntimeError(f"Loaded model {model_id} has no config.")
         self.n_layers = config.num_hidden_layers
         self.d_model = config.hidden_size
+        self.n_heads = config.num_attention_heads
+        if self.d_model % self.n_heads != 0:
+            raise RuntimeError(
+                f"Model {model_id} has d_model={self.d_model} not divisible by "
+                f"n_heads={self.n_heads}; cannot derive head_dim."
+            )
+        self.head_dim = self.d_model // self.n_heads
+        # Bind nnsight's trace directly instead of wrapping it in a method.
+        # nnsight inspects the caller's frame to locate the `with` block, so a
+        # wrapper method would sit between the step's `with model.trace(...)`
+        # and nnsight and hide the block, which fails on some Python versions
+        # (WithBlockNotFoundError).
+        self.trace = self._lm.trace
         logger.info(
             "Loaded %s (%d layers, d=%d)", model_id, self.n_layers, self.d_model
         )
@@ -115,20 +122,164 @@ class MuranoModel:
         """Return the nnterp module proxy for a decoder layer."""
         return self._lm.layers[idx]  # pyright: ignore[reportIndexIssue,reportArgumentType]
 
+    def resolve_module(self, layer_idx: int, module: str):
+        """Resolve a submodule proxy by name at a given layer.
+
+        Args:
+            layer_idx: Decoder layer index.
+            module: Module name to resolve, e.g. ``"residual"``, ``"mlp"``, or
+                a dotted path like ``"mlp.gate_proj"``.
+
+        Returns:
+            nnsight proxy for the requested submodule.
+
+        Raises:
+            ValueError: If any part of the dotted path does not exist.
+        """
+        return self._resolve_module(self.layer(layer_idx), module)
+
+    def attn_out_proj(self, layer_idx: int, module: str):
+        """Resolve an attention module's output projection for per-head capture.
+
+        The input to this projection is the concatenated per-head outputs, so
+        callers reshape it to recover per-head activations.
+
+        Args:
+            layer_idx: Decoder layer index.
+            module: Module name expected to resolve to an attention module.
+
+        Returns:
+            nnsight proxy for the attention output projection.
+
+        Raises:
+            NotImplementedError: If the module exposes no known output
+                projection (e.g. it is not attention, or the architecture is
+                unsupported for per-head capture).
+        """
+        attn = self._resolve_module(self.layer(layer_idx), module)
+        for name in _ATTN_OUT_PROJ_NAMES:
+            if hasattr(attn, name):
+                return getattr(attn, name)
+        raise NotImplementedError(
+            f"per_head capture requires an attention module exposing a known "
+            f"output projection {_ATTN_OUT_PROJ_NAMES}; module {module!r} has "
+            f"none on this architecture."
+        )
+
+    def project_on_vocab(self, hidden: Tensor) -> Tensor:
+        """Project hidden states onto the vocabulary.
+
+        Applies the standardized final norm and unembedding,
+        ``lm_head(ln_final(hidden))``, matching the logit-lens computation.
+        ``hidden`` is cast to the unembedding's device and dtype first, so a
+        direction stored elsewhere (e.g. an fp32 SAE feature on CPU) projects
+        cleanly against a model on GPU.
+
+        Args:
+            hidden: Hidden states ``[..., d_model]``.
+
+        Returns:
+            Vocabulary logits ``[..., vocab_size]``.
+        """
+        head = self._lm.lm_head
+        hidden = hidden.to(device=head.weight.device, dtype=head.weight.dtype)
+        return head(self._lm.ln_final(hidden))
+
+    def forward_logits(self, tokens: Any) -> Tensor:
+        """Run a forward pass and return the model's output logits ``[B, S, V]``.
+
+        Returns the model's true unembedding output via nnterp's standardized
+        ``.logits`` accessor, not a re-projection of a captured hidden state
+        (contrast :meth:`project_on_vocab`). The result is detached, cast to
+        float32, and moved to CPU to match the other stores and to keep
+        bf16/fp16 models safe for downstream cross-entropy and argmax.
+
+        Args:
+            tokens: Tokenizer output (or anything :attr:`trace` accepts) to run.
+
+        Returns:
+            Output logits ``[batch, seq, vocab_size]`` on CPU as float32.
+        """
+        with self.trace(tokens):
+            # Inside a trace, nnterp's `.logits` is an nnsight proxy exposing
+            # `.save()`; its stub types it as a plain Tensor, hence the ignore.
+            saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
+        value = saved.value if hasattr(saved, "value") else saved
+        return value.detach().float().cpu()
+
+    @property
+    def hf_model(self):
+        """Underlying HuggingFace module.
+
+        Note:
+            Transitional accessor so weight-level steps need not import
+            ``_lm``. It still exposes HF module internals, so it does not make
+            weight editing backend-neutral.
+        """
+        return self._lm.model
+
     def _coerce_texts(self, text: str | Sequence[str]) -> tuple[list[str], bool]:
         if isinstance(text, str):
             return [text], True
         return list(text), False
 
-    def _coerce_directions(self, direction_like: Any) -> dict[ActivationKey, Tensor]:
+    def _coerce_directions(self, direction_like: Any) -> dict[Node, Tensor]:
         if hasattr(direction_like, "direction_per_layer"):
-            return direction_like.direction_per_layer
-        if isinstance(direction_like, dict):
-            return direction_like
-        raise TypeError(
-            "Expected a SteeringResult or {key: tensor} mapping for the "
-            "intervention directions."
-        )
+            directions = direction_like.direction_per_layer
+        elif isinstance(direction_like, dict):
+            directions = direction_like
+        else:
+            raise TypeError(
+                "Expected a SteeringResult or {address: tensor} mapping for the "
+                "intervention directions."
+            )
+        # Normalize every key to a canonical Node so shorthand (a bare layer int,
+        # a (layer, module) tuple, an address string) resolves to the same
+        # address the generation hooks key by. An uncoercible key fails loudly
+        # here rather than silently never matching during generation.
+        try:
+            return NodeDict(directions)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Intervention direction keys must be addresses (an int layer, a "
+                f"(layer, module) tuple, an address string, or a Node); got an "
+                f"uncoercible key ({exc})."
+            ) from exc
+
+    def _check_directions_reachable(
+        self,
+        directions: dict[Node, Tensor],
+        layers: list[int] | str,
+        modules: str | list[str],
+    ) -> None:
+        """Fail loudly if no intervention address matches a hooked site.
+
+        A direction keyed at an address that is never hooked would silently do
+        nothing (e.g. a bare-int key resolves to ``resid_post`` while
+        ``modules="mlp"``). An empty ``directions`` is treated as an intentional
+        no-op and passes.
+
+        Raises:
+            ValueError: If ``directions`` is non-empty yet none of its addresses
+                fall on a hooked (layer, module) site.
+        """
+        if not directions:
+            return
+        module_list = [modules] if isinstance(modules, str) else list(modules)
+        hooked_modules = {Node(0, mod).module for mod in module_list}
+        if isinstance(layers, str):
+            # "all" hooks every layer, so a matching module is sufficient.
+            reachable = any(node.module in hooked_modules for node in directions)
+        else:
+            hooked = {Node(layer, mod) for layer in layers for mod in module_list}
+            reachable = bool(set(directions) & hooked)
+        if not reachable:
+            raise ValueError(
+                f"No intervention address matches a hooked site "
+                f"(layers={layers!r}, modules={modules!r}); the intervention "
+                f"would do nothing. Addresses: {sorted(directions)}. A bare-int "
+                f"direction key targets 'resid_post'."
+            )
 
     def _layer_indices(self, layers: list[int] | str) -> list[int]:
         if isinstance(layers, str):
@@ -139,26 +290,39 @@ class MuranoModel:
 
     @staticmethod
     def _resolve_module(layer_proxy, mod_str: str):
-        """Resolve a submodule from a layer proxy by name.
+        """Resolve a submodule from a layer proxy by (canonical) name.
 
-        Handles ``"residual"`` (returns the layer proxy itself),
-        direct children (e.g. ``"mlp"``), and dotted paths
-        (e.g. ``"mlp.gate_proj"``).
+        Accepts the canonical :class:`~murano.Node` module names and their
+        aliases so a stored ``Node``'s module resolves back to a live hook:
+        the block output (:data:`~murano.nodes.RESID_POST`, alias ``residual``)
+        is the layer proxy itself; ``mlp``/``self_attn`` (aliases ``mlp_out``/
+        ``attn_out``) and dotted paths (e.g. ``mlp.gate_proj``) resolve by
+        attribute lookup. The proxy's ``.output`` is the named activation.
 
         Args:
             layer_proxy: nnsight proxy for a decoder layer.
             mod_str: Module name to resolve.
 
         Returns:
-            nnsight proxy for the requested submodule.
+            nnsight proxy whose ``.output`` is the requested activation.
 
         Raises:
-            ValueError: If any part of the dotted path does not exist.
+            ValueError: If ``mod_str`` is a residual-stream point with no single
+                output hook here (``resid_pre``/``resid_mid``), or any part of a
+                dotted path does not exist.
         """
-        if mod_str == "residual":
+        canonical = canonical_module(mod_str)
+        if canonical == RESID_POST:
             return layer_proxy
+        if canonical in (RESID_PRE, RESID_MID):
+            raise ValueError(
+                f"module {mod_str!r} ({canonical}) has no single output hook on "
+                f"this path: resid_pre is the block input and resid_mid is a "
+                f"derived sum. Record/intervene on resid_post, mlp, or self_attn "
+                f"here; the SAE path handles resid_pre/resid_mid."
+            )
         current = layer_proxy
-        for part in mod_str.split("."):
+        for part in canonical.split("."):
             try:
                 current = getattr(current, part)
             except AttributeError:
@@ -172,7 +336,7 @@ class MuranoModel:
     def _generate_single(
         self,
         text: str,
-        fn: Callable[[Tensor, int | tuple[int, str]], Tensor] | None = None,
+        fn: Callable[[Tensor, Node], Tensor] | None = None,
         layers: list[int] | str = "all",
         modules: str | list[str] = "residual",
         gen_kwargs: dict[str, Any] | None = None,
@@ -193,18 +357,51 @@ class MuranoModel:
                 for layer_idx in self._layer_indices(layers):
                     for mod_str in module_list:
                         mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
-                        key: int | tuple[int, str] = (
-                            layer_idx if len(module_list) == 1 else (layer_idx, mod_str)
-                        )
-                        mod_proxy.output = _apply_intervention(  # pyright: ignore[reportAttributeAccessIssue]
-                            mod_proxy.output, fn, key
-                        )
+                        h = mod_proxy.output
+                        key = Node(layer_idx, mod_str)
+                        # Decoder-layer outputs are (hidden_states, ...) tuples,
+                        # while submodule outputs (mlp, self_attn) are plain
+                        # tensors. Edit the hidden-states element and write the
+                        # same structure back so the intervention works on either.
+                        if isinstance(h, tuple):
+                            mod_proxy.output = (fn(h[0], key), *h[1:])  # pyright: ignore[reportArgumentType]
+                        else:
+                            mod_proxy.output = fn(h, key)  # pyright: ignore[reportArgumentType]
             output_ids = self._lm.generator.output.save()
 
         out = output_ids.value if hasattr(output_ids, "value") else output_ids
         generated = out[0, input_len:]
         # nnsight returns a proxy; tokenizer.decode accepts it at runtime.
         return cast(str, self.tokenizer.decode(generated, skip_special_tokens=True))  # pyright: ignore[reportArgumentType]
+
+    def generate_with_hooks(
+        self,
+        text: str,
+        fn: Callable[[Tensor, Node], Tensor] | None = None,
+        layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
+        gen_kwargs: dict[str, Any] | None = None,
+    ) -> str:
+        """Generate from ``text``, optionally applying ``fn`` per layer/module.
+
+        Args:
+            text: Prompt to generate from.
+            fn: ``(activation, key) -> activation`` applied to each target
+                module's output during generation; ``None`` runs unmodified.
+            layers: Layer indices to hook, or ``"all"``.
+            modules: Module name(s) to hook at each layer.
+            gen_kwargs: Forwarded to the underlying generation call.
+
+        Returns:
+            The decoded continuation, excluding the prompt.
+        """
+        return self._generate_single(
+            text,
+            fn=fn,
+            layers=layers,
+            modules=modules,
+            gen_kwargs=gen_kwargs,
+        )
 
     def record(
         self,
@@ -213,6 +410,7 @@ class MuranoModel:
         modules: str | list[str] = "residual",
         position: str | int = "last",
         batch_size: int = 8,
+        per_head: bool = False,
     ) -> ActivationStore:
         """Record activations on one or more texts.
 
@@ -220,8 +418,11 @@ class MuranoModel:
             text: Single string or sequence of strings to record from.
             layers: Layer indices to record at, or ``"all"`` for every layer.
             position: Token position to record. One of ``"last"``, ``"first"``,
-                ``"mean"``, or an integer index.
+                ``"mean"``, an integer index, or ``"none"`` to keep every
+                position.
             batch_size: Forward-pass batch size.
+            per_head: If True, split attention activations per head (attention
+                modules only).
 
         Returns:
             ActivationStore with per-layer activations under ``positive``;
@@ -233,15 +434,39 @@ class MuranoModel:
 
         texts, _ = self._coerce_texts(text)
         results = Results()
-        results["dataset"] = MuranoDataset(positive_texts=texts, negative_texts=[])
+        results[keys.DATASET] = MuranoDataset(positive_texts=texts, negative_texts=[])
         results = Record(
             self,
             layers=layers,
             modules=modules,
             position=position,
             batch_size=batch_size,
+            per_head=per_head,
         )(results)
-        return results["record"]
+        return results[keys.RECORD]
+
+    def logits(self, text: str | Sequence[str]) -> Tensor:
+        """Return the model's output logits ``[B, S, V]`` for one or more texts.
+
+        Quick-API counterpart to :meth:`record` and :meth:`generate`: tokenizes
+        ``text`` and runs a single forward pass through the ``Logits`` step.
+
+        Args:
+            text: A single string or a sequence of strings.
+
+        Returns:
+            Output logits ``[batch, seq, vocab_size]`` on CPU as float32, one
+            row per input text.
+        """
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+        from murano.steps.logits import Logits
+
+        texts, _ = self._coerce_texts(text)
+        results = Results()
+        results[keys.PROMPTS] = PromptBatch(prompts=texts)
+        results = Logits(self)(results)
+        return results[keys.FINAL_LOGITS]
 
     def find_direction(
         self,
@@ -274,7 +499,7 @@ class MuranoModel:
         from murano.steps.train import SteeringVector
 
         results = Results()
-        results["dataset"] = MuranoDataset.contrastive(
+        results[keys.DATASET] = MuranoDataset.contrastive(
             positive=list(positive),
             negative=list(negative),
         )
@@ -286,7 +511,7 @@ class MuranoModel:
             batch_size=batch_size,
         )(results)
         results = SteeringVector(normalize=normalize)(results)
-        return results["steering"]
+        return results[keys.STEERING]
 
     def generate(
         self,
@@ -325,10 +550,14 @@ class MuranoModel:
         prompts, is_single = self._coerce_texts(text)
         fn = None
         if ablate is not None:
-            fn = ablate_direction(self._coerce_directions(ablate))
+            directions = self._coerce_directions(ablate)
+            self._check_directions_reachable(directions, layers, modules)
+            fn = ablate_direction(directions)
         elif steer is not None:
             direction_like, alpha = steer
-            fn = steer_direction(self._coerce_directions(direction_like), alpha)
+            directions = self._coerce_directions(direction_like)
+            self._check_directions_reachable(directions, layers, modules)
+            fn = steer_direction(directions, alpha)
 
         outputs = [
             self._generate_single(

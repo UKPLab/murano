@@ -17,6 +17,7 @@ import torch
 from torch import Tensor, eye, float32, isfinite  # pyright: ignore[reportPrivateImportUsage]
 from tqdm import tqdm
 
+from murano import keys
 from murano.artifacts import GenerationComparison, PromptBatch
 from murano.logging import logger
 from murano.results import Results
@@ -25,7 +26,7 @@ from murano.steps.intervene import InterveneResult
 from murano.steps.train import SteeringResult
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
 
 
 class ProjectionOperator:
@@ -86,7 +87,7 @@ class ProjectionOperator:
         return (self.P @ W).to(W_data.dtype).to(orig_device)
 
 
-def ablate_model_weights(model: MuranoModel, proj_op: ProjectionOperator) -> int:
+def ablate_model_weights(model: ModelBackend, proj_op: ProjectionOperator) -> int:
     """Apply directional projection to all relevant weight matrices in-place.
 
     Handles embedding, attention (q/k/v read, o_proj write), and
@@ -100,9 +101,9 @@ def ablate_model_weights(model: MuranoModel, proj_op: ProjectionOperator) -> int
         Number of weight matrices modified.
     """
     # hf_model is typed as an nnsight Envoy union; at runtime it exposes
-    # the plain transformer parameters we mutate below. Cast to Any so the
-    # attribute / dtype checks don't fight with nnsight's proxy types.
-    hf_model: Any = model._lm.model
+    # the plain transformer parameters we mutate below. Keep the Any binding so
+    # the attribute / dtype checks don't fight with nnsight's proxy types.
+    hf_model: Any = model.hf_model
     n_modified = 0
 
     with torch.no_grad():
@@ -147,15 +148,15 @@ def ablate_model_weights(model: MuranoModel, proj_op: ProjectionOperator) -> int
     return n_modified
 
 
-def save_weights(model: MuranoModel) -> dict[str, Tensor]:
+def save_weights(model: ModelBackend) -> dict[str, Tensor]:
     """Save a copy of all model weights for later restoration."""
-    hf_model: Any = model._lm.model
+    hf_model: Any = model.hf_model
     return {name: param.data.clone() for name, param in hf_model.named_parameters()}
 
 
-def restore_weights(model: MuranoModel, saved: dict[str, Tensor]) -> None:
+def restore_weights(model: ModelBackend, saved: dict[str, Tensor]) -> None:
     """Restore model weights from a saved copy."""
-    hf_model: Any = model._lm.model
+    hf_model: Any = model.hf_model
     with torch.no_grad():
         for name, param in hf_model.named_parameters():
             param.data.copy_(saved[name])
@@ -215,22 +216,22 @@ class WeightAblation(Step):
         gen_kwargs: Keyword arguments for generation.
     """
 
-    reads = ["prompts", "steering"]
-    writes = ["intervene", "weight_ablation"]
+    reads = [keys.PROMPTS, keys.STEERING]
+    writes = [keys.INTERVENE, keys.WEIGHT_ABLATION]
     write_types = {
-        "intervene": InterveneResult,
-        "weight_ablation": WeightAblationResult,
+        keys.INTERVENE: InterveneResult,
+        keys.WEIGHT_ABLATION: WeightAblationResult,
     }
 
     def expected_read_types(self, results=None, available_types=None):
         return {
-            "prompts": PromptBatch,
-            "steering": SteeringResult,
+            keys.PROMPTS: PromptBatch,
+            keys.STEERING: SteeringResult,
         }
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         save_dir: str | None = None,
         gen_kwargs: dict | None = None,
     ):
@@ -239,8 +240,8 @@ class WeightAblation(Step):
         self.gen_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
 
     def __call__(self, results: Results) -> Results:
-        prompt_batch = results["prompts"]
-        steering = results["steering"]
+        prompt_batch = results[keys.PROMPTS]
+        steering = results[keys.STEERING]
         prompts = prompt_batch.prompts
 
         # Use the best layer's direction for the projection
@@ -284,8 +285,8 @@ class WeightAblation(Step):
                 **prompt_batch.metadata,
             },
         )
-        results["weight_ablation"] = result
-        results["intervene"] = InterveneResult(
+        results[keys.WEIGHT_ABLATION] = result
+        results[keys.INTERVENE] = InterveneResult(
             clean_generations=clean_gens,
             modified_generations=modified_gens,
             prompts=result.prompts,
@@ -298,4 +299,4 @@ class WeightAblation(Step):
 
     def _generate(self, text: str) -> str:
         """Generate text with current model weights."""
-        return self.model._generate_single(text, gen_kwargs=self.gen_kwargs)
+        return self.model.generate_with_hooks(text, gen_kwargs=self.gen_kwargs)

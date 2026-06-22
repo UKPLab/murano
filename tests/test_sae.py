@@ -114,7 +114,7 @@ def _synthetic_sae_store(
         tokens=tokens,
         attention_mask=attention_mask,
         texts=texts,
-        layer=layer,
+        hook=layer,
         release=release,
         sae_id=sae_id,
         n_features=n_features,
@@ -197,7 +197,7 @@ class TestSAEArtifacts:
         assert store.tokens.shape == (2, 3)
         assert store.attention_mask.shape == (2, 3)
         assert len(store.texts) == 2
-        assert store.layer == 0
+        assert store.hook.layer == 0
         assert store.release == "test/synthetic-sae"
         assert store.sae_id == "test/sae-id"
         assert store.n_features == 4
@@ -208,7 +208,7 @@ class TestSAEArtifacts:
             contexts={0: ["a", "b"], 1: ["c"]},
             tokens={0: ["x", "y"], 1: ["z"]},
             act_vals={0: [1.0, 0.5], 1: [0.7]},
-            layer=3,
+            hook=3,
             release="acme/release",
             sae_id="layer_3/canonical",
             k=2,
@@ -216,6 +216,7 @@ class TestSAEArtifacts:
         assert ex.feat_ids == [0, 1]
         assert ex.contexts[0] == ["a", "b"]
         assert ex.act_vals[1] == [0.7]
+        assert ex.hook.layer == 3
 
 
 class TestTopSaeFeaturesPerPrompt:
@@ -256,7 +257,7 @@ class TestTopSaeFeaturesPerPrompt:
         # Feature 0 still has the largest activation at the last token of
         # prompt 2 (say 10), but its global peak is at position 1, so it
         # gets filtered. Prompt 2 falls back to feature 1 or 2 (both 0 at
-        # last position) -- not asserted here, we only check sink exclusion.
+        # last position); not asserted here, we only check sink exclusion.
         record.activations[2, 3, 0] = 10.0
         top = top_sae_features_per_prompt(record, n=1)
         # Sink feature 0 is excluded; legitimate features win.
@@ -393,7 +394,7 @@ class TestSAEEncodeContract:
         assert store.activations.shape[-1] == 16
         assert store.release == "test/repo"
         assert store.sae_id == "test/id"
-        assert store.layer == 0
+        assert store.hook.layer == 0
         assert store.n_features == 16
         assert store.texts == ["hello world", "good world"]
 
@@ -446,7 +447,7 @@ class TestSAEEncodeContract:
 
         results = step(results)
         store: SAEActivationStore = results["sae_record"]
-        assert store.layer == 0
+        assert store.hook.layer == 0
         assert store.activations.shape[-1] == 16
 
     def test_call_handles_mlp_out_hook(self, model):
@@ -459,7 +460,7 @@ class TestSAEEncodeContract:
         step.sae_model._sae = _FakeSAE(hook_name="blocks.0.hook_mlp_out", hook_layer=0)
 
         results = step(results)
-        assert results["sae_record"].layer == 0
+        assert results["sae_record"].hook.layer == 0
 
     def test_call_handles_attn_out_hook(self, model):
         from murano.artifacts import PromptBatch
@@ -471,7 +472,7 @@ class TestSAEEncodeContract:
         step.sae_model._sae = _FakeSAE(hook_name="blocks.0.hook_attn_out", hook_layer=0)
 
         results = step(results)
-        assert results["sae_record"].layer == 0
+        assert results["sae_record"].hook.layer == 0
 
     def test_call_handles_resid_mid_hook(self, model):
         # resid_mid = resid_pre + attn_out; ensures both captures + add path runs.
@@ -486,7 +487,7 @@ class TestSAEEncodeContract:
         )
 
         results = step(results)
-        assert results["sae_record"].layer == 0
+        assert results["sae_record"].hook.layer == 0
 
     def test_call_falls_back_when_hook_layer_is_none(self, model):
         # gemma-scope-style: hook_layer is None but sae_id encodes layer_N.
@@ -501,7 +502,7 @@ class TestSAEEncodeContract:
         step.sae_model._sae = _FakeSAE(hook_name=None, hook_layer=None)
 
         results = step(results)
-        assert results["sae_record"].layer == 1
+        assert results["sae_record"].hook.layer == 1
 
     def test_call_rejects_hook_z(self, model):
         # Per-head attention SAEs need release-specific reshape; not supported.
@@ -596,7 +597,7 @@ class TestSAETopActivations:
         examples: SAEFeatureExamples = results["feature_examples"]
         assert examples.feat_ids == [0, 1]
         assert examples.k == 2
-        assert examples.layer == 0
+        assert examples.hook.layer == 0
         assert examples.act_vals[0] == [9.0, 5.0]
         assert examples.contexts[0] == ["second prompt", "first prompt"]
         assert examples.act_vals[1] == [8.0, 6.0]
@@ -716,32 +717,6 @@ def _make_fake_sae_model(d_sae: int, d_model: int) -> SAEModel:
     return sae
 
 
-class TestProjectToVocab:
-    """Shared ln_final + lm_head projection used by LogitLens and SAEFeatureLabel."""
-
-    def test_projects_single_direction_to_vocab(self, model):
-        from murano.steps.sae import project_to_vocab
-
-        d_model = model._lm.lm_head.in_features
-        logits = project_to_vocab(model, torch.zeros(d_model))
-        assert logits.shape == (len(VOCAB),)
-
-    def test_projects_batched_residuals_to_vocab(self, model):
-        from murano.steps.sae import project_to_vocab
-
-        d_model = model._lm.lm_head.in_features
-        logits = project_to_vocab(model, torch.zeros(2, 3, d_model))
-        assert logits.shape == (2, 3, len(VOCAB))
-
-    def test_casts_input_to_head_dtype(self, model):
-        from murano.steps.sae import project_to_vocab
-
-        d_model = model._lm.lm_head.in_features
-        # fp16 input against an fp32 head must not raise.
-        logits = project_to_vocab(model, torch.zeros(d_model, dtype=torch.float16))
-        assert logits.shape == (len(VOCAB),)
-
-
 class TestSAEFeatureLabel:
     """SAEFeatureLabel projects decoder directions through ln_final + lm_head."""
 
@@ -789,7 +764,7 @@ class TestSAEFeatureLabel:
 
     def test_handles_w_dec_dtype_mismatch_with_model_head(self, model):
         # W_dec from a separately loaded SAE routinely differs in dtype from
-        # the base model head (e.g. fp16 SAE vs fp32 model). project_to_vocab
+        # the base model head (e.g. fp16 SAE vs fp32 model). project_on_vocab
         # must cast before the matmul; without it the projection would raise.
         from murano.results import Results
 
@@ -849,7 +824,7 @@ class TestSAESave:
         assert torch.equal(loaded["tokens"], original.tokens)
         assert torch.equal(loaded["attention_mask"], original.attention_mask)
         assert loaded["texts"] == original.texts
-        assert loaded["layer"] == original.layer
+        assert loaded["hook"] == original.hook
         assert loaded["release"] == original.release
         assert loaded["sae_id"] == original.sae_id
         assert loaded["n_features"] == original.n_features
@@ -879,7 +854,7 @@ class TestSAESave:
 
         metadata = json.loads((tmp_path / "metadata.json").read_text())
         assert "sae_record" in metadata
-        assert metadata["sae_record"]["layer"] == 1
+        assert metadata["sae_record"]["hook"] == "L1.resid_post"
         assert metadata["sae_record"]["release"] == "acme/sae-v1"
         assert metadata["sae_record"]["sae_id"] == "layer_1/canonical"
         assert metadata["sae_record"]["n_features"] == 4
@@ -940,7 +915,7 @@ class TestSAELoadRoundTrip:
         assert torch.equal(loaded.tokens, original.tokens)
         assert torch.equal(loaded.attention_mask, original.attention_mask)
         assert loaded.texts == original.texts
-        assert loaded.layer == original.layer
+        assert loaded.hook == original.hook
         assert loaded.release == original.release
         assert loaded.sae_id == original.sae_id
         assert loaded.n_features == original.n_features
@@ -963,7 +938,7 @@ class TestSAELoadRoundTrip:
         assert loaded.contexts == original.contexts
         assert loaded.tokens == original.tokens
         assert loaded.act_vals == original.act_vals
-        assert loaded.layer == original.layer
+        assert loaded.hook == original.hook
         assert loaded.release == original.release
         assert loaded.sae_id == original.sae_id
         assert loaded.k == original.k
@@ -978,7 +953,7 @@ class TestSAELoadRoundTrip:
         Save(output_dir=str(tmp_path))(results)
 
         loaded = murano.load_sae_activations(tmp_path / "sae" / "sae_record.pt")
-        assert loaded.layer == results["sae_record"].layer
+        assert loaded.hook == results["sae_record"].hook
 
     def test_load_sae_labels_roundtrip(self, model, tmp_path):
         from murano.io import load_sae_labels
@@ -1103,19 +1078,21 @@ class TestSaeSteer:
         assert step.gen_kwargs == gen_kwargs
 
     def test_fn_adds_normalized_feature_direction_at_resolved_layer(self, model):
+        from murano.nodes import Node
+
         sae = self._sae("blocks.1.hook_resid_post", 1)
         alpha = 3.0
         step = sae_steer(model, sae, feature_id=2, alpha=alpha)
-        layer = step.layers[0]
+        layer, module = step.layers[0], step.modules[0]
 
         direction = sae.feature_direction(2).float()
         d_hat = direction / direction.norm()
         act = torch.zeros(1, 1, direction.shape[0])
 
-        # At the resolved layer key the fn adds alpha * unit direction.
-        steered = step.fn(act, layer)
+        # The fn is keyed by the Node the generation hook uses.
+        steered = step.fn(act, Node(layer, module))
         assert torch.allclose(steered[0, 0], alpha * d_hat, atol=1e-5)
 
-        # Any other key is left untouched (the dict only holds the steer layer).
-        untouched = step.fn(act, layer + 100)
+        # A different node is left untouched.
+        untouched = step.fn(act, Node(layer + 1, module))
         assert torch.equal(untouched, act)

@@ -19,6 +19,7 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 
 from murano import MuranoModel, Pipeline
 from murano.dataset import MuranoDataset
+from murano.nodes import AddressLike
 from murano.steps.load import Load
 from murano.steps.record import ActivationStore, Record
 
@@ -39,18 +40,31 @@ class PlotterLens:
     def observe(
         self,
         store: ActivationStore,
-        layer: int,
+        layer: AddressLike,
         title: str = "Activation Visualization",
     ) -> None:
         """Reduce activations for a single layer and plot.
 
         Args:
             store: ActivationStore produced by the Record step.
-            layer: Which layer index to visualise.
+            layer: A component address (a :class:`~murano.Node`, a
+                ``(layer, module)`` tuple, or an address string), or a bare
+                layer index that is resolved to its node when a single module
+                was recorded.
             title: Plot title.
         """
-        pos = store.positive[layer]  # [N_pos, d_model]
-        neg = store.negative[layer]  # [N_neg, d_model]
+        if isinstance(layer, int) and not isinstance(layer, bool):
+            matches = [node for node in store.positive if node.layer == layer]
+            if len(matches) != 1:
+                raise KeyError(
+                    f"Layer {layer} maps to {len(matches)} nodes ({matches}); "
+                    f"pass an explicit address (e.g. (layer, module) or a Node)."
+                )
+            key: AddressLike = matches[0]
+        else:
+            key = layer
+        pos = store.positive[key]  # [N_pos, d_model]
+        neg = store.negative[key]  # [N_neg, d_model]
 
         X = torch.cat([pos, neg], dim=0).numpy()
         y = ["positive"] * len(pos) + ["negative"] * len(neg)

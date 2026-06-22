@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+from murano import keys
 from murano.artifacts import GenerationComparison, MetricResult
 from murano.logging import logger
 from murano.results import Results
@@ -28,16 +29,16 @@ class GenerationMetric(Step):
         output_key: Results key under which to write the MetricResult.
     """
 
-    reads = ["intervene"]
-    writes = ["metric"]
+    reads = [keys.INTERVENE]
+    writes = [keys.METRIC]
 
     def __init__(
         self,
         metric_name: str,
         score_fn: Callable[[list[str]], float],
         item_score_fn: Callable[[str], float] | None = None,
-        input_key: str = "intervene",
-        output_key: str = "metric",
+        input_key: str = keys.INTERVENE,
+        output_key: str = keys.METRIC,
     ):
         self.metric_name = metric_name
         self.score_fn = score_fn

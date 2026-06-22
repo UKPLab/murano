@@ -8,10 +8,15 @@ from typing import Any
 
 from numpy import ndarray
 
+from murano import keys
 from murano.logging import logger
+from murano.nodes import Node, NodeDict
 from murano.results import Results
 from murano.steps.base import Step
-from murano.steps.record import ActivationKey, LabeledActivationStore
+from murano.steps.record import (
+    LabeledActivationStore,
+    _require_reduced_store,
+)
 
 
 @dataclass
@@ -19,18 +24,24 @@ class ProbeResult:
     """Output of the Probe step.
 
     Attributes:
-        accuracy_per_layer: {key: float} mean CV accuracy.
-        cv_scores: {key: ndarray} per-fold accuracy scores.
-        best_layer: Key with highest mean accuracy.
-        classifiers: {key: fitted sklearn classifier} (only if refit=True).
+        accuracy_per_layer: ``{Node: float}`` mean CV accuracy.
+        cv_scores: ``{Node: ndarray}`` per-fold accuracy scores.
+        best_layer: :class:`Node` with highest mean accuracy.
+        classifiers: ``{Node: fitted sklearn classifier}`` (only if refit=True).
         label_names: Human-readable label names (passed through from dataset).
     """
 
-    accuracy_per_layer: dict[ActivationKey, float]
-    cv_scores: dict[ActivationKey, ndarray]
-    best_layer: ActivationKey
-    classifiers: dict[ActivationKey, Any] = field(default_factory=dict)
+    accuracy_per_layer: dict[Node, float]
+    cv_scores: dict[Node, ndarray]
+    best_layer: Node
+    classifiers: dict[Node, Any] = field(default_factory=dict)
     label_names: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        self.accuracy_per_layer = NodeDict(self.accuracy_per_layer)
+        self.cv_scores = NodeDict(self.cv_scores)
+        self.classifiers = NodeDict(self.classifiers)
+        self.best_layer = Node.coerce(self.best_layer)
 
 
 class Probe(Step):
@@ -51,10 +62,10 @@ class Probe(Step):
                in ProbeResult.classifiers.
     """
 
-    reads = ["record"]
-    writes = ["probe"]
-    read_types = {"record": LabeledActivationStore}
-    write_types = {"probe": ProbeResult}
+    reads = [keys.RECORD]
+    writes = [keys.PROBE]
+    read_types = {keys.RECORD: LabeledActivationStore}
+    write_types = {keys.PROBE: ProbeResult}
 
     def __init__(
         self,
@@ -71,13 +82,14 @@ class Probe(Step):
         from sklearn.model_selection import cross_val_score
         from sklearn.base import clone
 
-        store = results["record"]
+        store = results[keys.RECORD]
         if not isinstance(store, LabeledActivationStore):
             raise TypeError(
                 f"Probe requires LabeledActivationStore in results['record'], "
                 f"got {type(store).__name__}. "
                 f"Did you use a LabeledDataset with the Load step?"
             )
+        _require_reduced_store(store, "Probe")
 
         classifier = self._classifier_template or LogisticRegression(
             max_iter=1000,
@@ -96,9 +108,9 @@ class Probe(Step):
                 f"Reduce cv or add more data."
             )
 
-        accuracy_per_layer: dict[ActivationKey, float] = {}
-        cv_scores: dict[ActivationKey, ndarray] = {}
-        classifiers: dict[ActivationKey, Any] = {}
+        accuracy_per_layer: dict[Node, float] = {}
+        cv_scores: dict[Node, ndarray] = {}
+        classifiers: dict[Node, Any] = {}
 
         for key in sorted(store.activations.keys()):
             X = store.activations[key].float().numpy()
@@ -129,11 +141,11 @@ class Probe(Step):
         best_layer = max(accuracy_per_layer, key=lambda k: accuracy_per_layer[k])
 
         label_names = None
-        dataset = results.get("dataset")
+        dataset = results.get(keys.DATASET)
         if dataset is not None and hasattr(dataset, "label_names"):
             label_names = dataset.label_names
 
-        results["probe"] = ProbeResult(
+        results[keys.PROBE] = ProbeResult(
             accuracy_per_layer=accuracy_per_layer,
             cv_scores=cv_scores,
             best_layer=best_layer,
@@ -141,7 +153,7 @@ class Probe(Step):
             label_names=label_names,
         )
         logger.info(
-            "Best layer: %d (accuracy=%.4f)",
+            "Best layer: %s (accuracy=%.4f)",
             best_layer,
             accuracy_per_layer[best_layer],
         )

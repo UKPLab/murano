@@ -6,10 +6,12 @@ from dataclasses import dataclass
 
 from torch import Tensor
 
+from murano import keys
 from murano.logging import logger
+from murano.nodes import Node, NodeDict
 from murano.results import Results
 from murano.steps.base import Step
-from murano.steps.record import ActivationStore, ActivationKey
+from murano.steps.record import ActivationStore, _require_reduced_store
 
 
 @dataclass
@@ -17,17 +19,21 @@ class SteeringResult:
     """Output of SteeringVector step.
 
     Attributes:
-        direction_per_layer: {key: tensor [d_model]} normalized direction.
-                             Keys are ``int`` (layer index) when a single
-                             module was recorded, or ``(int, str)``
-                             (layer, module_name) for multiple modules.
-        separation_scores: {key: float} how well the direction separates classes.
-        best_layer: Key with highest separation score.
+        direction_per_layer: ``{Node: tensor [d_model]}`` normalized direction,
+            keyed by component address.
+        separation_scores: ``{Node: float}`` how well the direction separates
+            classes.
+        best_layer: :class:`Node` with the highest separation score.
     """
 
-    direction_per_layer: dict[ActivationKey, Tensor]
-    separation_scores: dict[ActivationKey, float]
-    best_layer: ActivationKey
+    direction_per_layer: dict[Node, Tensor]
+    separation_scores: dict[Node, float]
+    best_layer: Node
+
+    def __post_init__(self) -> None:
+        self.direction_per_layer = NodeDict(self.direction_per_layer)
+        self.separation_scores = NodeDict(self.separation_scores)
+        self.best_layer = Node.coerce(self.best_layer)
 
 
 class SteeringVector(Step):
@@ -48,10 +54,10 @@ class SteeringVector(Step):
         ValueError: If ``method`` is not a supported value.
     """
 
-    reads = ["record"]
-    writes = ["steering"]
-    read_types = {"record": ActivationStore}
-    write_types = {"steering": SteeringResult}
+    reads = [keys.RECORD]
+    writes = [keys.STEERING]
+    read_types = {keys.RECORD: ActivationStore}
+    write_types = {keys.STEERING: SteeringResult}
 
     def __init__(self, method: str = "contrastive_mean_diff", normalize: bool = True):
         if method != "contrastive_mean_diff":
@@ -62,9 +68,10 @@ class SteeringVector(Step):
         self.normalize = normalize
 
     def __call__(self, results: Results) -> Results:
-        store = results["record"]
-        directions: dict[ActivationKey, Tensor] = {}
-        scores: dict[ActivationKey, float] = {}
+        store = results[keys.RECORD]
+        _require_reduced_store(store, "SteeringVector")
+        directions: dict[Node, Tensor] = {}
+        scores: dict[Node, float] = {}
 
         for key in store.positive:
             pos_acts = store.positive[key].float()
@@ -98,7 +105,7 @@ class SteeringVector(Step):
             )
 
         best_key = max(scores, key=lambda k: scores[k])
-        results["steering"] = SteeringResult(
+        results[keys.STEERING] = SteeringResult(
             direction_per_layer=directions,
             separation_scores=scores,
             best_layer=best_key,

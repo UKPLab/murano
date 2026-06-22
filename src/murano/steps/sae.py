@@ -32,7 +32,7 @@ Pipeline steps
   fires hardest as :class:`SAEFeatureExamples`.
 - :class:`SAEFeatureLabel` is the **output-side** interpretation: given
   feature ids, it projects each feature's decoder direction through the
-  model's final norm + unembedding via :func:`project_to_vocab` (the same
+  model's final norm + unembedding via ``model.project_on_vocab`` (the same
   ``ln_final + lm_head`` projection :class:`~murano.steps.logit_lens.LogitLens`
   applies to per-layer residuals) and returns the top tokens each feature
   promotes in next-token space, as :class:`SAEFeatureLabels`.
@@ -64,13 +64,15 @@ from torch import (  # pyright: ignore[reportPrivateImportUsage]
     tensor,  # pyright: ignore[reportPrivateImportUsage]
 )
 
+from murano import keys
 from murano.artifacts import PromptBatch
 from murano.logging import logger
+from murano.nodes import Node
 from murano.results import Results
 from murano.steps.base import Step
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
     from murano.steps.intervene import Intervene
 
 
@@ -172,44 +174,21 @@ def _steer_site(hook_layer: int, hook_kind: str) -> tuple[int, str]:
     )
 
 
-def project_to_vocab(model: MuranoModel, x: Tensor) -> Tensor:
-    """Project hidden-state vectors to vocabulary logits.
-
-    Applies the model's standardized final norm and unembedding (``ln_final``
-    then ``lm_head`` via nnterp) to ``x``. Shape-agnostic on the last axis, so
-    it works for a single ``[d_model]`` direction (e.g. an SAE feature's
-    decoder row) or a ``[..., d_model]`` stack of residuals. This is the same
-    projection :class:`~murano.steps.logit_lens.LogitLens` applies to per-layer
-    residuals; here it labels SAE feature directions.
-
-    Args:
-        model: MuranoModel exposing ``ln_final`` and ``lm_head``.
-        x: Tensor whose last axis is the model's hidden dimension. Cast to the
-            unembedding's device and dtype before projecting.
-
-    Returns:
-        Logits tensor with the last axis replaced by vocabulary size.
-    """
-    head = model._lm.lm_head
-    x = x.to(device=head.weight.device, dtype=head.weight.dtype)
-    return head(model._lm.ln_final(x))
-
-
 def _capture_residual(
-    model: MuranoModel, tokens: Any, hook_layer: int, hook_kind: str
+    model: ModelBackend, tokens: Any, hook_layer: int, hook_kind: str
 ) -> Tensor:
     """Trace ``tokens`` through ``model`` and return the residual the SAE expects."""
     saved: dict[str, Any] = {}
-    with model._lm.trace(tokens):
+    with model.trace(tokens):
         layer = model.layer(hook_layer)
         if hook_kind == "resid_pre":
             saved["main"] = layer.input.save()
         elif hook_kind == "resid_post":
             saved["main"] = layer.output.save()
         elif hook_kind == "mlp_out":
-            saved["main"] = model._resolve_module(layer, "mlp").output.save()
+            saved["main"] = model.resolve_module(hook_layer, "mlp").output.save()
         elif hook_kind == "attn_out":
-            saved["main"] = model._resolve_module(layer, "self_attn").output.save()
+            saved["main"] = model.resolve_module(hook_layer, "self_attn").output.save()
         else:  # resid_mid
             # resid_mid = resid_pre + attn_out (post-attention, pre-MLP).
             # NOTE: this reconstruction assumes a plain pre-norm residual
@@ -220,7 +199,7 @@ def _capture_residual(
             # SAEs are resid_post, so the tutorials are unaffected; only a
             # resid_mid SAE on a sandwich-norm model would be miscaptured.
             saved["main"] = layer.input.save()
-            saved["extra"] = model._resolve_module(layer, "self_attn").output.save()
+            saved["extra"] = model.resolve_module(hook_layer, "self_attn").output.save()
 
     residual = _unwrap(saved["main"])
     if "extra" in saved:
@@ -237,7 +216,8 @@ class SAEActivationStore:
         tokens: Tensor [N, seq] of input token ids.
         attention_mask: Tensor [N, seq] marking real (1) vs padding (0) positions.
         texts: Input texts paired by index with the N dimension.
-        layer: Layer index where the SAE was applied.
+        hook: Component address (:class:`Node`) the SAE was applied at. Feature
+            indices are a separate space and stay plain ints.
         release: HuggingFace SAE release identifier.
         sae_id: SAE id within the release.
         n_features: SAE width (equals ``activations.shape[-1]``).
@@ -247,10 +227,13 @@ class SAEActivationStore:
     tokens: Tensor
     attention_mask: Tensor
     texts: list[str]
-    layer: int
+    hook: Node
     release: str
     sae_id: str
     n_features: int
+
+    def __post_init__(self) -> None:
+        self.hook = Node.coerce(self.hook)
 
 
 def top_sae_features_per_prompt(
@@ -353,7 +336,7 @@ def top_sae_features_per_prompt(
 
 def top_sae_features_for_tokens(
     record: SAEActivationStore,
-    model: MuranoModel,
+    model: ModelBackend,
     target_tokens: set[str],
     n: int = 5,
     skip_positions: int = 2,
@@ -373,7 +356,7 @@ def top_sae_features_for_tokens(
 
     Args:
         record: SAEActivationStore from a prior :class:`SAEEncode` run.
-        model: MuranoModel, used to decode token ids.
+        model: Model whose tokenizer decodes token ids.
         target_tokens: Decoded, stripped token strings to match, e.g.
             ``{"Golden", "Gate", "Bridge"}``.
         n: Number of features to return. Must be ``>= 1``.
@@ -448,7 +431,7 @@ class SAEFeatureExamples:
             (fewer if the batch has fewer non-padding positions).
         tokens: ``{feat_id: list[str]}`` up to K triggering tokens per feature.
         act_vals: ``{feat_id: list[float]}`` up to K activation values per feature.
-        layer: Layer index where the SAE was applied.
+        hook: Component address (:class:`Node`) the SAE was applied at.
         release: HuggingFace SAE release identifier.
         sae_id: SAE id within the release.
         k: Top-K cap per feature.
@@ -458,10 +441,13 @@ class SAEFeatureExamples:
     contexts: dict[int, list[str]]
     tokens: dict[int, list[str]]
     act_vals: dict[int, list[float]]
-    layer: int
+    hook: Node
     release: str
     sae_id: str
     k: int
+
+    def __post_init__(self) -> None:
+        self.hook = Node.coerce(self.hook)
 
 
 class SAEModel:
@@ -486,7 +472,8 @@ class SAEModel:
 
     def _ensure_loaded(self) -> None:
         if self._sae is None:
-            from sae_lens import SAE
+            # sae-lens is the optional [sae] extra; absent in the base install.
+            from sae_lens import SAE  # pyright: ignore[reportMissingImports]
 
             self._sae = SAE.from_pretrained(
                 release=self.release,
@@ -508,14 +495,8 @@ class SAEModel:
     def feature_direction(self, feature_id: int) -> Tensor:
         """Decoder direction (``[d_model]``) for a single SAE feature.
 
-        Useful for feature steering. For most cases prefer :func:`sae_steer`,
-        which adds this direction at the exact site the SAE was trained on; or
-        pass it to ``MuranoModel.generate`` directly via
-        ``steer=({layer: direction}, alpha), layers=[layer]`` when you want to
-        choose the site yourself. The direction is normalized to unit norm
-        internally, so ``alpha`` is the absolute magnitude added to the
-        residual stream; the raw norm of the returned tensor does not affect
-        steering strength.
+        For steering prefer :func:`sae_steer`, which adds this direction at the
+        exact site the SAE was trained on.
 
         Args:
             feature_id: SAE feature index in ``[0, n_features)``.
@@ -528,7 +509,7 @@ class SAEModel:
 
 
 def sae_steer(
-    model: MuranoModel,
+    model: ModelBackend,
     sae_model: SAEModel,
     feature_id: int,
     alpha: float,
@@ -584,7 +565,9 @@ def sae_steer(
             f"model with {model.n_layers} layers."
         )
     direction = sae_model.feature_direction(feature_id)
-    fn = steer_direction({layer: direction}, alpha)
+    # A bare layer int coerces only to the residual module, so key by the exact
+    # Node the generation hook uses; this matches every hook kind.
+    fn = steer_direction({Node(layer, module): direction}, alpha)
     return Intervene(
         model, fn=fn, layers=[layer], modules=[module], gen_kwargs=gen_kwargs
     )
@@ -623,14 +606,14 @@ class SAEEncode(Step):
             point (e.g. ``hook_z``).
     """
 
-    reads = ["prompts"]
-    writes = ["sae_record"]
-    read_types = {"prompts": PromptBatch}
-    write_types = {"sae_record": SAEActivationStore}
+    reads = [keys.PROMPTS]
+    writes = [keys.SAE_RECORD]
+    read_types = {keys.PROMPTS: PromptBatch}
+    write_types = {keys.SAE_RECORD: SAEActivationStore}
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         release: str,
         sae_id: str,
         max_length: int | None = None,
@@ -640,7 +623,7 @@ class SAEEncode(Step):
         self.sae_model = SAEModel(release=release, sae_id=sae_id)
 
     def __call__(self, results: Results) -> Results:
-        prompts = results["prompts"].prompts
+        prompts = results[keys.PROMPTS].prompts
 
         self.sae_model._ensure_loaded()
         hook_layer, hook_kind = _resolve_hook(self.sae_model)
@@ -674,12 +657,12 @@ class SAEEncode(Step):
         with no_grad():
             sae_acts = self.sae_model.encode(residual)
 
-        results["sae_record"] = SAEActivationStore(
+        results[keys.SAE_RECORD] = SAEActivationStore(
             activations=sae_acts.detach().cpu(),
             tokens=cast(Tensor, tokens["input_ids"]).detach().cpu(),
             attention_mask=cast(Tensor, tokens["attention_mask"]).detach().cpu(),
             texts=list(prompts),
-            layer=hook_layer,
+            hook=Node(hook_layer, hook_kind),
             release=self.sae_model.release,
             sae_id=self.sae_model.sae_id,
             n_features=sae_acts.shape[-1],
@@ -717,14 +700,14 @@ class SAETopActivations(Step):
             is out of range.
     """
 
-    reads = ["sae_record"]
-    writes = ["feature_examples"]
-    read_types = {"sae_record": SAEActivationStore}
-    write_types = {"feature_examples": SAEFeatureExamples}
+    reads = [keys.SAE_RECORD]
+    writes = [keys.FEATURE_EXAMPLES]
+    read_types = {keys.SAE_RECORD: SAEActivationStore}
+    write_types = {keys.FEATURE_EXAMPLES: SAEFeatureExamples}
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         k: int = 10,
         feat_ids: list[int] | None = None,
         skip_bos: bool = True,
@@ -737,7 +720,7 @@ class SAETopActivations(Step):
         self.skip_bos = skip_bos
 
     def __call__(self, results: Results) -> Results:
-        store: SAEActivationStore = results["sae_record"]
+        store: SAEActivationStore = results[keys.SAE_RECORD]
         acts = store.activations
         if acts.dim() != 3:
             raise ValueError(
@@ -780,19 +763,19 @@ class SAETopActivations(Step):
                 act_vals[f].append(float(v))
 
         logger.info(
-            "SAETopActivations: %d features, k=%d (capped at %d), layer=%d",
+            "SAETopActivations: %d features, k=%d (capped at %d), hook=%s",
             len(feat_ids),
             self.k,
             k_used,
-            store.layer,
+            store.hook,
         )
 
-        results["feature_examples"] = SAEFeatureExamples(
+        results[keys.FEATURE_EXAMPLES] = SAEFeatureExamples(
             feat_ids=feat_ids,
             contexts=contexts,
             tokens=tokens,
             act_vals=act_vals,
-            layer=store.layer,
+            hook=store.hook,
             release=store.release,
             sae_id=store.sae_id,
             k=self.k,
@@ -804,10 +787,11 @@ class SAEFeatureLabel(Step):
     """Output-side interpretation: label SAE features by the tokens they promote.
 
     For each requested feature, projects ``W_dec[feature_id]`` through the
-    model's standardized final norm and unembedding via :func:`project_to_vocab`,
-    the same projection :class:`~murano.steps.logit_lens.LogitLens` applies to
-    per-layer residuals. The top-K tokens by resulting logit are returned as a
-    label per feature.
+    model's standardized final norm and unembedding via
+    ``model.project_on_vocab`` (the same logit-lens projection
+    :class:`~murano.steps.logit_lens.LogitLens` applies to per-layer
+    residuals). The top-K tokens by resulting logit are returned as a label
+    per feature.
 
     This is the fast, corpus-free counterpart to
     :class:`SAETopActivations`. Pair the two when possible:
@@ -823,8 +807,7 @@ class SAEFeatureLabel(Step):
         results['feature_labels']: SAEFeatureLabels
 
     Args:
-        model: MuranoModel providing the standardized final norm and
-            unembedding via ``nnterp``.
+        model: Model providing ``project_on_vocab`` (final norm + unembedding).
         feat_ids: SAE feature indices to label.
         k_tokens: How many top-promoted tokens to keep per feature.
             Must be ``>= 1``.
@@ -846,7 +829,7 @@ class SAEFeatureLabel(Step):
 
     def __init__(
         self,
-        model: MuranoModel,
+        model: ModelBackend,
         feat_ids: list[int],
         k_tokens: int = 5,
         *,
@@ -879,7 +862,7 @@ class SAEFeatureLabel(Step):
         with no_grad():
             for fid in feat_ids:
                 direction = sae_model.feature_direction(fid)
-                feat_logits = project_to_vocab(self.model, direction)
+                feat_logits = self.model.project_on_vocab(direction)
                 top_vals, top_ids = feat_logits.topk(self.k_tokens)
                 tokens_per_feat[int(fid)] = [
                     self.model.tokenizer.decode([int(t)]) for t in top_ids.tolist()
@@ -890,7 +873,7 @@ class SAEFeatureLabel(Step):
             "SAEFeatureLabel: %d features, k_tokens=%d, layer=%d",
             len(feat_ids),
             self.k_tokens,
-            store.layer,
+            store.hook.layer,
         )
 
         results["feature_labels"] = SAEFeatureLabels(
@@ -898,7 +881,7 @@ class SAEFeatureLabel(Step):
             tokens=tokens_per_feat,
             logits=logits_per_feat,
             k_tokens=self.k_tokens,
-            layer=store.layer,
+            layer=store.hook.layer,
             release=store.release,
             sae_id=store.sae_id,
         )

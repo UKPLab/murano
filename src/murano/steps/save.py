@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from murano import keys
 from murano.io import save_results
 from murano.results import Results
 from murano.steps.base import Step
@@ -30,8 +31,8 @@ class Save(Step):
     """
 
     reads = []
-    writes = ["output_dir"]
-    write_types = {"output_dir": Path}
+    writes = [keys.OUTPUT_DIR]
+    write_types = {keys.OUTPUT_DIR: Path}
 
     def __init__(self, output_dir: str = "murano_outputs", model_id: str = ""):
         self.output_dir = output_dir
@@ -43,5 +44,5 @@ class Save(Step):
             output_dir=self.output_dir,
             model_id=self.model_id,
         )
-        results["output_dir"] = out_dir
+        results[keys.OUTPUT_DIR] = out_dir
         return results

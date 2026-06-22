@@ -16,9 +16,7 @@ from murano.steps.metrics import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Shared fixtures
-# ---------------------------------------------------------------------------
+# ── Shared fixtures ───────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -41,9 +39,7 @@ def results_with_logits(logits_and_targets):
     return r
 
 
-# ---------------------------------------------------------------------------
-# CrossEntropyLossStep tests
-# ---------------------------------------------------------------------------
+# ── CrossEntropyLossStep tests ────────────────────────────────────────
 
 
 class TestCrossEntropyLossStep:
@@ -124,10 +120,46 @@ class TestCrossEntropyLossStep:
         results = step(results_with_logits)
         assert results["loss"].ndim == 0
 
+    def test_ignores_minus_100_targets(self):
+        """-100 targets are skipped, matching F.cross_entropy's ignore_index."""
+        torch.manual_seed(0)
+        logits = torch.randn(2, 4, 7)
+        targets = torch.tensor([[1, 2, -100, 3], [-100, 0, 5, -100]])
+        r = Results()
+        r["final_logits"] = logits
+        r["target_ids"] = targets
 
-# ---------------------------------------------------------------------------
-# AccuracyStep tests
-# ---------------------------------------------------------------------------
+        results = CrossEntropyLossStep(reduction="mean")(r)
+
+        B, S, V = logits.shape
+        reference = F.cross_entropy(logits.reshape(B * S, V), targets.reshape(B * S))
+        assert abs(results["loss"].item() - reference.item()) < 1e-5
+
+    def test_all_ignored_mean_is_zero_not_nan(self):
+        """A fully -100 batch would divide by zero; the guard returns 0.0."""
+        logits = torch.randn(1, 1, 5)
+        targets = torch.tensor([[-100]])
+        r = Results()
+        r["final_logits"] = logits
+        r["target_ids"] = targets
+
+        loss = CrossEntropyLossStep(reduction="mean")(r)["loss"]
+        assert loss.item() == 0.0
+        assert torch.isfinite(loss)
+
+    def test_reduction_none_shape_with_ignored(self):
+        """reduction='none' still returns [B, S] when -100 targets are present."""
+        logits = torch.randn(2, 3, 6)
+        targets = torch.tensor([[1, -100, 2], [-100, -100, 4]])
+        r = Results()
+        r["final_logits"] = logits
+        r["target_ids"] = targets
+
+        results = CrossEntropyLossStep(reduction="none")(r)
+        assert results["loss"].shape == (2, 3)
+
+
+# ── AccuracyStep tests ────────────────────────────────────────────────
 
 
 class TestAccuracyStep:
@@ -221,10 +253,36 @@ class TestAccuracyStep:
         assert "my_acc" in results
         assert isinstance(results["my_acc"], float)
 
+    def test_ignores_minus_100_targets(self):
+        """Padded (-100) positions are excluded from the accuracy denominator."""
+        vocab, seq = 5, 3
+        targets = torch.tensor([[2, 4, -100]])
+        logits = torch.zeros(1, seq, vocab)
+        logits[0, 0, 2] = 10.0  # correct
+        logits[0, 1, 4] = 10.0  # correct
+        logits[0, 2, 0] = 10.0  # wrong, but the target is -100 so it is ignored
+        r = Results()
+        r["final_logits"] = logits
+        r["target_ids"] = targets
 
-# ---------------------------------------------------------------------------
-# ComparisonComputationStep tests
-# ---------------------------------------------------------------------------
+        results = AccuracyStep()(r)
+        # 2/2 scored positions correct -> 1.0, not 2/3.
+        assert results["accuracy"] == pytest.approx(1.0)
+
+    def test_all_ignored_is_zero_not_nan(self):
+        """An all -100 batch has nothing to score; accuracy is 0.0, not NaN."""
+        logits = torch.randn(1, 1, 5)
+        targets = torch.tensor([[-100]])
+        r = Results()
+        r["final_logits"] = logits
+        r["target_ids"] = targets
+
+        acc = AccuracyStep()(r)["accuracy"]
+        assert acc == 0.0
+        assert acc == acc  # NaN would fail this
+
+
+# ── ComparisonComputationStep tests ───────────────────────────────────
 
 
 class TestComparisonComputationStep:
@@ -239,7 +297,7 @@ class TestComparisonComputationStep:
         r["corrupt_acts"] = torch.randn(4, 16)
         return r
 
-    # -- difference ----------------------------------------------------------
+    # ── difference ────────────────────────────────────────────────────
 
     def test_difference_output_present(self, base_results):
         step = ComparisonComputationStep(
@@ -274,7 +332,7 @@ class TestComparisonComputationStep:
             "Difference tensor does not match element-wise subtraction"
         )
 
-    # -- cosine_similarity ----------------------------------------------------
+    # ── cosine_similarity ─────────────────────────────────────────────
 
     def test_cosine_similarity_output_present(self, base_results):
         step = ComparisonComputationStep(
@@ -324,7 +382,7 @@ class TestComparisonComputationStep:
         results = step(r)
         assert torch.allclose(results["sim"], torch.ones(3), atol=1e-5)
 
-    # -- immutability ---------------------------------------------------------
+    # ── immutability ──────────────────────────────────────────────────
 
     def test_source_keys_not_overwritten(self, base_results):
         """The step must not mutate key_a or key_b in results."""
@@ -341,7 +399,7 @@ class TestComparisonComputationStep:
         assert torch.equal(results["clean_acts"], clean_original)
         assert torch.equal(results["corrupt_acts"], corrupt_original)
 
-    # -- invalid type --------------------------------------------------------
+    # ── invalid type ──────────────────────────────────────────────────
 
     def test_invalid_comparison_type_raises(self, base_results):
         step = ComparisonComputationStep(
@@ -353,7 +411,7 @@ class TestComparisonComputationStep:
         with pytest.raises(ValueError, match="Unsupported comparison_type"):
             step(base_results)
 
-    # -- custom keys ---------------------------------------------------------
+    # ── custom keys ───────────────────────────────────────────────────
 
     def test_custom_keys(self):
         """Step must work with user-specified keys."""
@@ -374,9 +432,7 @@ class TestComparisonComputationStep:
         assert torch.allclose(results["result"], a - b)
 
 
-# ---------------------------------------------------------------------------
-# Pipeline composition tests
-# ---------------------------------------------------------------------------
+# ── Pipeline composition tests ────────────────────────────────────────
 
 
 class TestPipelineComposition:

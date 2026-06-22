@@ -9,12 +9,12 @@ from typing import Any, TYPE_CHECKING, Callable
 
 import torch
 
-from murano import __version__
+from murano import __version__, keys
 from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
 from murano.logging import logger
 
 if TYPE_CHECKING:
-    from murano.model import MuranoModel
+    from murano.backend import ModelBackend
 
 
 ArtifactSerializer = Callable[[str, Any, Path, Any, dict[str, Any]], None]
@@ -116,7 +116,7 @@ def save_eval(eval_result: Any, path: Path) -> None:
     logger.info("Saved eval result to %s", path)
 
 
-def save_ablated_model(model: MuranoModel, save_dir: str | Path) -> Path:
+def save_ablated_model(model: ModelBackend, save_dir: str | Path) -> Path:
     """Save the current (ablated) model weights in HF format.
 
     Saves model weights and tokenizer so the ablated model can be
@@ -133,7 +133,7 @@ def save_ablated_model(model: MuranoModel, save_dir: str | Path) -> Path:
     save_dir.mkdir(parents=True, exist_ok=True)
     # nnsight Envoy forwards .save_pretrained to the underlying HF model at runtime;
     # its static type signature doesn't reflect that.
-    hf_model: Any = model._lm.model
+    hf_model: Any = model.hf_model
     hf_model.save_pretrained(str(save_dir))
     model.tokenizer.save_pretrained(str(save_dir))
     logger.info("Saved ablated model to %s", save_dir)
@@ -156,7 +156,7 @@ def save_probe(probe_result: Any, path: Path) -> None:
             str(k): v for k, v in probe_result.accuracy_per_layer.items()
         },
         "cv_scores": {str(k): v.tolist() for k, v in probe_result.cv_scores.items()},
-        "best_layer": probe_result.best_layer,
+        "best_layer": str(probe_result.best_layer),
         "label_names": probe_result.label_names,
     }
     path.write_text(json.dumps(data, indent=2))
@@ -167,8 +167,8 @@ def save_logit_lens(logit_lens_result: Any, path: Path) -> None:
     """Save a LogitLensResult to a .pt file.
 
     Persists every field on the dataclass. Per-layer probability tensors,
-    argmax tokens, decoded words, input words, attention mask, and layer
-    indices, so the result can be reloaded for downstream plotting or
+    argmax tokens, decoded words, input words, attention mask, and component
+    addresses, so the result can be reloaded for downstream plotting or
     analysis without re-running the trace.
 
     Args:
@@ -184,7 +184,7 @@ def save_logit_lens(logit_lens_result: Any, path: Path) -> None:
             "predicted_words": logit_lens_result.predicted_words,
             "input_words": logit_lens_result.input_words,
             "attention_mask": logit_lens_result.attention_mask,
-            "layer_indices": logit_lens_result.layer_indices,
+            "addresses": logit_lens_result.addresses,
         },
         path,
     )
@@ -204,6 +204,14 @@ def load_logit_lens(path: str | Path) -> Any:
     from murano.steps.logit_lens import LogitLensResult
 
     data = torch.load(path, weights_only=False)
+    # Old payloads stored "layer_indices" (a list of ints); LogitLensResult
+    # coerces either form to Node addresses.
+    addresses = data.get("addresses", data.get("layer_indices"))
+    if addresses is None:
+        raise ValueError(
+            f"Logit-lens payload at {path} has neither 'addresses' nor the "
+            f"legacy 'layer_indices'; the file is malformed."
+        )
     return LogitLensResult(
         all_probs=data["all_probs"],
         max_probs=data["max_probs"],
@@ -211,7 +219,7 @@ def load_logit_lens(path: str | Path) -> Any:
         predicted_words=data["predicted_words"],
         input_words=data["input_words"],
         attention_mask=data["attention_mask"],
-        layer_indices=data["layer_indices"],
+        addresses=addresses,
     )
 
 
@@ -229,6 +237,10 @@ def save_activation_store(activation_store: Any, path: Path) -> None:
         {
             "positive": activation_store.positive,
             "negative": activation_store.negative,
+            "position": activation_store.position,
+            "per_head": activation_store.per_head,
+            "positive_token_mask": activation_store.positive_token_mask,
+            "negative_token_mask": activation_store.negative_token_mask,
         },
         path,
     )
@@ -247,7 +259,14 @@ def load_activation_store(path: str | Path) -> Any:
     from murano.steps.record import ActivationStore
 
     data = torch.load(path, weights_only=False)
-    return ActivationStore(positive=data["positive"], negative=data["negative"])
+    return ActivationStore(
+        positive=data["positive"],
+        negative=data["negative"],
+        position=data.get("position", "last"),
+        per_head=data.get("per_head", False),
+        positive_token_mask=data.get("positive_token_mask"),
+        negative_token_mask=data.get("negative_token_mask"),
+    )
 
 
 def save_labeled_activation_store(labeled_store: Any, path: Path) -> None:
@@ -264,6 +283,9 @@ def save_labeled_activation_store(labeled_store: Any, path: Path) -> None:
         {
             "activations": labeled_store.activations,
             "labels": labeled_store.labels,
+            "position": labeled_store.position,
+            "per_head": labeled_store.per_head,
+            "token_mask": labeled_store.token_mask,
         },
         path,
     )
@@ -283,7 +305,11 @@ def load_labeled_activation_store(path: str | Path) -> Any:
 
     data = torch.load(path, weights_only=False)
     return LabeledActivationStore(
-        activations=data["activations"], labels=data["labels"]
+        activations=data["activations"],
+        labels=data["labels"],
+        position=data.get("position", "last"),
+        per_head=data.get("per_head", False),
+        token_mask=data.get("token_mask"),
     )
 
 
@@ -301,7 +327,7 @@ def save_sae_activations(sae_store: Any, path: Path) -> None:
             "tokens": sae_store.tokens,
             "attention_mask": sae_store.attention_mask,
             "texts": sae_store.texts,
-            "layer": sae_store.layer,
+            "hook": sae_store.hook,
             "release": sae_store.release,
             "sae_id": sae_store.sae_id,
             "n_features": sae_store.n_features,
@@ -328,7 +354,7 @@ def load_sae_activations(path: str | Path) -> Any:
         tokens=data["tokens"],
         attention_mask=data["attention_mask"],
         texts=data["texts"],
-        layer=data["layer"],
+        hook=data.get("hook", data.get("layer")),
         release=data["release"],
         sae_id=data["sae_id"],
         n_features=data["n_features"],
@@ -351,7 +377,7 @@ def save_sae_examples(feature_examples: Any, path: Path) -> None:
         "contexts": {str(k): v for k, v in feature_examples.contexts.items()},
         "tokens": {str(k): v for k, v in feature_examples.tokens.items()},
         "act_vals": {str(k): v for k, v in feature_examples.act_vals.items()},
-        "layer": feature_examples.layer,
+        "hook": str(feature_examples.hook),
         "release": feature_examples.release,
         "sae_id": feature_examples.sae_id,
         "k": feature_examples.k,
@@ -380,7 +406,7 @@ def load_sae_examples(path: str | Path) -> Any:
         contexts={int(k): v for k, v in data["contexts"].items()},
         tokens={int(k): v for k, v in data["tokens"].items()},
         act_vals={int(k): v for k, v in data["act_vals"].items()},
-        layer=data["layer"],
+        hook=data.get("hook", data.get("layer")),
         release=data["release"],
         sae_id=data["sae_id"],
         k=data["k"],
@@ -543,11 +569,13 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     def serialize_steering(
         key: str, steering: Any, out: Path, _results: Any, metadata: dict[str, Any]
     ) -> None:
-        filename = "steering.pt" if key == "steering" else f"{key}.pt"
+        filename = "steering.pt" if key == keys.STEERING else f"{key}.pt"
         save_steering(steering, out / "direction" / filename)
         metadata[key] = {
-            "best_layer": steering.best_layer,
-            "separation_scores": steering.separation_scores,
+            "best_layer": str(steering.best_layer),
+            "separation_scores": {
+                str(k): v for k, v in steering.separation_scores.items()
+            },
         }
 
     def serialize_generations(
@@ -558,17 +586,17 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         metadata: dict[str, Any],
     ) -> None:
         prompts = comparison.prompts
-        if prompts is None and "prompts" in results:
-            prompt_batch = results["prompts"]
+        if prompts is None and keys.PROMPTS in results:
+            prompt_batch = results[keys.PROMPTS]
             prompts = (
                 prompt_batch.raw_prompts
                 if prompt_batch.raw_prompts is not None
                 else prompt_batch.prompts
             )
-        if prompts is None and "dataset" in results:
-            prompts = _generation_prompts(results["dataset"])
+        if prompts is None and keys.DATASET in results:
+            prompts = _generation_prompts(results[keys.DATASET])
 
-        filename = "generations.json" if key == "intervene" else f"{key}.json"
+        filename = "generations.json" if key == keys.INTERVENE else f"{key}.json"
         save_generations(comparison, out / "evaluation" / filename, prompts=prompts)
         metadata[key] = {
             "baseline_label": comparison.baseline_label,
@@ -584,8 +612,8 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "eval.json" if key == "eval" else f"{key}.json"
-        folder = "evaluation" if key == "eval" else "metrics"
+        filename = "eval.json" if key == keys.EVAL else f"{key}.json"
+        folder = "evaluation" if key == keys.EVAL else "metrics"
         save_eval(metric, out / folder / filename)
         metadata[key] = {
             "metric_name": metric.metric_name,
@@ -595,7 +623,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "modified_score": metric.modified_score,
             "metadata": metric.metadata,
         }
-        if key == "eval":
+        if key == keys.EVAL:
             metadata["evaluation"] = {
                 "metric_name": metric.metric_name,
                 "baseline_score": metric.baseline_score,
@@ -605,11 +633,13 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     def serialize_probe(
         key: str, probe: Any, out: Path, _results: Any, metadata: dict[str, Any]
     ) -> None:
-        filename = "probe.json" if key == "probe" else f"{key}.json"
+        filename = "probe.json" if key == keys.PROBE else f"{key}.json"
         save_probe(probe, out / "probe" / filename)
         metadata[key] = {
-            "best_layer": probe.best_layer,
-            "accuracy_per_layer": probe.accuracy_per_layer,
+            "best_layer": str(probe.best_layer),
+            "accuracy_per_layer": {
+                str(k): v for k, v in probe.accuracy_per_layer.items()
+            },
         }
 
     def serialize_logit_lens(
@@ -619,10 +649,10 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "logit_lens.pt" if key == "logit_lens" else f"{key}.pt"
+        filename = "logit_lens.pt" if key == keys.LOGIT_LENS else f"{key}.pt"
         save_logit_lens(logit_lens, out / "logit_lens" / filename)
         metadata[key] = {
-            "layer_indices": logit_lens.layer_indices,
+            "addresses": [str(a) for a in logit_lens.addresses],
             "n_layers": logit_lens.all_probs.shape[0],
             "n_inputs": logit_lens.all_probs.shape[1],
         }
@@ -634,13 +664,15 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "record.pt" if key == "record" else f"{key}.pt"
+        filename = "record.pt" if key == keys.RECORD else f"{key}.pt"
         save_activation_store(store, out / "activations" / filename)
         pos = next(iter(store.positive.values()), None)
         neg = next(iter(store.negative.values()), None)
         metadata[key] = {
             "kind": "contrastive",
             "keys": [str(k) for k in store.positive],
+            "position": str(store.position),
+            "per_head": store.per_head,
             "n_positive": pos.shape[0] if pos is not None else 0,
             "n_negative": neg.shape[0] if neg is not None else 0,
         }
@@ -652,11 +684,13 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "record.pt" if key == "record" else f"{key}.pt"
+        filename = "record.pt" if key == keys.RECORD else f"{key}.pt"
         save_labeled_activation_store(store, out / "activations" / filename)
         metadata[key] = {
             "kind": "labeled",
             "keys": [str(k) for k in store.activations],
+            "position": str(store.position),
+            "per_head": store.per_head,
             "n_examples": store.labels.shape[0],
         }
 
@@ -667,10 +701,10 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "sae_record.pt" if key == "sae_record" else f"{key}.pt"
+        filename = "sae_record.pt" if key == keys.SAE_RECORD else f"{key}.pt"
         save_sae_activations(sae_store, out / "sae" / filename)
         metadata[key] = {
-            "layer": sae_store.layer,
+            "hook": str(sae_store.hook),
             "release": sae_store.release,
             "sae_id": sae_store.sae_id,
             "n_features": sae_store.n_features,
@@ -686,11 +720,11 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         metadata: dict[str, Any],
     ) -> None:
         filename = (
-            "feature_examples.json" if key == "feature_examples" else f"{key}.json"
+            "feature_examples.json" if key == keys.FEATURE_EXAMPLES else f"{key}.json"
         )
         save_sae_examples(examples, out / "sae" / filename)
         metadata[key] = {
-            "layer": examples.layer,
+            "hook": str(examples.hook),
             "release": examples.release,
             "sae_id": examples.sae_id,
             "k": examples.k,
@@ -784,8 +818,8 @@ def save_results(
     }
 
     # Record dataset provenance
-    if "dataset" in results:
-        ds = results["dataset"]
+    if keys.DATASET in results:
+        ds = results[keys.DATASET]
         from murano.dataset import LabeledDataset
 
         if isinstance(ds, LabeledDataset):

@@ -11,6 +11,7 @@ from typing import Literal
 import torch
 import torch.nn.functional as F
 
+from murano import keys
 from murano.results import Results
 from murano.steps.base import Step
 
@@ -33,9 +34,9 @@ class CrossEntropyLossStep(Step):
 
     def __init__(
         self,
-        logits_key: str = "final_logits",
-        targets_key: str = "target_ids",
-        output_key: str = "loss",
+        logits_key: str = keys.FINAL_LOGITS,
+        targets_key: str = keys.TARGET_IDS,
+        output_key: str = keys.LOSS,
         reduction: Literal["mean", "sum", "none"] = "mean",
     ):
         self.logits_key = logits_key
@@ -48,6 +49,13 @@ class CrossEntropyLossStep(Step):
     def __call__(self, results: Results) -> Results:
         logits: torch.Tensor = results[self.logits_key]
         targets: torch.Tensor = results[self.targets_key]
+
+        # F.cross_entropy ignores the -100 targets that mark padded and
+        # last-position slots, but a mean over an all-ignored batch divides by
+        # zero and returns NaN; report a 0.0 loss for that empty case instead.
+        if self.reduction == "mean" and not (targets != -100).any():
+            results[self.output_key] = logits.new_tensor(0.0)
+            return results
 
         B, S, V = logits.shape
         loss = F.cross_entropy(
@@ -83,9 +91,9 @@ class AccuracyStep(Step):
 
     def __init__(
         self,
-        logits_key: str = "final_logits",
-        targets_key: str = "target_ids",
-        output_key: str = "accuracy",
+        logits_key: str = keys.FINAL_LOGITS,
+        targets_key: str = keys.TARGET_IDS,
+        output_key: str = keys.ACCURACY,
     ):
         self.logits_key = logits_key
         self.targets_key = targets_key
@@ -98,7 +106,15 @@ class AccuracyStep(Step):
         targets: torch.Tensor = results[self.targets_key]
 
         predicted = logits.argmax(dim=-1)
-        accuracy = (predicted == targets).float().mean().item()
+        # Score only the real next-token positions; -100 marks padded and
+        # last-position slots that have no target. An all-ignored batch has
+        # nothing to score, so report 0.0 rather than averaging an empty tensor.
+        valid = targets != -100
+        accuracy = (
+            (predicted[valid] == targets[valid]).float().mean().item()
+            if valid.any()
+            else 0.0
+        )
 
         results[self.output_key] = accuracy
         return results

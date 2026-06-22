@@ -13,7 +13,7 @@ def main() -> None:
     model = murano.Model("meta-llama/Llama-3.2-1B-Instruct")
 
     acts = model.record("The Eiffel Tower is located in", layers=[5, 10, 15])
-    print("Layer 10 activation shape:", acts.positive[10].shape)
+    print("Layer 10 activation shape:", acts.positive[(10, "residual")].shape)
 
     direction = model.find_direction(
         positive=[

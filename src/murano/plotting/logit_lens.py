@@ -49,7 +49,7 @@ def plot_logit_lens(
     input_words = [tok for tok, k in zip(result.input_words[input_index], keep) if k]
 
     z = max_probs[:, mask].tolist()
-    layer_labels = [f"Layer {i}" for i in result.layer_indices]
+    layer_labels = [f"Layer {address.layer}" for address in result.addresses]
 
     fig = go.Figure(
         data=go.Heatmap(
