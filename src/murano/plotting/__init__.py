@@ -11,6 +11,10 @@ from murano.plotting.plotly_utils import (
     plot_heatmap,
     plot_line_chart,
 )
+from murano.plotting.sae import (
+    plot_sae_feature_logit_effects,
+    plot_sae_token_activations,
+)
 
 __all__ = [
     "plot_separation_scores",
@@ -20,4 +24,6 @@ __all__ = [
     "plot_heatmap",
     "plot_line_chart",
     "plot_logit_lens",
+    "plot_sae_feature_logit_effects",
+    "plot_sae_token_activations",
 ]
