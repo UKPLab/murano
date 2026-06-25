@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, Callable
@@ -10,7 +11,12 @@ from typing import Any, TYPE_CHECKING, Callable
 import torch
 
 from murano import __version__, keys
-from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
+from murano.artifacts import (
+    EvaluationResult,
+    GenerationComparison,
+    MetricResult,
+    PromptBatch,
+)
 from murano.logging import logger
 
 if TYPE_CHECKING:
@@ -114,6 +120,70 @@ def save_eval(eval_result: Any, path: Path) -> None:
         data["ablated_compliance"] = eval_result.ablated_compliance
     path.write_text(json.dumps(data, indent=2))
     logger.info("Saved eval result to %s", path)
+
+
+def _json_finite(obj: Any) -> Any:
+    """Recursively replace non-finite floats (NaN, +/-Inf) with None.
+
+    JSON has no representation for NaN or Infinity; emitting the bare tokens
+    produces output that strict (RFC-8259) parsers reject. Mapping them to null
+    keeps the file portable.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_finite(v) for v in obj]
+    return obj
+
+
+def save_evaluation(evaluation: EvaluationResult, path: Path) -> None:
+    """Save an EvaluationResult (scalar forward-pass metric) to JSON.
+
+    Args:
+        evaluation: The EvaluationResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Non-finite scores (e.g. a recovered metric over a zero span -> nan) become
+    # JSON null so the file stays valid JSON for any reader; load_evaluation maps
+    # null back to nan. Bare NaN/Infinity tokens are not valid RFC-8259 JSON.
+    data = _json_finite(
+        {
+            "metric_name": evaluation.metric_name,
+            "value": evaluation.value,
+            "per_example": evaluation.per_example,
+            "metadata": evaluation.metadata,
+        }
+    )
+    path.write_text(json.dumps(data, indent=2, allow_nan=False))
+    logger.info("Saved evaluation result to %s", path)
+
+
+def load_evaluation(path: str | Path) -> EvaluationResult:
+    """Load an EvaluationResult from a file written by :func:`save_evaluation`.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        The reconstructed EvaluationResult.
+    """
+    data = json.loads(Path(path).read_text())
+    value = data["value"]
+    per_example = data.get("per_example")
+    return EvaluationResult(
+        metric_name=data["metric_name"],
+        # null is how a non-finite score was stored; restore it as nan.
+        value=float("nan") if value is None else value,
+        per_example=(
+            None
+            if per_example is None
+            else [float("nan") if v is None else v for v in per_example]
+        ),
+        metadata=data.get("metadata", {}),
+    )
 
 
 def save_ablated_model(model: ModelBackend, save_dir: str | Path) -> Path:
@@ -576,6 +646,20 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
                 "modified_score": metric.modified_score,
             }
 
+    def serialize_evaluation(
+        key: str,
+        evaluation: EvaluationResult,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        save_evaluation(evaluation, out / "metrics" / f"{key}.json")
+        metadata[key] = {
+            "metric_name": evaluation.metric_name,
+            "value": evaluation.value,
+            "metadata": evaluation.metadata,
+        }
+
     def serialize_probe(
         key: str, probe: Any, out: Path, _results: Any, metadata: dict[str, Any]
     ) -> None:
@@ -681,6 +765,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     register_artifact_serializer(registry, SteeringResult, serialize_steering)
     register_artifact_serializer(registry, GenerationComparison, serialize_generations)
     register_artifact_serializer(registry, MetricResult, serialize_metric)
+    register_artifact_serializer(registry, EvaluationResult, serialize_evaluation)
     register_artifact_serializer(registry, ProbeResult, serialize_probe)
     register_artifact_serializer(registry, LogitLensResult, serialize_logit_lens)
     register_artifact_serializer(registry, ActivationStore, serialize_activation_store)

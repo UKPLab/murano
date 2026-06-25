@@ -25,6 +25,10 @@ from murano.steps.metrics import (
     CrossEntropyLossStep,
     AccuracyStep,
     ComparisonComputationStep,
+    LogitDiffStep,
+    KLDivergenceStep,
+    AnswerLogProbStep,
+    RecoveredMetricStep,
 )
 
 __all__ = [
@@ -52,4 +56,8 @@ __all__ = [
     "CrossEntropyLossStep",
     "AccuracyStep",
     "ComparisonComputationStep",
+    "LogitDiffStep",
+    "KLDivergenceStep",
+    "AnswerLogProbStep",
+    "RecoveredMetricStep",
 ]

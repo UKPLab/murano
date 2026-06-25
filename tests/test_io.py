@@ -5,6 +5,7 @@ Runs on CPU with synthetic data, no model loading.
 
 import json
 import logging
+import math
 
 import torch
 
@@ -158,3 +159,42 @@ def test_save_does_not_warn_on_dataset_or_transient(tmp_path, caplog):
     warned = " ".join(r.message for r in caplog.records)
     assert "dataset" not in warned
     assert "output_dir" not in warned
+
+
+def test_save_and_reload_evaluation_result(tmp_path):
+    from murano.artifacts import EvaluationResult
+    from murano.io import load_evaluation
+
+    results = Results()
+    results["logit_diff"] = EvaluationResult(
+        metric_name="logit_diff",
+        value=2.5,
+        per_example=[2.0, 3.0],
+        metadata={"logits_key": "final_logits", "positions": [3, 3]},
+    )
+    save_results(results, output_dir=str(tmp_path))
+
+    path = tmp_path / "metrics" / "logit_diff.json"
+    assert path.exists()
+    loaded = load_evaluation(path)
+    assert loaded.metric_name == "logit_diff"
+    assert loaded.value == 2.5
+    assert loaded.per_example == [2.0, 3.0]
+    assert loaded.metadata["positions"] == [3, 3]
+
+
+def test_evaluation_nan_is_valid_json_and_round_trips(tmp_path):
+    from murano.artifacts import EvaluationResult
+    from murano.io import load_evaluation, save_evaluation
+
+    path = tmp_path / "metrics" / "recovered.json"
+    save_evaluation(EvaluationResult(metric_name="recovered", value=float("nan")), path)
+
+    # Must be strict (RFC-8259) JSON: parse_constant fires on bare NaN/Infinity.
+    def _reject(token):
+        raise ValueError(f"non-strict JSON token: {token}")
+
+    json.loads(path.read_text(), parse_constant=_reject)
+
+    # nan is stored as null and restored as nan.
+    assert math.isnan(load_evaluation(path).value)
