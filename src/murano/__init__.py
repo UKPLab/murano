@@ -14,11 +14,17 @@ except PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0+unknown"
 
 if TYPE_CHECKING:
-    from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
+    from murano.artifacts import (
+        EvaluationResult,
+        GenerationComparison,
+        MetricResult,
+        PromptBatch,
+    )
     from murano.dataset import LabeledDataset, MuranoDataset
     from murano.evaluation import compliance_rate
     from murano.io import (
         load_activation_store,
+        load_evaluation,
         load_labeled_activation_store,
         load_logit_lens,
         load_sae_activations,
@@ -63,6 +69,7 @@ _LAZY_ATTRS = {
     "PromptBatch": ("murano.artifacts", "PromptBatch"),
     "GenerationComparison": ("murano.artifacts", "GenerationComparison"),
     "MetricResult": ("murano.artifacts", "MetricResult"),
+    "EvaluationResult": ("murano.artifacts", "EvaluationResult"),
     "MuranoDataset": ("murano.dataset", "MuranoDataset"),
     "LabeledDataset": ("murano.dataset", "LabeledDataset"),
     "Pipeline": ("murano.pipeline", "Pipeline"),
@@ -84,6 +91,7 @@ _LAZY_ATTRS = {
     "load_labeled_activation_store": ("murano.io", "load_labeled_activation_store"),
     "load_sae_activations": ("murano.io", "load_sae_activations"),
     "load_sae_examples": ("murano.io", "load_sae_examples"),
+    "load_evaluation": ("murano.io", "load_evaluation"),
     "save_ablated_model": ("murano.io", "save_ablated_model"),
 }
 
@@ -100,6 +108,7 @@ __all__ = [
     "PromptBatch",
     "GenerationComparison",
     "MetricResult",
+    "EvaluationResult",
     "MuranoDataset",
     "LabeledDataset",
     "Pipeline",
@@ -123,6 +132,7 @@ __all__ = [
     "load_labeled_activation_store",
     "load_sae_activations",
     "load_sae_examples",
+    "load_evaluation",
     "save_ablated_model",
 ]
 

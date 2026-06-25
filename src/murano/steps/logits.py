@@ -37,6 +37,9 @@ class Logits(Step):
 
     Writes to results:
         results['final_logits']: Tensor [B, S, vocab] of output logits.
+        results['attention_mask']: Tensor [B, S] marking real (1) vs padding
+            (0) positions, so downstream metric steps can locate the answer
+            position without re-tokenizing.
         results['target_ids']: Tensor [B, S] of next-token targets (only when
             ``targets`` is set).
 
@@ -44,6 +47,7 @@ class Logits(Step):
         model: Model backend to run.
         logits_key: Results key to write the logits under.
         targets_key: Results key to write the next-token targets under.
+        mask_key: Results key to write the attention mask under.
         targets: Target-generation mode. ``"next_token"`` writes left-shifted
             next-token targets; ``None`` writes logits only, for callers that
             supply their own task targets (e.g. logit-diff).
@@ -60,6 +64,7 @@ class Logits(Step):
         model: ModelBackend,
         logits_key: str = keys.FINAL_LOGITS,
         targets_key: str = keys.TARGET_IDS,
+        mask_key: str = keys.ATTENTION_MASK,
         targets: str | None = "next_token",
     ):
         if targets not in ("next_token", None):
@@ -67,12 +72,15 @@ class Logits(Step):
         self.model = model
         self.logits_key = logits_key
         self.targets_key = targets_key
+        self.mask_key = mask_key
         self.targets = targets
-        # Only advertise target_ids when we will actually produce it, so the
-        # step never claims a key it does not write.
-        self.writes = [logits_key] + ([targets_key] if targets else [])
+        # The mask is independent of targets; only advertise target_ids when we
+        # will actually produce it, so the step never claims a key it does not
+        # write.
+        self.writes = [logits_key, mask_key] + ([targets_key] if targets else [])
         self.write_types = {
             logits_key: Tensor,
+            mask_key: Tensor,
             **({targets_key: Tensor} if targets else {}),
         }
 
@@ -88,11 +96,13 @@ class Logits(Step):
             truncation=True,
             return_token_type_ids=False,
         )
+        attention_mask = cast(Tensor, tokens["attention_mask"])
         results[self.logits_key] = self.model.forward_logits(tokens)
+        results[self.mask_key] = attention_mask.detach().cpu()
         if self.targets:
             results[self.targets_key] = self._next_token_targets(
                 cast(Tensor, tokens["input_ids"]),
-                cast(Tensor, tokens["attention_mask"]),
+                attention_mask,
             )
         return results
 
