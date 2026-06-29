@@ -15,11 +15,28 @@ description: Install Murano and set up your environment.
 pip install murano-interp
 ```
 
-To include plotting support (matplotlib + seaborn):
+The base install is deliberately lean: it carries only what every workflow needs
+(recording, steering, intervention, the causal substrate). Feature-specific
+libraries ship as extras, so you install for what you actually do:
+
+| Extra | Use case | Pulls in |
+| ----- | -------- | -------- |
+| (base) | recording, steering, intervention, logits, ablation, metrics, paired datasets | nnsight, nnterp, torch, transformers |
+| `probe` | linear probing | scikit-learn |
+| `data` | loading datasets by name from the Hub | datasets |
+| `plot` | figures and visualizations | matplotlib, seaborn, plotly |
+| `sae` | sparse autoencoder features | sae-lens |
+| `all` | everything above | all of the above |
+
+Combine extras as needed:
 
 ```bash
-pip install "murano-interp[plot]"
+pip install "murano-interp[probe,plot]"   # probing with figures
+pip install "murano-interp[all]"          # everything
 ```
+
+If you call a feature whose extra is not installed, Murano raises a clear error
+naming the extra to install.
 
 The PyPI distribution is `murano-interp` (the bare name `murano` is held by an
 unrelated OpenStack project). The Python module name is unchanged: `import murano`.

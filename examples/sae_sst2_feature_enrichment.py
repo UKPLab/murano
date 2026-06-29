@@ -1,4 +1,8 @@
-"""Rank class-selective SST-2 SAE features."""
+"""Rank class-selective SST-2 SAE features.
+
+Requires the ``sae`` extra:
+    pip install murano-interp[sae]
+"""
 
 import json
 from pathlib import Path

@@ -14,6 +14,10 @@ def _load_dataset_cached(name, config, split) -> "_HFDataset":
     Returns a single ``datasets.Dataset`` (never a DatasetDict or streaming variant).
     """
     import os
+
+    from murano._optional import require_optional
+
+    require_optional("data")
     from datasets import Dataset, load_dataset
 
     old = os.environ.get("HF_DATASETS_OFFLINE")

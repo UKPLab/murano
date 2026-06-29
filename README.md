@@ -19,13 +19,33 @@ reproducible experiment pipelines.
 pip install murano-interp
 ```
 
-The PyPI distribution is `murano-interp` (the bare name `murano` belongs to an
-unrelated OpenStack project). The Python module name is unchanged: `import murano`.
+The base install is deliberately lean: it carries only what every workflow needs
+(recording, steering, intervention, the causal substrate). Feature-specific
+libraries ship as extras, so you install per use case:
+
+| Extra | Use case | Pulls in |
+| ----- | -------- | -------- |
+| (base) | recording, steering, intervention, logits, ablation, metrics, paired datasets | nnsight, nnterp, torch, transformers |
+| `probe` | linear probing | scikit-learn |
+| `data` | loading datasets by name from the Hub | datasets |
+| `plot` | figures and visualizations | matplotlib, seaborn, plotly |
+| `sae` | sparse autoencoder features | sae-lens |
+| `all` | everything above | all of the above |
+
+```bash
+pip install "murano-interp[probe,plot]"   # combine as needed
+pip install "murano-interp[all]"          # everything
+```
+
+Calling a feature whose extra is missing raises a clear error naming the extra
+to install. The PyPI distribution is `murano-interp` (the bare name `murano`
+belongs to an unrelated OpenStack project); the module name is unchanged:
+`import murano`.
 
 For a development install from source:
 
 ```bash
-pip install -e .
+pip install -e ".[all]"
 ```
 
 Requires Python 3.10+, PyTorch, `transformers`, `nnsight`, and a HuggingFace
@@ -111,7 +131,7 @@ caught up-front.
 | `WeightAblation`   | `prompts`, `steering` | `intervene`, `weight_ablation` | Project a direction out of model weights, then generate. |
 | `Logits` ‡         | `prompts`             | `final_logits`, `attention_mask`, `target_ids` | Run a forward pass and expose output logits plus next-token targets. |
 | `Ablate` ‡         | `prompts`             | `ablated_logits`, `attention_mask` | Zero, mean, or resample a component and return the logits. |
-| `Probe`            | `record`              | `probe`                        | Train a linear probe per layer via cross-validation.     |
+| `Probe` §          | `record`              | `probe`                        | Train a linear probe per layer via cross-validation.     |
 | `GenerationMetric` | `intervene`           | `metric`                       | Score baseline vs modified outputs with a user metric.   |
 | Metric steps ‡     | logits keys           | a metric key                   | Score a run into a comparable number: `LogitDiffStep`, `KLDivergenceStep`, `AnswerLogProbStep`, `RecoveredMetricStep`. |
 | `ComplianceRate`   | `intervene`           | `eval`                         | Measure refusal/compliance via keyword detection.        |
@@ -123,6 +143,7 @@ caught up-front.
 
 \* Requires the `[plot]` extra: `pip install -e .[plot]`.
 † Requires the `[sae]` extra: `pip install -e .[sae]`.
+§ Requires the `[probe]` extra: `pip install -e .[probe]`.
 ‡ Causal-analysis steps landing in 0.2.0; newer than the rest, API may still change.
 
 To add your own step, subclass `Step`, set `reads` / `writes` (and optionally
