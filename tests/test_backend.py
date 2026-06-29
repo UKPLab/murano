@@ -126,6 +126,56 @@ class TestModelBackendBehavior:
         assert logits.dtype == torch.float32
         assert logits.device.type == "cpu"
 
+    def test_forward_logits_fn_intervenes(self, tiny_model):
+        from murano.nodes import Node
+
+        tokens = tiny_model.tokenizer(
+            ["hello world"],
+            return_tensors="pt",
+            padding=True,
+            return_token_type_ids=False,
+        )
+        base = tiny_model.forward_logits(tokens)
+
+        def zero_layer0(activation, key: Node):
+            return activation * 0 if key.layer == 0 else activation
+
+        out = tiny_model.forward_logits(
+            tokens, fn=zero_layer0, layers=[0], modules="residual"
+        )
+        assert out.shape == base.shape
+        assert out.dtype == torch.float32
+        assert out.device.type == "cpu"
+        assert not torch.allclose(out, base)
+
+        # fn=None preserves the plain forward pass exactly.
+        again = tiny_model.forward_logits(tokens, fn=None)
+        assert torch.allclose(again, base)
+
+    def test_forward_logits_per_head_intervenes(self, tiny_model):
+        from murano.nodes import SELF_ATTN, Node
+
+        tokens = tiny_model.tokenizer(
+            ["hello world"],
+            return_tensors="pt",
+            padding=True,
+            return_token_type_ids=False,
+        )
+        base = tiny_model.forward_logits(tokens)
+
+        def zero_head0(activation, key: Node):
+            # activation is [B, S, n_heads, head_dim]; drop head 0 only.
+            head_mask = torch.ones(tiny_model.n_heads, 1)
+            head_mask[0] = 0.0
+            return activation * head_mask
+
+        out = tiny_model.forward_logits(
+            tokens, fn=zero_head0, layers=[0], modules=SELF_ATTN, per_head=True
+        )
+        assert out.shape == base.shape
+        assert out.dtype == torch.float32
+        assert not torch.allclose(out, base)
+
     def test_hf_model_is_underlying(self, tiny_model):
         assert tiny_model.hf_model is tiny_model._lm.model
 

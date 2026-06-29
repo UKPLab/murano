@@ -102,12 +102,20 @@ class MuranoModel:
         self.n_layers = config.num_hidden_layers
         self.d_model = config.hidden_size
         self.n_heads = config.num_attention_heads
-        if self.d_model % self.n_heads != 0:
-            raise RuntimeError(
-                f"Model {model_id} has d_model={self.d_model} not divisible by "
-                f"n_heads={self.n_heads}; cannot derive head_dim."
-            )
-        self.head_dim = self.d_model // self.n_heads
+        # Prefer the config's explicit head_dim: on architectures like Gemma it
+        # is set independently and n_heads * head_dim != hidden_size, so deriving
+        # head_dim by division would be wrong. Fall back to the derived value
+        # (and its divisibility guard) only when the config omits it.
+        config_head_dim = getattr(config, "head_dim", None)
+        if config_head_dim:
+            self.head_dim = int(config_head_dim)
+        else:
+            if self.d_model % self.n_heads != 0:
+                raise RuntimeError(
+                    f"Model {model_id} has d_model={self.d_model} not divisible by "
+                    f"n_heads={self.n_heads}; cannot derive head_dim."
+                )
+            self.head_dim = self.d_model // self.n_heads
         # Bind nnsight's trace directly instead of wrapping it in a method.
         # nnsight inspects the caller's frame to locate the `with` block, so a
         # wrapper method would sit between the step's `with model.trace(...)`
@@ -180,7 +188,14 @@ class MuranoModel:
         """
         return self._lm.lm_head(self._lm.ln_final(hidden))
 
-    def forward_logits(self, tokens: Any) -> Tensor:
+    def forward_logits(
+        self,
+        tokens: Any,
+        fn: Callable[[Tensor, Node], Tensor] | None = None,
+        layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
+        per_head: bool = False,
+    ) -> Tensor:
         """Run a forward pass and return the model's output logits ``[B, S, V]``.
 
         Returns the model's true unembedding output via nnterp's standardized
@@ -189,15 +204,86 @@ class MuranoModel:
         float32, and moved to CPU to match the other stores and to keep
         bf16/fp16 models safe for downstream cross-entropy and argmax.
 
+        With ``fn`` given, the pass is intervened: ``fn`` rewrites each target
+        module's activation before the logits are read, so an ablation or patch
+        flows through to the output (the forward-pass analogue of
+        :meth:`generate_with_hooks`). ``fn=None`` is the plain forward pass.
+
         Args:
             tokens: Tokenizer output (or anything :attr:`trace` accepts) to run.
+            fn: ``(activation, key) -> activation`` applied to each target
+                module's activation, keyed by a :class:`Node` at
+                ``(layer, module)``; ``None`` runs unmodified. The function is
+                expected to no-op on sites it does not target.
+            layers: Layer indices to hook, or ``"all"``. Only used when ``fn``
+                is given.
+            modules: Module name(s) to hook at each layer. Only used when ``fn``
+                is given.
+            per_head: If True, hook the attention output projection's input and
+                pass ``fn`` the per-head activation ``[B, S, n_heads, head_dim]``
+                (the concatenated head outputs), so ``fn`` can rewrite a single
+                head's slice. The rewritten tensor is reshaped back before the
+                projection runs. Requires ``tokens`` to expose ``input_ids`` for
+                the batch and sequence dimensions.
 
         Returns:
             Output logits ``[batch, seq, vocab_size]`` on CPU as float32.
         """
+        if fn is None:
+            with self.trace(tokens):
+                # Inside a trace, nnterp's `.logits` is an nnsight proxy exposing
+                # `.save()`; its stub types it as a plain Tensor, hence the ignore.
+                saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
+            value = saved.value if hasattr(saved, "value") else saved
+            return value.detach().float().cpu()
+
+        module_list = [modules] if isinstance(modules, str) else list(modules)
+        batch = seq = 0
+        if per_head:
+            try:
+                input_ids = tokens["input_ids"]
+            except (TypeError, KeyError) as exc:
+                raise ValueError(
+                    "per_head=True needs tokens to expose 'input_ids' for the "
+                    "batch and sequence dimensions."
+                ) from exc
+            batch, seq = int(input_ids.shape[0]), int(input_ids.shape[1])
+
         with self.trace(tokens):
-            # Inside a trace, nnterp's `.logits` is an nnsight proxy exposing
-            # `.save()`; its stub types it as a plain Tensor, hence the ignore.
+            for layer_idx in self._layer_indices(layers):
+                for mod_str in module_list:
+                    key = Node(layer_idx, mod_str)
+                    if per_head:
+                        # The o_proj input is the concatenated per-head outputs;
+                        # reshape to expose the head axis, let fn rewrite a head
+                        # slice, then fold back so the projection sees its normal
+                        # [batch, seq, n_heads*head_dim] input. nnsight's input
+                        # setter swaps the first positional arg (Envoy.input
+                        # postprocess), so assigning the folded tensor is enough.
+                        proj = self.attn_out_proj(layer_idx, mod_str)
+                        split = proj.input.reshape(
+                            batch, seq, self.n_heads, self.head_dim
+                        )
+                        proj.input = fn(split, key).reshape(  # pyright: ignore[reportAttributeAccessIssue]
+                            batch, seq, self.n_heads * self.head_dim
+                        )
+                    else:
+                        mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
+                        h = mod_proxy.output
+                        # Decoder-layer outputs are (hidden_states, ...) tuples,
+                        # while submodule outputs (mlp, self_attn) are plain
+                        # tensors; edit the hidden-states element either way. fn
+                        # returns the same object on sites it does not target, so
+                        # only write back when it actually changed the activation
+                        # and the loop never touches a non-target site.
+                        if isinstance(h, tuple):
+                            new = fn(h[0], key)
+                            if new is not h[0]:
+                                mod_proxy.output = (new, *h[1:])  # pyright: ignore[reportArgumentType]
+                        else:
+                            new = fn(h, key)
+                            if new is not h:
+                                mod_proxy.output = new  # pyright: ignore[reportArgumentType]
             saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
         value = saved.value if hasattr(saved, "value") else saved
         return value.detach().float().cpu()
