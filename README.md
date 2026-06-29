@@ -104,12 +104,16 @@ caught up-front.
 | ------------------ | --------------------- | ------------------------------ | -------------------------------------------------------- |
 | `Load`             | —                     | `dataset`, `prompts`           | Load a dataset and derive prompts from its texts.        |
 | `LoadPrompts`      | —                     | `prompts`                      | Load raw prompts directly without a dataset.             |
+| `LoadPaired` ‡     | —                     | `dataset`, `prompts`, `corrupt_prompts` | Load matched clean/corrupt prompt pairs for causal comparison. |
 | `Record`           | `dataset`             | `record`                       | Capture residual-stream activations via nnsight.         |
 | `SteeringVector`   | `record`              | `steering`                     | Find a contrastive steering direction (mean diff).       |
 | `Intervene`        | `prompts`             | `intervene`                    | Generate baseline + intervened outputs side-by-side.     |
 | `WeightAblation`   | `prompts`, `steering` | `intervene`, `weight_ablation` | Project a direction out of model weights, then generate. |
+| `Logits` ‡         | `prompts`             | `final_logits`, `attention_mask`, `target_ids` | Run a forward pass and expose output logits plus next-token targets. |
+| `Ablate` ‡         | `prompts`             | `ablated_logits`, `attention_mask` | Zero, mean, or resample a component and return the logits. |
 | `Probe`            | `record`              | `probe`                        | Train a linear probe per layer via cross-validation.     |
 | `GenerationMetric` | `intervene`           | `metric`                       | Score baseline vs modified outputs with a user metric.   |
+| Metric steps ‡     | logits keys           | a metric key                   | Score a run into a comparable number: `LogitDiffStep`, `KLDivergenceStep`, `AnswerLogProbStep`, `RecoveredMetricStep`. |
 | `ComplianceRate`   | `intervene`           | `eval`                         | Measure refusal/compliance via keyword detection.        |
 | `Save`             | (any present)         | `output_dir`                   | Persist all results to organized subdirectories.         |
 | `SAEEncode` †      | `prompts`             | `sae_record`                   | Encode residuals through an SAE loaded from HuggingFace. |
@@ -119,14 +123,16 @@ caught up-front.
 
 \* Requires the `[plot]` extra: `pip install -e .[plot]`.
 † Requires the `[sae]` extra: `pip install -e .[sae]`.
+‡ Causal-analysis steps landing in 0.2.0; newer than the rest, API may still change.
 
 To add your own step, subclass `Step`, set `reads` / `writes` (and optionally
 `read_types` / `write_types`), and implement `__call__(results) -> Results`.
 
 ### Status
 
-The Step API and the steps in the table above are alpha-stable for the 0.1.x
-line. The `murano.lenses` module (logit lens) ships in this release but is not
+The Step API and the unmarked steps in the table above are alpha-stable for the
+0.1.x line; the ‡ causal-analysis steps are newer and their API may still
+change. The `murano.lenses` module (logit lens) ships in this release but is not
 yet wired into the Pipeline API and should be considered experimental until the
 work tracked in [#51](https://github.com/UKPLab/murano/issues/51) lands.
 
@@ -135,7 +141,8 @@ work tracked in [#51](https://github.com/UKPLab/murano/issues/51) lands.
 - `MuranoModel` is a thin model wrapper around `nnsight`.
 - `Pipeline`, `Step`, and `Results` are the orchestration core.
 - artifacts such as `PromptBatch`, `ActivationStore`, `SteeringResult`,
-  `GenerationComparison`, and `MetricResult` make experiment dataflow explicit.
+  `GenerationComparison`, `MetricResult`, and `EvaluationResult` make experiment
+  dataflow explicit.
 - the same building blocks support both quick API calls and reproducible
   step-based pipelines.
 

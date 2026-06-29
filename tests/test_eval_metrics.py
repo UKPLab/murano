@@ -1,4 +1,4 @@
-"""Tests for the A2 forward-pass evaluation metrics.
+"""Tests for the forward-pass evaluation metrics.
 
 Mostly synthetic logits on CPU so the metric math is checked directly; a few
 integration tests run the tiny ``murano_model`` fixture through the pipeline.

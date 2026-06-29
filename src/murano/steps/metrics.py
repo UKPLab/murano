@@ -34,7 +34,7 @@ class CrossEntropyLossStep(Step):
         logits_key: Key in results containing the logits tensor ``[B, S, V]``.
         targets_key: Key in results containing the target IDs ``[B, S]``.
         output_key: Key under which to store the computed loss.
-        reduction: Loss reduction — ``"mean"``, ``"sum"``, or ``"none"``.
+        reduction: Loss reduction: ``"mean"``, ``"sum"``, or ``"none"``.
     """
 
     reads: list[str] = []

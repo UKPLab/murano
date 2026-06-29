@@ -3,7 +3,7 @@
 Replaces the legacy ``BaseVisualizationLens`` classes with pure functions
 that map data to ``plotly.graph_objects.Figure`` instances.
 
-These functions do **not** accept ``Results`` objects — they operate on raw
+These functions do **not** accept ``Results`` objects; they operate on raw
 Python data or tensors so they can be used independently of the pipeline.
 
 Requires ``plotly`` (install with ``pip install murano[plot]``).

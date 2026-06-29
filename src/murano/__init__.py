@@ -20,7 +20,7 @@ if TYPE_CHECKING:
         MetricResult,
         PromptBatch,
     )
-    from murano.dataset import LabeledDataset, MuranoDataset
+    from murano.dataset import CleanCorruptDataset, LabeledDataset, MuranoDataset
     from murano.evaluation import compliance_rate
     from murano.io import (
         load_activation_store,
@@ -72,6 +72,7 @@ _LAZY_ATTRS = {
     "EvaluationResult": ("murano.artifacts", "EvaluationResult"),
     "MuranoDataset": ("murano.dataset", "MuranoDataset"),
     "LabeledDataset": ("murano.dataset", "LabeledDataset"),
+    "CleanCorruptDataset": ("murano.dataset", "CleanCorruptDataset"),
     "Pipeline": ("murano.pipeline", "Pipeline"),
     "Results": ("murano.results", "Results"),
     "Step": ("murano.steps.base", "Step"),
@@ -111,6 +112,7 @@ __all__ = [
     "EvaluationResult",
     "MuranoDataset",
     "LabeledDataset",
+    "CleanCorruptDataset",
     "Pipeline",
     "Results",
     "Step",
