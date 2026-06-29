@@ -134,6 +134,44 @@ def test_metadata_records_position_and_per_head(tmp_path):
     assert meta["record"]["per_head"] is False
 
 
+def test_metadata_records_paired_dataset(tmp_path):
+    """A clean/corrupt paired dataset is summarized as provenance, not serialized."""
+    from murano.dataset import CleanCorruptDataset
+
+    results = Results()
+    results["dataset"] = CleanCorruptDataset(
+        clean=["a", "b"],
+        corrupt=["c", "d"],
+        correct=[1, 2],
+        raw_clean=["a", "b"],
+    )
+    save_results(results, output_dir=str(tmp_path))
+
+    meta = json.loads((tmp_path / "metadata.json").read_text())
+    assert meta["dataset"]["type"] == "paired"
+    assert meta["dataset"]["n_pairs"] == 2
+    assert meta["dataset"]["has_answers"] is True
+    assert meta["dataset"]["chat_templated"] is True
+
+
+def test_two_prompt_batches_record_separate_provenance(tmp_path):
+    """Clean and corrupt prompt batches each get their own metadata entry."""
+    from murano.artifacts import PromptBatch
+
+    results = Results()
+    results["prompts"] = PromptBatch(prompts=["a", "b"], source="dataset.clean")
+    results["corrupt_prompts"] = PromptBatch(
+        prompts=["c", "d"], source="dataset.corrupt"
+    )
+    save_results(results, output_dir=str(tmp_path))
+
+    meta = json.loads((tmp_path / "metadata.json").read_text())
+    assert meta["prompts"]["source"] == "dataset.clean"
+    assert meta["corrupt_prompts"]["source"] == "dataset.corrupt"
+    assert (tmp_path / "prompts" / "prompts.json").exists()
+    assert (tmp_path / "prompts" / "corrupt_prompts.json").exists()
+
+
 def test_save_warns_on_unregistered_artifact(tmp_path, caplog):
     class Mystery:
         pass

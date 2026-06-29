@@ -37,3 +37,8 @@ KL_DIV: Final = "kl_div"
 ANSWER_LOGPROB: Final = "answer_logprob"
 RECOVERED: Final = "recovered"
 ABLATED_LOGITS: Final = "ablated_logits"
+
+# Default keys for the corrupt side of a clean/corrupt paired run.
+CORRUPT_PROMPTS: Final = "corrupt_prompts"
+CORRUPT_LOGITS: Final = "corrupt_logits"
+CORRUPT_MASK: Final = "corrupt_mask"

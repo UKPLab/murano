@@ -577,7 +577,10 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         metadata: dict[str, Any],
     ) -> None:
         save_prompts(prompts, out / "prompts" / f"{key}.json")
-        metadata["prompts"] = {
+        # Key the summary by the artifact key, not a fixed "prompts", so a paired
+        # run with both clean and corrupt prompt batches records both instead of
+        # the second silently overwriting the first.
+        metadata[key] = {
             "source": prompts.source,
             "n_prompts": len(prompts),
         }
@@ -833,7 +836,7 @@ def save_results(
     # Record dataset provenance
     if keys.DATASET in results:
         ds = results[keys.DATASET]
-        from murano.dataset import LabeledDataset
+        from murano.dataset import CleanCorruptDataset, LabeledDataset
 
         if isinstance(ds, LabeledDataset):
             metadata["dataset"] = {
@@ -841,6 +844,13 @@ def save_results(
                 "n_examples": len(ds.texts),
                 "n_classes": len(set(ds.labels)),
                 "label_names": ds.label_names,
+            }
+        elif isinstance(ds, CleanCorruptDataset):
+            metadata["dataset"] = {
+                "type": "paired",
+                "n_pairs": len(ds),
+                "has_answers": ds.correct is not None,
+                "chat_templated": ds.raw_clean is not None,
             }
         else:
             metadata["dataset"] = {
