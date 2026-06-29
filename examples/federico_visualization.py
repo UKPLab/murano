@@ -6,6 +6,9 @@ Demonstrates:
   2. Recording activations with the Record step.
   3. Visualizing the resulting ActivationStore with PlotterLens
      (PCA / LDA dimensionality reduction + Plotly scatter plot).
+
+Requires the ``probe`` and ``plot`` extras:
+    pip install murano-interp[probe,plot]
 """
 
 from __future__ import annotations

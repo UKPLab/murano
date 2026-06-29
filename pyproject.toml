@@ -10,8 +10,6 @@ dependencies = [
     "torch>=2.7.1",
     "transformers>=4.57.6,<5.0",
     "huggingface-hub>=0.23.0",
-    "datasets>=4.0.0",
-    "scikit-learn>=1.5.2",
     "tqdm>=4.66.0",
 ]
 
@@ -36,6 +34,16 @@ dev = [
 ]
 
 [project.optional-dependencies]
+# Each extra maps to one use case. The import names behind these packages are
+# registered in murano._optional so missing-dependency errors point users at
+# the right extra. When adding a new application, add its extra here, list it
+# in `all`, and register its import names in murano._optional.EXTRA_IMPORTS.
+probe = [
+    "scikit-learn>=1.5.2",
+]
+data = [
+    "datasets>=4.0.0",
+]
 plot = [
     "matplotlib>=3.10",
     "seaborn>=0.13",
@@ -43,6 +51,9 @@ plot = [
 ]
 sae = [
     "sae-lens>=6.7.0",
+]
+all = [
+    "murano-interp[probe,data,plot,sae]",
 ]
 
 [tool.hatch.version]
