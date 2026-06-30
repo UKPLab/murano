@@ -4,12 +4,14 @@ Renders the standard logit-lens heatmap: rows are layers, columns are input
 token positions, cell values are the argmax probability at that
 (layer, position), and cell text is the predicted token.
 
-Requires ``plotly`` (install with ``pip install murano[plot]``).
+Requires the ``plot`` extra (install with ``pip install murano-interp[plot]``).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
+from murano._optional import require_optional
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -36,6 +38,7 @@ def plot_logit_lens(
         A ``plotly.graph_objects.Figure`` with a heatmap trace; cell text
         shows the predicted token at each (layer, position).
     """
+    require_optional("plot", "plotly")
     import plotly.graph_objects as go
 
     mask = result.attention_mask[input_index].bool()

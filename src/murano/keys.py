@@ -29,5 +29,16 @@ OUTPUT_DIR: Final = "output_dir"
 # Default keys for the configurable metric steps (callers may override these).
 FINAL_LOGITS: Final = "final_logits"
 TARGET_IDS: Final = "target_ids"
+ATTENTION_MASK: Final = "attention_mask"
 LOSS: Final = "loss"
 ACCURACY: Final = "accuracy"
+LOGIT_DIFF: Final = "logit_diff"
+KL_DIV: Final = "kl_div"
+ANSWER_LOGPROB: Final = "answer_logprob"
+RECOVERED: Final = "recovered"
+ABLATED_LOGITS: Final = "ablated_logits"
+
+# Default keys for the corrupt side of a clean/corrupt paired run.
+CORRUPT_PROMPTS: Final = "corrupt_prompts"
+CORRUPT_LOGITS: Final = "corrupt_logits"
+CORRUPT_MASK: Final = "corrupt_mask"

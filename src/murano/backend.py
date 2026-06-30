@@ -72,8 +72,20 @@ class ModelBackend(Protocol):
         """Project hidden states onto the vocabulary."""
         ...
 
-    def forward_logits(self, tokens: Any) -> Tensor:
-        """Run a forward pass and return output logits ``[B, S, V]``."""
+    def forward_logits(
+        self,
+        tokens: Any,
+        fn: "Callable[[Tensor, Node], Tensor] | None" = None,
+        layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
+        per_head: bool = False,
+    ) -> Tensor:
+        """Run a forward pass and return output logits ``[B, S, V]``.
+
+        With ``fn`` given, rewrite each target module's activation before the
+        logits are read (the forward-pass analogue of ``generate_with_hooks``);
+        ``per_head`` exposes the per-head activation for attention heads.
+        """
         ...
 
     def generate_with_hooks(

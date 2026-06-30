@@ -3,15 +3,17 @@
 Replaces the legacy ``BaseVisualizationLens`` classes with pure functions
 that map data to ``plotly.graph_objects.Figure`` instances.
 
-These functions do **not** accept ``Results`` objects — they operate on raw
+These functions do **not** accept ``Results`` objects; they operate on raw
 Python data or tensors so they can be used independently of the pipeline.
 
-Requires ``plotly`` (install with ``pip install murano[plot]``).
+Requires the ``plot`` extra (install with ``pip install murano-interp[plot]``).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
+from murano._optional import require_optional
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -40,6 +42,7 @@ def plot_heatmap(
     Returns:
         A ``plotly.graph_objects.Figure`` with a single heatmap trace.
     """
+    require_optional("plot", "plotly")
     import plotly.graph_objects as go
 
     if y_labels is None:
@@ -85,6 +88,7 @@ def plot_line_chart(
         A ``plotly.graph_objects.Figure`` with one scatter trace per entry
         in ``y_series``.
     """
+    require_optional("plot", "plotly")
     import plotly.graph_objects as go
 
     fig = go.Figure()

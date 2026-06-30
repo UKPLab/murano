@@ -14,11 +14,17 @@ except PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0+unknown"
 
 if TYPE_CHECKING:
-    from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
-    from murano.dataset import LabeledDataset, MuranoDataset
+    from murano.artifacts import (
+        EvaluationResult,
+        GenerationComparison,
+        MetricResult,
+        PromptBatch,
+    )
+    from murano.dataset import CleanCorruptDataset, LabeledDataset, MuranoDataset
     from murano.evaluation import compliance_rate
     from murano.io import (
         load_activation_store,
+        load_evaluation,
         load_labeled_activation_store,
         load_logit_lens,
         load_sae_activations,
@@ -69,8 +75,10 @@ _LAZY_ATTRS = {
     "PromptBatch": ("murano.artifacts", "PromptBatch"),
     "GenerationComparison": ("murano.artifacts", "GenerationComparison"),
     "MetricResult": ("murano.artifacts", "MetricResult"),
+    "EvaluationResult": ("murano.artifacts", "EvaluationResult"),
     "MuranoDataset": ("murano.dataset", "MuranoDataset"),
     "LabeledDataset": ("murano.dataset", "LabeledDataset"),
+    "CleanCorruptDataset": ("murano.dataset", "CleanCorruptDataset"),
     "Pipeline": ("murano.pipeline", "Pipeline"),
     "Results": ("murano.results", "Results"),
     "Step": ("murano.steps.base", "Step"),
@@ -96,6 +104,7 @@ _LAZY_ATTRS = {
     "load_sae_activations": ("murano.io", "load_sae_activations"),
     "load_sae_examples": ("murano.io", "load_sae_examples"),
     "load_sae_labels": ("murano.io", "load_sae_labels"),
+    "load_evaluation": ("murano.io", "load_evaluation"),
     "save_ablated_model": ("murano.io", "save_ablated_model"),
 }
 
@@ -112,8 +121,10 @@ __all__ = [
     "PromptBatch",
     "GenerationComparison",
     "MetricResult",
+    "EvaluationResult",
     "MuranoDataset",
     "LabeledDataset",
+    "CleanCorruptDataset",
     "Pipeline",
     "Results",
     "Step",
@@ -141,6 +152,7 @@ __all__ = [
     "load_sae_activations",
     "load_sae_examples",
     "load_sae_labels",
+    "load_evaluation",
     "save_ablated_model",
 ]
 

@@ -33,17 +33,27 @@ class Logits(Step):
     target IDs so ``CrossEntropyLossStep``/``AccuracyStep`` can run directly.
 
     Reads from results:
-        results['prompts']: PromptBatch
+        results[prompts_key]: PromptBatch (default ``prompts``). Set this to run
+            the step on a different prompt set, e.g. the corrupt side of a
+            paired run.
 
     Writes to results:
         results['final_logits']: Tensor [B, S, vocab] of output logits.
+        results['attention_mask']: Tensor [B, S] marking real (1) vs padding
+            (0) positions, so downstream metric steps can locate the answer
+            position without re-tokenizing.
         results['target_ids']: Tensor [B, S] of next-token targets (only when
             ``targets`` is set).
 
     Args:
         model: Model backend to run.
+        prompts_key: Results key to read the prompts from. When a second Logits
+            runs in the same pipeline (e.g. the corrupt side of a paired run),
+            also override logits_key and mask_key (and set targets accordingly)
+            so it does not overwrite the first run's outputs.
         logits_key: Results key to write the logits under.
         targets_key: Results key to write the next-token targets under.
+        mask_key: Results key to write the attention mask under.
         targets: Target-generation mode. ``"next_token"`` writes left-shifted
             next-token targets; ``None`` writes logits only, for callers that
             supply their own task targets (e.g. logit-diff).
@@ -58,26 +68,34 @@ class Logits(Step):
     def __init__(
         self,
         model: ModelBackend,
+        prompts_key: str = keys.PROMPTS,
         logits_key: str = keys.FINAL_LOGITS,
         targets_key: str = keys.TARGET_IDS,
+        mask_key: str = keys.ATTENTION_MASK,
         targets: str | None = "next_token",
     ):
         if targets not in ("next_token", None):
             raise ValueError(f"targets must be 'next_token' or None, got {targets!r}")
         self.model = model
+        self.prompts_key = prompts_key
         self.logits_key = logits_key
         self.targets_key = targets_key
+        self.mask_key = mask_key
         self.targets = targets
-        # Only advertise target_ids when we will actually produce it, so the
-        # step never claims a key it does not write.
-        self.writes = [logits_key] + ([targets_key] if targets else [])
+        self.reads = [prompts_key]
+        self.read_types = {prompts_key: PromptBatch}
+        # The mask is independent of targets; only advertise target_ids when we
+        # will actually produce it, so the step never claims a key it does not
+        # write.
+        self.writes = [logits_key, mask_key] + ([targets_key] if targets else [])
         self.write_types = {
             logits_key: Tensor,
+            mask_key: Tensor,
             **({targets_key: Tensor} if targets else {}),
         }
 
     def __call__(self, results: Results) -> Results:
-        prompt_batch: PromptBatch = results[keys.PROMPTS]
+        prompt_batch: PromptBatch = results[self.prompts_key]
         prompts = prompt_batch.prompts
         logger.info("Logits: %d prompts", len(prompts))
 
@@ -88,11 +106,13 @@ class Logits(Step):
             truncation=True,
             return_token_type_ids=False,
         )
+        attention_mask = cast(Tensor, tokens["attention_mask"])
         results[self.logits_key] = self.model.forward_logits(tokens)
+        results[self.mask_key] = attention_mask.detach().cpu()
         if self.targets:
             results[self.targets_key] = self._next_token_targets(
                 cast(Tensor, tokens["input_ids"]),
-                cast(Tensor, tokens["attention_mask"]),
+                attention_mask,
             )
         return results
 
@@ -100,7 +120,7 @@ class Logits(Step):
     def _next_token_targets(input_ids: Tensor, attention_mask: Tensor) -> Tensor:
         """Build left-shifted next-token targets with ``-100`` for ignored slots.
 
-        The target at position ``s`` is the token at ``s + 1`` — the token a
+        The target at position ``s`` is the token at ``s + 1``, the token a
         causal LM predicts from position ``s``. The last real position of each
         row, and any position whose source or next token is padding, have no
         next token and are set to ``-100`` so the metric steps skip them.

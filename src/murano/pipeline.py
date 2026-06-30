@@ -11,6 +11,30 @@ from murano.steps.base import (
 )
 
 
+def _warn_on_write_collision(
+    step: Step, name: str, produced_by: dict[str, str]
+) -> None:
+    """Warn when a step writes a key an earlier step already produced.
+
+    A later write silently overwrites the earlier value, which is the quiet
+    failure mode of running the same step twice with default output keys (for
+    example a clean and a corrupt ``Logits`` on one pipeline). The contract is
+    not an error: overwriting can be intentional, so this only warns and names
+    both producers.
+    """
+    for key in step.writes:
+        prior = produced_by.get(key)
+        if prior is not None:
+            logger.warning(
+                "Step %s writes %r, which %s already produced; the earlier value "
+                "will be overwritten. Pass a distinct output key to keep both.",
+                name,
+                key,
+                prior,
+            )
+        produced_by[key] = name
+
+
 class Pipeline:
     """Sequential composition of steps.
 
@@ -37,10 +61,12 @@ class Pipeline:
             The Results object after the last step has run.
         """
         results = results or Results()
+        produced_by: dict[str, str] = {}
         for step in self.steps:
             name = type(step).__name__
             if isinstance(step, Step):
                 step.validate(results)
+                _warn_on_write_collision(step, name, produced_by)
             logger.info("Running step: %s", name)
             results = step(results)
         return results
@@ -56,6 +82,7 @@ class Pipeline:
         """
         available: set[str] = set()
         available_types: dict[str, type | tuple[type, ...]] = {}
+        produced_by: dict[str, str] = {}
         for step in self.steps:
             if isinstance(step, Step):
                 read_types = step.expected_read_types(available_types=available_types)
@@ -73,6 +100,7 @@ class Pipeline:
                                 f"{_format_expected_types(read_types[key])}, but the "
                                 f"pipeline provides {_format_expected_types(available_types[key])}."
                             )
+                _warn_on_write_collision(step, type(step).__name__, produced_by)
                 available.update(step.writes)
                 available_types.update(
                     step.expected_write_types(available_types=available_types)

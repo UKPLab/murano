@@ -65,6 +65,7 @@ from torch import (  # pyright: ignore[reportPrivateImportUsage]
 )
 
 from murano import keys
+from murano._optional import require_optional
 from murano.artifacts import PromptBatch
 from murano.logging import logger
 from murano.nodes import Node
@@ -473,6 +474,7 @@ class SAEModel:
     def _ensure_loaded(self) -> None:
         if self._sae is None:
             # sae-lens is the optional [sae] extra; absent in the base install.
+            require_optional("sae")
             from sae_lens import SAE  # pyright: ignore[reportMissingImports]
 
             self._sae = SAE.from_pretrained(

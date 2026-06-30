@@ -8,6 +8,9 @@ Pipeline:
 
 Defaults to Gemma 2 2B + gemma-scope layer-8 residual SAEs. The target layer
 and hook point are read from the SAE's own config.
+
+Requires the ``sae`` extra:
+    pip install murano-interp[sae]
 """
 
 from __future__ import annotations

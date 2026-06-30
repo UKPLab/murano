@@ -5,6 +5,7 @@ Runs on CPU with synthetic data, no model loading.
 
 import json
 import logging
+import math
 
 import torch
 
@@ -133,6 +134,44 @@ def test_metadata_records_position_and_per_head(tmp_path):
     assert meta["record"]["per_head"] is False
 
 
+def test_metadata_records_paired_dataset(tmp_path):
+    """A clean/corrupt paired dataset is summarized as provenance, not serialized."""
+    from murano.dataset import CleanCorruptDataset
+
+    results = Results()
+    results["dataset"] = CleanCorruptDataset(
+        clean=["a", "b"],
+        corrupt=["c", "d"],
+        correct=[1, 2],
+        raw_clean=["a", "b"],
+    )
+    save_results(results, output_dir=str(tmp_path))
+
+    meta = json.loads((tmp_path / "metadata.json").read_text())
+    assert meta["dataset"]["type"] == "paired"
+    assert meta["dataset"]["n_pairs"] == 2
+    assert meta["dataset"]["has_answers"] is True
+    assert meta["dataset"]["chat_templated"] is True
+
+
+def test_two_prompt_batches_record_separate_provenance(tmp_path):
+    """Clean and corrupt prompt batches each get their own metadata entry."""
+    from murano.artifacts import PromptBatch
+
+    results = Results()
+    results["prompts"] = PromptBatch(prompts=["a", "b"], source="dataset.clean")
+    results["corrupt_prompts"] = PromptBatch(
+        prompts=["c", "d"], source="dataset.corrupt"
+    )
+    save_results(results, output_dir=str(tmp_path))
+
+    meta = json.loads((tmp_path / "metadata.json").read_text())
+    assert meta["prompts"]["source"] == "dataset.clean"
+    assert meta["corrupt_prompts"]["source"] == "dataset.corrupt"
+    assert (tmp_path / "prompts" / "prompts.json").exists()
+    assert (tmp_path / "prompts" / "corrupt_prompts.json").exists()
+
+
 def test_save_warns_on_unregistered_artifact(tmp_path, caplog):
     class Mystery:
         pass
@@ -158,3 +197,42 @@ def test_save_does_not_warn_on_dataset_or_transient(tmp_path, caplog):
     warned = " ".join(r.message for r in caplog.records)
     assert "dataset" not in warned
     assert "output_dir" not in warned
+
+
+def test_save_and_reload_evaluation_result(tmp_path):
+    from murano.artifacts import EvaluationResult
+    from murano.io import load_evaluation
+
+    results = Results()
+    results["logit_diff"] = EvaluationResult(
+        metric_name="logit_diff",
+        value=2.5,
+        per_example=[2.0, 3.0],
+        metadata={"logits_key": "final_logits", "positions": [3, 3]},
+    )
+    save_results(results, output_dir=str(tmp_path))
+
+    path = tmp_path / "metrics" / "logit_diff.json"
+    assert path.exists()
+    loaded = load_evaluation(path)
+    assert loaded.metric_name == "logit_diff"
+    assert loaded.value == 2.5
+    assert loaded.per_example == [2.0, 3.0]
+    assert loaded.metadata["positions"] == [3, 3]
+
+
+def test_evaluation_nan_is_valid_json_and_round_trips(tmp_path):
+    from murano.artifacts import EvaluationResult
+    from murano.io import load_evaluation, save_evaluation
+
+    path = tmp_path / "metrics" / "recovered.json"
+    save_evaluation(EvaluationResult(metric_name="recovered", value=float("nan")), path)
+
+    # Must be strict (RFC-8259) JSON: parse_constant fires on bare NaN/Infinity.
+    def _reject(token):
+        raise ValueError(f"non-strict JSON token: {token}")
+
+    json.loads(path.read_text(), parse_constant=_reject)
+
+    # nan is stored as null and restored as nan.
+    assert math.isnan(load_evaluation(path).value)

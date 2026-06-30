@@ -1,6 +1,6 @@
 """Plotting utilities for refusal results.
 
-Requires matplotlib and seaborn (install with: pip install murano[plot]).
+Requires the ``plot`` extra (install with: pip install murano-interp[plot]).
 """
 
 from __future__ import annotations
@@ -8,23 +8,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from murano._optional import require_optional
+
 if TYPE_CHECKING:
     from murano.steps.train import SteeringResult
     from murano.steps.refusal.evaluate import EvalResult
 
 
 def _require_plotting():
-    """Ensure plotting dependencies are installed."""
-    try:
-        import matplotlib.pyplot as plt
-        import seaborn as sns
+    """Ensure the plotting dependencies are installed and return them.
 
-        return plt, sns
-    except ImportError as e:
-        raise RuntimeError(
-            "Plotting utilities require additional dependencies. "
-            "Please install them via: pip install murano[plot]"
-        ) from e
+    Returns:
+        The imported ``matplotlib.pyplot`` and ``seaborn`` modules.
+    """
+    require_optional("plot", "matplotlib", "seaborn")
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    return plt, sns
 
 
 def _setup():
