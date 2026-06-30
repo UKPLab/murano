@@ -9,6 +9,7 @@ from murano.steps.save import Save
 from murano.steps.train import SteeringVector
 from murano.steps.intervene import Intervene
 from murano.steps.ablate import Ablate
+from murano.steps.patch import Patch
 from murano.steps.weight_ablation import WeightAblation
 from murano.steps.evaluate import GenerationMetric
 from murano.steps.probe import Probe
@@ -43,6 +44,7 @@ __all__ = [
     "SteeringVector",
     "Intervene",
     "Ablate",
+    "Patch",
     "WeightAblation",
     "GenerationMetric",
     "Probe",

@@ -42,3 +42,7 @@ ABLATED_LOGITS: Final = "ablated_logits"
 CORRUPT_PROMPTS: Final = "corrupt_prompts"
 CORRUPT_LOGITS: Final = "corrupt_logits"
 CORRUPT_MASK: Final = "corrupt_mask"
+
+# Default keys for the cross-run patched forward pass (the Patch step).
+PATCHED_LOGITS: Final = "patched_logits"
+PATCHED_MASK: Final = "patched_mask"

@@ -328,6 +328,18 @@ class TestResampleAblation:
         with pytest.raises(ValueError, match="token-length-matched"):
             step(_prompts(["hello world", "good world"]))
 
+    def test_source_longer_than_base_raises(self, murano_model):
+        # An over-long source must be rejected on its untruncated length, not
+        # silently truncated to the base length (which would mis-align positions).
+        step = Ablate(
+            murano_model,
+            0,
+            method="resample",
+            source=["hello good world", "good world"],
+        )
+        with pytest.raises(ValueError, match="token-length-matched"):
+            step(_prompts(["good world", "good world"]))
+
 
 # ── Per-head ablation ─────────────────────────────────────────────────
 
@@ -372,6 +384,28 @@ class TestConstruction:
     def test_source_with_wrong_method_raises(self, murano_model):
         with pytest.raises(ValueError, match="source= is only valid"):
             Ablate(murano_model, 0, method="zero", source=["x"])
+
+    def test_source_key_with_wrong_method_raises(self, murano_model):
+        with pytest.raises(ValueError, match="source_key= is only valid"):
+            Ablate(murano_model, 0, method="zero", source_key="prompts")
+
+    def test_source_and_source_key_together_raises(self, murano_model):
+        with pytest.raises(ValueError, match="either source="):
+            Ablate(
+                murano_model,
+                0,
+                method="resample",
+                source=["x"],
+                source_key="corrupt_prompts",
+            )
+
+    def test_permutation_with_source_raises(self, murano_model):
+        with pytest.raises(ValueError, match="do not apply when"):
+            Ablate(murano_model, 0, method="resample", source=["x"], permutation=[0])
+
+    def test_seed_with_source_key_raises(self, murano_model):
+        with pytest.raises(ValueError, match="do not apply when"):
+            Ablate(murano_model, 0, method="resample", source_key="prompts", seed=0)
 
     def test_bad_mean_over_raises(self, murano_model):
         with pytest.raises(ValueError, match="mean_over must be"):
