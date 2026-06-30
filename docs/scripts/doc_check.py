@@ -38,6 +38,7 @@ MODULES = [
     "murano.steps.paired",
     "murano.steps.logits",
     "murano.steps.ablate",
+    "murano.steps.patch",
 ]
 
 # Skip these names everywhere

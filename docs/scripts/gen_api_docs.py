@@ -37,6 +37,7 @@ MODULES = [
     ("murano.steps.paired", "steps/paired"),
     ("murano.steps.logits", "steps/logits"),
     ("murano.steps.ablate", "steps/ablate"),
+    ("murano.steps.patch", "steps/patch"),
     ("murano.steps.weight_ablation", "steps/weight_ablation"),
     ("murano.steps.refusal.evaluate", "steps/refusal/evaluate"),
     ("murano.steps.refusal.plot", "steps/refusal/plot"),

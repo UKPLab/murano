@@ -257,7 +257,9 @@ class Ablate(Step):
     run with a metric step quantifies the component's contribution.
 
     Reads from results:
-        results['prompts']: PromptBatch.
+        results[prompts_key]: PromptBatch (default ``prompts``), the batch to run.
+        results[source_key]: PromptBatch, only when ``source_key`` is set: the
+            batch whose activations are resampled in (the cross-run patch source).
 
     Writes to results:
         results[logits_key]: Tensor [B, S, vocab] of ablated logits.
@@ -280,7 +282,12 @@ class Ablate(Step):
         source: For ``method="resample"``, an optional sequence of corrupted
             prompts paired one-to-one with the inputs; each must be
             token-length-matched to its clean prompt so positions align. Without
-            it, resample permutes within the batch.
+            it (and without ``source_key``), resample permutes within the batch.
+        source_key: For ``method="resample"``, an optional Results key naming a
+            second :class:`~murano.artifacts.PromptBatch` (already in results)
+            whose activations are resampled in, the cross-run patch source. Same
+            token-length-alignment requirement as ``source``; mutually exclusive
+            with it. The :class:`~murano.steps.patch.Patch` step builds on this.
         permutation: For within-batch resample, an explicit rearrangement of
             ``range(batch)`` (for reproducibility); otherwise a random one.
         seed: Seed for the random within-batch permutation when ``permutation``
@@ -289,6 +296,8 @@ class Ablate(Step):
             :func:`~murano.steps.metrics._answer_positions` form (an int or
             per-example sequence, negatives allowed); ``None`` ablates every
             position.
+        prompts_key: Results key to read the batch to run from (default
+            ``prompts``); set it to run on, e.g., the corrupt side of a pair.
         logits_key: Results key to write the ablated logits under.
         mask_key: Results key to write the attention mask under.
 
@@ -311,9 +320,11 @@ class Ablate(Step):
         mean_over: Literal["all", "position"] = "all",
         means: dict[AddressLike, torch.Tensor] | None = None,
         source: Sequence[str] | None = None,
+        source_key: str | None = None,
         permutation: Sequence[int] | None = None,
         seed: int | None = None,
         positions: int | Sequence[int] | torch.Tensor | None = None,
+        prompts_key: str = keys.PROMPTS,
         logits_key: str = keys.ABLATED_LOGITS,
         mask_key: str = keys.ATTENTION_MASK,
     ):
@@ -332,10 +343,24 @@ class Ablate(Step):
             )
         if source is not None and method != "resample":
             raise ValueError("source= is only valid for method='resample'.")
+        if source_key is not None and method != "resample":
+            raise ValueError("source_key= is only valid for method='resample'.")
+        if source is not None and source_key is not None:
+            raise ValueError(
+                "pass either source= (raw prompts) or source_key= (a Results "
+                "prompt batch), not both."
+            )
         if (permutation is not None or seed is not None) and method != "resample":
             raise ValueError("permutation=/seed= are only valid for method='resample'.")
         if permutation is not None and seed is not None:
             raise ValueError("pass either permutation= or seed=, not both.")
+        if (permutation is not None or seed is not None) and (
+            source is not None or source_key is not None
+        ):
+            raise ValueError(
+                "permutation=/seed= drive the within-batch resample and do not "
+                "apply when source=/source_key= supplies the replacement batch."
+            )
 
         self.sites, self.per_head = _group_targets(_coerce_targets(targets))
         if means is not None and self.per_head:
@@ -351,11 +376,20 @@ class Ablate(Step):
         if self.means is not None:
             self._validate_means(self.means)
         self.source = list(source) if source is not None else None
+        self.source_key = source_key
         self.permutation = list(permutation) if permutation is not None else None
         self.seed = seed
         self.positions = positions
+        self.prompts_key = prompts_key
         self.logits_key = logits_key
         self.mask_key = mask_key
+        # Read the batch to run from prompts_key; a source_key, when given, names
+        # a second batch already in results whose activations are resampled in.
+        self.reads = [prompts_key] + ([source_key] if source_key is not None else [])
+        self.read_types = {
+            prompts_key: PromptBatch,
+            **({source_key: PromptBatch} if source_key is not None else {}),
+        }
         self.writes = [logits_key, mask_key]
         self.write_types = {logits_key: torch.Tensor, mask_key: torch.Tensor}
 
@@ -381,7 +415,7 @@ class Ablate(Step):
                 )
 
     def __call__(self, results: Results) -> Results:
-        prompt_batch: PromptBatch = results[keys.PROMPTS]
+        prompt_batch: PromptBatch = results[self.prompts_key]
         prompts = prompt_batch.prompts
         tokens = self.model.tokenizer(
             prompts,
@@ -398,14 +432,23 @@ class Ablate(Step):
         if self.method == "resample" or (self.method == "mean" and self.means is None):
             captured = self._capture(tokens)
 
+        # resample draws its replacement from a second batch: raw source= prompts
+        # or a source_key= prompt batch already in results (the cross-run patch).
+        source_prompts: Sequence[str] | None = None
+        if self.method == "resample":
+            if self.source is not None:
+                source_prompts = self.source
+            elif self.source_key is not None:
+                source_prompts = results[self.source_key].prompts
+
         source_captured: dict[Site, torch.Tensor] | None = None
-        if self.method == "resample" and self.source is not None:
+        if source_prompts is not None:
             source_captured = self._capture(
-                self._tokenize_source(attention_mask, int(seq))
+                self._tokenize_source(source_prompts, prompts, int(seq))
             )
 
         perm: torch.Tensor | None = None
-        if self.method == "resample" and self.source is None:
+        if self.method == "resample" and source_prompts is None:
             perm = self._permutation(int(batch))
             # Resample is position-wise: replacing example b's activation at
             # absolute index s with the partner's index s only aligns when both
@@ -506,37 +549,60 @@ class Ablate(Step):
                 captured[(layer, module)] = value.detach().cpu()
         return captured
 
-    def _tokenize_source(self, clean_mask: torch.Tensor, seq: int) -> Any:
-        """Tokenize the corrupted resample prompts, aligned to the clean batch.
+    def _tokenize_source(
+        self, prompts: Sequence[str], base_prompts: Sequence[str], seq: int
+    ) -> Any:
+        """Tokenize the resample source prompts, aligned to the base batch.
 
-        Pads to the clean sequence length and checks that each corrupted prompt
-        has the same real-token count as its clean counterpart, since resample
-        is position-wise: a position must carry the same role in both runs.
+        Pads the source to the base sequence length ``seq``. Alignment is checked
+        on the *untruncated* token lengths of the source and base prompts: equal
+        natural lengths guarantee that any truncation to ``seq`` chops both sides
+        identically, so position ``s`` carries the same role in both runs.
+        Comparing the post-truncation lengths instead would either let an
+        over-long source pass while silently dropping tokens, or wrongly reject a
+        long pair that both truncate to the same length.
+
+        Args:
+            prompts: The source prompts, one per base example (the raw ``source=``
+                list or the ``source_key=`` batch's prompts).
+            base_prompts: The base batch's prompts, for the length comparison.
+            seq: The base sequence length to pad the source to.
 
         Raises:
-            ValueError: If the prompt count or per-example token lengths differ.
+            ValueError: If the prompt count or per-example natural token lengths
+                differ.
         """
-        assert self.source is not None
-        if len(self.source) != clean_mask.shape[0]:
+        if len(prompts) != len(base_prompts):
             raise ValueError(
-                f"resample source has {len(self.source)} prompts but the batch "
-                f"has {clean_mask.shape[0]}."
+                f"resample source has {len(prompts)} prompts but the batch "
+                f"has {len(base_prompts)}."
             )
-        tokens = self.model.tokenizer(
-            self.source,
+        source_lengths = self._natural_lengths(prompts)
+        base_lengths = self._natural_lengths(base_prompts)
+        if not equal(source_lengths, base_lengths):
+            raise ValueError(
+                "resample source prompts must be token-length-matched to the base "
+                "prompts per example so positions align; got mismatched lengths."
+            )
+        return self.model.tokenizer(
+            prompts,
             return_tensors="pt",
             padding="max_length",
             truncation=True,
             max_length=seq,
             return_token_type_ids=False,
         )
-        source_mask: torch.Tensor = tokens["attention_mask"]
-        if not equal(source_mask.sum(dim=1), clean_mask.sum(dim=1)):
-            raise ValueError(
-                "resample source prompts must be token-length-matched to the clean "
-                "prompts per example so positions align; got mismatched lengths."
-            )
-        return tokens
+
+    def _natural_lengths(self, prompts: Sequence[str]) -> torch.Tensor:
+        """Return each prompt's untruncated token count ``[len(prompts)]``."""
+        mask = self.model.tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=False,
+            return_token_type_ids=False,
+        )["attention_mask"]
+        return mask.sum(dim=1)
 
     def _permutation(self, batch: int) -> torch.Tensor:
         """Return the within-batch source permutation for resample ablation.
