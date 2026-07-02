@@ -16,6 +16,7 @@ from murano.steps.probe import Probe
 from murano.steps.refusal import ComplianceRate, Plot
 from murano.steps.probing import ProbePlot
 from murano.steps.logit_lens import LogitLens, LogitLensResult
+from murano.steps.logit_attribution import LogitAttribution, LogitAttributionResult
 from murano.steps.logits import Logits
 from murano.steps.sae import (
     SAEActivationStore,
@@ -53,6 +54,8 @@ __all__ = [
     "ProbePlot",
     "LogitLens",
     "LogitLensResult",
+    "LogitAttribution",
+    "LogitAttributionResult",
     "Logits",
     "SAEActivationStore",
     "SAEEncode",

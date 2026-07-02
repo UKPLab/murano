@@ -10,7 +10,42 @@ import torch
 from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
 from tokenizers.pre_tokenizers import Whitespace
-from transformers import LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerFast
+from transformers import (
+    GPT2Config,
+    GPT2LMHeadModel,
+    LlamaConfig,
+    LlamaForCausalLM,
+    PreTrainedTokenizerFast,
+)
+
+
+_VOCAB = {
+    "<pad>": 0,
+    "<s>": 1,
+    "</s>": 2,
+    "<unk>": 3,
+    "hello": 4,
+    "world": 5,
+    "good": 6,
+    "bad": 7,
+    "prompt": 8,
+    "response": 9,
+}
+
+
+def _build_word_tokenizer(path: Path) -> None:
+    """Save a tiny WordLevel tokenizer shared by the test model fixtures."""
+    tokenizer = Tokenizer(WordLevel(vocab=dict(_VOCAB), unk_token="<unk>"))
+    tokenizer.pre_tokenizer = Whitespace()
+    fast_tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=tokenizer,
+        unk_token="<unk>",
+        pad_token="<pad>",
+        bos_token="<s>",
+        eos_token="</s>",
+        model_max_length=64,
+    )
+    fast_tokenizer.save_pretrained(path)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -70,4 +105,30 @@ def murano_model(tmp_path_factory):
 
     model_dir = tmp_path_factory.mktemp("tiny_model")
     _build_tiny_local_model(model_dir)
+    return MuranoModel(str(model_dir), device_map="cpu", dtype=torch.float32)
+
+
+def _build_tiny_gpt2(path: Path) -> None:
+    """Build a tiny GPT-2 model (LayerNorm + transposed Conv1D projections)."""
+    _build_word_tokenizer(path)
+    config = GPT2Config(
+        vocab_size=len(_VOCAB),
+        n_embd=32,
+        n_layer=2,
+        n_head=4,
+        n_positions=64,
+        pad_token_id=_VOCAB["<pad>"],
+        bos_token_id=_VOCAB["<s>"],
+        eos_token_id=_VOCAB["</s>"],
+    )
+    GPT2LMHeadModel(config).save_pretrained(path)
+
+
+@pytest.fixture(scope="session")
+def gpt2_model(tmp_path_factory):
+    """A tiny GPT-2 MuranoModel, for exercising the LayerNorm code paths on CPU."""
+    from murano.model import MuranoModel
+
+    model_dir = tmp_path_factory.mktemp("tiny_gpt2")
+    _build_tiny_gpt2(model_dir)
     return MuranoModel(str(model_dir), device_map="cpu", dtype=torch.float32)

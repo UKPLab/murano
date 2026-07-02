@@ -39,6 +39,7 @@ MODULES = [
     "murano.steps.logits",
     "murano.steps.ablate",
     "murano.steps.patch",
+    "murano.steps.logit_attribution",
 ]
 
 # Skip these names everywhere

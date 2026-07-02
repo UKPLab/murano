@@ -7,6 +7,7 @@ from murano.plotting.refusal import (
     plot_direction_cosine_similarity,
 )
 from murano.plotting.logit_lens import plot_logit_lens
+from murano.plotting.logit_attribution import plot_logit_attribution
 from murano.plotting.plotly_utils import (
     plot_heatmap,
     plot_line_chart,
@@ -20,4 +21,5 @@ __all__ = [
     "plot_heatmap",
     "plot_line_chart",
     "plot_logit_lens",
+    "plot_logit_attribution",
 ]

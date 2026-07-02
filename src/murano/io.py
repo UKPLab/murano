@@ -293,6 +293,59 @@ def load_logit_lens(path: str | Path) -> Any:
     )
 
 
+def save_logit_attribution(result: Any, path: Path) -> None:
+    """Save a LogitAttributionResult to a JSON file.
+
+    Component contributions are keyed by their string address; the loader coerces
+    them back to Node objects.
+
+    Args:
+        result: LogitAttributionResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "contributions": {str(k): v for k, v in result.contributions.items()},
+        "embed_contribution": result.embed_contribution,
+        "other_contribution": result.other_contribution,
+        "target": result.target,
+        "total": result.total,
+        "completeness_error": result.completeness_error,
+        "per_example": (
+            {str(k): v for k, v in result.per_example.items()}
+            if result.per_example is not None
+            else None
+        ),
+        "metadata": result.metadata,
+    }
+    path.write_text(json.dumps(data, indent=2))
+    logger.info("Saved logit attribution result to %s", path)
+
+
+def load_logit_attribution(path: str | Path) -> Any:
+    """Load a LogitAttributionResult from a file written by :func:`save_logit_attribution`.
+
+    Args:
+        path: Path to the logit_attribution.json file.
+
+    Returns:
+        LogitAttributionResult with string addresses coerced back to Node keys.
+    """
+    from murano.steps.logit_attribution import LogitAttributionResult
+
+    data = json.loads(Path(path).read_text())
+    return LogitAttributionResult(
+        contributions=data["contributions"],
+        embed_contribution=data["embed_contribution"],
+        other_contribution=data["other_contribution"],
+        target=data["target"],
+        total=data["total"],
+        completeness_error=data["completeness_error"],
+        per_example=data.get("per_example"),
+        metadata=data.get("metadata", {}),
+    )
+
+
 def save_activation_store(activation_store: Any, path: Path) -> None:
     """Save an ActivationStore to a .pt file.
 
@@ -561,6 +614,7 @@ def register_artifact_serializer(
 
 
 def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
+    from murano.steps.logit_attribution import LogitAttributionResult
     from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
     from murano.steps.record import ActivationStore, LabeledActivationStore
@@ -690,6 +744,23 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "n_inputs": logit_lens.all_probs.shape[1],
         }
 
+    def serialize_logit_attribution(
+        key: str,
+        attribution: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = (
+            "logit_attribution.json" if key == keys.LOGIT_ATTRIBUTION else f"{key}.json"
+        )
+        save_logit_attribution(attribution, out / "logit_attribution" / filename)
+        metadata[key] = {
+            "target": attribution.target,
+            "total": attribution.total,
+            "completeness_error": attribution.completeness_error,
+        }
+
     def serialize_activation_store(
         key: str,
         store: Any,
@@ -771,6 +842,9 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     register_artifact_serializer(registry, EvaluationResult, serialize_evaluation)
     register_artifact_serializer(registry, ProbeResult, serialize_probe)
     register_artifact_serializer(registry, LogitLensResult, serialize_logit_lens)
+    register_artifact_serializer(
+        registry, LogitAttributionResult, serialize_logit_attribution
+    )
     register_artifact_serializer(registry, ActivationStore, serialize_activation_store)
     register_artifact_serializer(
         registry, LabeledActivationStore, serialize_labeled_activation_store

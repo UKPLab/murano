@@ -43,11 +43,13 @@ MODULES = [
     ("murano.steps.refusal.plot", "steps/refusal/plot"),
     ("murano.steps.probing.plot", "steps/probing/plot"),
     ("murano.steps.logit_lens", "steps/logit_lens"),
+    ("murano.steps.logit_attribution", "steps/logit_attribution"),
     ("murano.steps.sae", "steps/sae"),
     ("murano.steps.metrics", "steps/metrics"),
     ("murano.plotting.refusal", "plotting/refusal"),
     ("murano.plotting.probing", "plotting/probing"),
     ("murano.plotting.logit_lens", "plotting/logit_lens"),
+    ("murano.plotting.logit_attribution", "plotting/logit_attribution"),
     ("murano.plotting.plotly_utils", "plotting/plotly_utils"),
 ]
 
