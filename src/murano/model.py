@@ -432,6 +432,47 @@ class MuranoModel:
                 ) from None
         return current
 
+    def _register_generation_intervention(
+        self,
+        fn: Callable[[Tensor, Node], Tensor],
+        layers: list[int] | str,
+        module_list: list[str],
+    ) -> list:
+        """Install forward hooks that apply ``fn`` on every generated token.
+
+        nnsight's own per-token trace idiom is version-specific (the loop form
+        errors on nnsight 0.5, the context-manager form is deprecated on 0.7). A
+        plain PyTorch forward hook fires on each real module forward, which during
+        generation is once per decoded token, on every supported nnsight version.
+        Applying the edit here rather than once inside the trace is what makes a
+        steer or ablation persist past the first generated token.
+
+        Returns:
+            The registered hook handles, for the caller to remove after
+            generation.
+        """
+        handles = []
+        for layer_idx in self._layer_indices(layers):
+            for mod_str in module_list:
+                # ._module is the nn.Module the Envoy wraps; a torch hook on it
+                # is independent of nnsight's tracing layer.
+                module = self._resolve_module(self.layer(layer_idx), mod_str)._module  # pyright: ignore[reportAttributeAccessIssue]
+                key = Node(layer_idx, mod_str)
+
+                def hook(module, inputs, output, key=key):
+                    # Decoder-layer outputs are (hidden_states, ...) tuples;
+                    # submodule outputs (mlp, self_attn) are plain tensors. Rewrite
+                    # the hidden state either way, and leave a site fn does not
+                    # target untouched.
+                    if isinstance(output, tuple):
+                        new = fn(output[0], key)
+                        return (new, *output[1:]) if new is not output[0] else output
+                    new = fn(output, key)
+                    return new if new is not output else output
+
+                handles.append(module.register_forward_hook(hook))
+        return handles
+
     def _generate_single(
         self,
         text: str,
@@ -451,22 +492,17 @@ class MuranoModel:
 
         module_list = [modules] if isinstance(modules, str) else modules
 
-        with self._lm.generate(tokens, **generation_kwargs):
-            if fn is not None:
-                for layer_idx in self._layer_indices(layers):
-                    for mod_str in module_list:
-                        mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
-                        h = mod_proxy.output
-                        key = Node(layer_idx, mod_str)
-                        # Decoder-layer outputs are (hidden_states, ...) tuples,
-                        # while submodule outputs (mlp, self_attn) are plain
-                        # tensors. Edit the hidden-states element and write the
-                        # same structure back so the intervention works on either.
-                        if isinstance(h, tuple):
-                            mod_proxy.output = (fn(h[0], key), *h[1:])  # pyright: ignore[reportArgumentType]
-                        else:
-                            mod_proxy.output = fn(h, key)  # pyright: ignore[reportArgumentType]
-            output_ids = self._lm.generator.output.save()
+        handles = (
+            self._register_generation_intervention(fn, layers, module_list)
+            if fn is not None
+            else []
+        )
+        try:
+            with self._lm.generate(tokens, **generation_kwargs):
+                output_ids = self._lm.generator.output.save()
+        finally:
+            for handle in handles:
+                handle.remove()
 
         out = output_ids.value if hasattr(output_ids, "value") else output_ids
         generated = out[0, input_len:]
@@ -486,7 +522,8 @@ class MuranoModel:
         Args:
             text: Prompt to generate from.
             fn: ``(activation, key) -> activation`` applied to each target
-                module's output during generation; ``None`` runs unmodified.
+                module's output on every generated token; ``None`` runs
+                unmodified.
             layers: Layer indices to hook, or ``"all"``.
             modules: Module name(s) to hook at each layer.
             gen_kwargs: Forwarded to the underlying generation call.
