@@ -451,21 +451,34 @@ class MuranoModel:
 
         module_list = [modules] if isinstance(modules, str) else modules
 
-        with self._lm.generate(tokens, **generation_kwargs):
+        with self._lm.generate(tokens, **generation_kwargs) as tracer:
             if fn is not None:
-                for layer_idx in self._layer_indices(layers):
-                    for mod_str in module_list:
-                        mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
-                        h = mod_proxy.output
-                        key = Node(layer_idx, mod_str)
-                        # Decoder-layer outputs are (hidden_states, ...) tuples,
-                        # while submodule outputs (mlp, self_attn) are plain
-                        # tensors. Edit the hidden-states element and write the
-                        # same structure back so the intervention works on either.
-                        if isinstance(h, tuple):
-                            mod_proxy.output = (fn(h[0], key), *h[1:])  # pyright: ignore[reportArgumentType]
-                        else:
-                            mod_proxy.output = fn(h, key)  # pyright: ignore[reportArgumentType]
+                # nnsight binds an edit to a module's first forward only, but
+                # generation runs each module once per token. tracer.all()
+                # re-applies fn on every decode step; without it only the prompt
+                # pass (the first generated token) is intervened and the rest of
+                # the continuation is generated unmodified.
+                for _ in tracer.all():
+                    for layer_idx in self._layer_indices(layers):
+                        for mod_str in module_list:
+                            mod_proxy = self._resolve_module(
+                                self.layer(layer_idx), mod_str
+                            )
+                            h = mod_proxy.output
+                            key = Node(layer_idx, mod_str)
+                            # Decoder-layer outputs are (hidden_states, ...)
+                            # tuples, while submodule outputs (mlp, self_attn)
+                            # are plain tensors. Edit the hidden-states element
+                            # in place either way, and skip the write when fn
+                            # leaves the activation untouched (a non-target site).
+                            if isinstance(h, tuple):
+                                new = fn(h[0], key)
+                                if new is not h[0]:
+                                    mod_proxy.output[0][:] = new
+                            else:
+                                new = fn(h, key)
+                                if new is not h:
+                                    mod_proxy.output[:] = new
             output_ids = self._lm.generator.output.save()
 
         out = output_ids.value if hasattr(output_ids, "value") else output_ids
@@ -486,7 +499,8 @@ class MuranoModel:
         Args:
             text: Prompt to generate from.
             fn: ``(activation, key) -> activation`` applied to each target
-                module's output during generation; ``None`` runs unmodified.
+                module's output on every generated token; ``None`` runs
+                unmodified.
             layers: Layer indices to hook, or ``"all"``.
             modules: Module name(s) to hook at each layer.
             gen_kwargs: Forwarded to the underlying generation call.
