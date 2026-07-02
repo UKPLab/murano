@@ -188,6 +188,24 @@ class MuranoModel:
         """
         return self._lm.lm_head(self._lm.ln_final(hidden))
 
+    @property
+    def unembed_weight(self) -> Tensor:
+        """The unembedding (lm_head) weight ``[vocab, d_model]``.
+
+        The unembedding lives on the causal-LM wrapper, not the base module
+        returned by :attr:`hf_model`, so it is exposed here for attribution.
+        """
+        return self._lm.lm_head.weight  # pyright: ignore[reportReturnType]
+
+    @property
+    def final_norm(self):
+        """The standardized final-normalization module (before the unembedding).
+
+        Exposed via nnterp's standardized ``ln_final`` accessor, matching
+        :meth:`project_on_vocab`; used by attribution to freeze the norm scale.
+        """
+        return self._lm.ln_final
+
     def forward_logits(
         self,
         tokens: Any,

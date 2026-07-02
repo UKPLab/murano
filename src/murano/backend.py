@@ -72,6 +72,16 @@ class ModelBackend(Protocol):
         """Project hidden states onto the vocabulary."""
         ...
 
+    @property
+    def unembed_weight(self) -> Tensor:
+        """The unembedding (lm_head) weight ``[vocab, d_model]``."""
+        ...
+
+    @property
+    def final_norm(self) -> Any:
+        """The standardized final-normalization module (before the unembedding)."""
+        ...
+
     def forward_logits(
         self,
         tokens: Any,
