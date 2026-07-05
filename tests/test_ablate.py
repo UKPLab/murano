@@ -215,13 +215,38 @@ class TestMeanAblation:
         assert torch.isfinite(ablated).all()
         assert not torch.allclose(ablated, clean)
 
-    def test_precomputed_means_for_per_head_raises(self, murano_model):
-        with pytest.raises(NotImplementedError, match="per-head"):
+    def test_per_head_means_of_zero_equals_zero_method(self, murano_model):
+        # A precomputed all-zero per-head mean reproduces zeroing that head.
+        texts = ["hello world", "good world"]
+        hd = murano_model.head_dim
+        zeroed = Ablate(murano_model, Node(0, SELF_ATTN, head=0), method="zero")(
+            _prompts(texts)
+        )[ABLATED]
+        meaned = Ablate(
+            murano_model,
+            Node(0, SELF_ATTN, head=0),
+            method="mean",
+            means={Node(0, SELF_ATTN, head=0): torch.zeros(hd)},
+        )(_prompts(texts))[ABLATED]
+        assert torch.allclose(zeroed, meaned, atol=1e-5)
+
+    def test_per_head_means_missing_head_raises(self, murano_model):
+        hd = murano_model.head_dim
+        with pytest.raises(ValueError, match="no entry for head"):
             Ablate(
                 murano_model,
-                NodeSet.expand_heads(0, [0]),
+                NodeSet.expand_heads(0, [0, 1]),
                 method="mean",
-                means={Node(0, SELF_ATTN): torch.zeros(8)},
+                means={Node(0, SELF_ATTN, head=0): torch.zeros(hd)},
+            )
+
+    def test_per_head_means_wrong_shape_raises(self, murano_model):
+        with pytest.raises(ValueError, match="expected head_dim"):
+            Ablate(
+                murano_model,
+                Node(0, SELF_ATTN, head=0),
+                method="mean",
+                means={Node(0, SELF_ATTN, head=0): torch.zeros(3)},
             )
 
     def test_external_means_of_zero_equals_zero_method(self, murano_model):
