@@ -278,7 +278,11 @@ class Ablate(Step):
             positions (``"all"``) or is taken per position (``"position"``).
         means: For ``method="mean"``, an optional precomputed ``{address:
             tensor}`` of mean vectors (e.g. a corpus mean) used instead of the
-            current batch's mean. Whole-component only.
+            current batch's mean. Whole-component targets take one ``d_model``
+            vector per site (keyed by ``Node(layer, module)``); per-head targets
+            take one ``head_dim`` vector per head (keyed by ``Node(layer,
+            "self_attn", head=h)``), so a head can be mean-ablated to its mean over
+            a reference distribution.
         source: For ``method="resample"``, an optional sequence of corrupted
             prompts paired one-to-one with the inputs; each must be
             token-length-matched to its clean prompt so positions align. Without
@@ -303,9 +307,11 @@ class Ablate(Step):
 
     Raises:
         ValueError: If ``method``/``mean_over`` is unknown, ``targets`` is
-            empty or mixes modes, or a method-specific argument is misused.
-        NotImplementedError: If precomputed ``means`` are given for per-head
-            ablation.
+            empty or mixes modes, a method-specific argument is misused, or a
+            precomputed ``means`` table does not cover every target with a
+            right-sized vector.
+        NotImplementedError: If per-head capture is requested for a module whose
+            architecture's attention output projection is not recognized.
     """
 
     reads = [keys.PROMPTS]
@@ -363,11 +369,6 @@ class Ablate(Step):
             )
 
         self.sites, self.per_head = _group_targets(_coerce_targets(targets))
-        if means is not None and self.per_head:
-            raise NotImplementedError(
-                "precomputed means= for per-head ablation is not supported; omit "
-                "means to use the batch mean, or ablate whole components."
-            )
 
         self.model = model
         self.method = method
@@ -394,23 +395,41 @@ class Ablate(Step):
         self.write_types = {logits_key: torch.Tensor, mask_key: torch.Tensor}
 
     def _validate_means(self, means: NodeDict) -> None:
-        """Check the precomputed mean table covers every site with a right-sized vector.
+        """Check the precomputed mean table covers every target with a right-sized vector.
+
+        Whole-component targets need one ``d_model`` vector per ``(layer, module)``;
+        per-head targets need one ``head_dim`` vector per addressed head.
 
         Raises:
-            ValueError: If a whole-component site has no entry, or its vector's
-                last dim is not ``d_model``.
+            ValueError: If a target has no entry, or its vector's last dim is
+                wrong (``d_model`` whole-component, ``head_dim`` per head).
         """
-        for layer, module in self.sites:
+        for (layer, module), heads in self.sites.items():
+            if self.per_head:
+                assert heads is not None
+                for head in heads:
+                    node = Node(layer, module, head=head)
+                    if node not in means:
+                        raise ValueError(
+                            f"means= has no entry for head {node}; provide a mean "
+                            f"vector for every ablated head."
+                        )
+                    if means[node].shape[-1] != self.model.head_dim:
+                        raise ValueError(
+                            f"means= vector for {node} has last dim "
+                            f"{means[node].shape[-1]}, expected "
+                            f"head_dim={self.model.head_dim}."
+                        )
+                continue
             node = Node(layer, module)
             if node not in means:
                 raise ValueError(
                     f"means= has no entry for target {node}; provide a mean vector "
                     f"for every ablated site."
                 )
-            vector = means[node]
-            if vector.shape[-1] != self.model.d_model:
+            if means[node].shape[-1] != self.model.d_model:
                 raise ValueError(
-                    f"means= vector for {node} has last dim {vector.shape[-1]}, "
+                    f"means= vector for {node} has last dim {means[node].shape[-1]}, "
                     f"expected d_model={self.model.d_model}."
                 )
 
@@ -503,6 +522,15 @@ class Ablate(Step):
             return as_tensor(0.0)
         if self.method == "mean":
             if self.means is not None:
+                if self.per_head:
+                    # Assemble a [n_heads, head_dim] table so the write-mask can
+                    # select the target heads; untargeted rows are never read.
+                    heads = self.sites[site]
+                    assert heads is not None
+                    table = zeros(self.model.n_heads, self.model.head_dim)
+                    for head in heads:
+                        table[head] = self.means[Node(site[0], site[1], head=head)]
+                    return table.unsqueeze(0).unsqueeze(0)
                 vector = self.means[Node(site[0], site[1])]
                 # A precomputed per-feature mean carries no batch or sequence
                 # axis, so lift it to [1, 1, ...] to broadcast over both.
