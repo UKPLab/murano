@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from murano.evaluation import compliance_rate
     from murano.io import (
         load_activation_store,
+        load_attention,
         load_evaluation,
         load_labeled_activation_store,
         load_logit_lens,
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
     )
     from murano.pipeline import Pipeline
     from murano.results import Results
+    from murano.steps.attention import AttentionResult
     from murano.steps.base import Step
     from murano.steps.logit_lens import LogitLens, LogitLensResult
     from murano.steps.logits import Logits
@@ -78,6 +80,7 @@ _LAZY_ATTRS = {
     "Step": ("murano.steps.base", "Step"),
     "LogitLens": ("murano.steps.logit_lens", "LogitLens"),
     "LogitLensResult": ("murano.steps.logit_lens", "LogitLensResult"),
+    "AttentionResult": ("murano.steps.attention", "AttentionResult"),
     "Logits": ("murano.steps.logits", "Logits"),
     "SAEEncode": ("murano.steps.sae", "SAEEncode"),
     "SAEActivationStore": ("murano.steps.sae", "SAEActivationStore"),
@@ -88,6 +91,7 @@ _LAZY_ATTRS = {
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
     "load_logit_lens": ("murano.io", "load_logit_lens"),
+    "load_attention": ("murano.io", "load_attention"),
     "load_activation_store": ("murano.io", "load_activation_store"),
     "load_labeled_activation_store": ("murano.io", "load_labeled_activation_store"),
     "load_sae_activations": ("murano.io", "load_sae_activations"),
@@ -118,6 +122,7 @@ __all__ = [
     "Step",
     "LogitLens",
     "LogitLensResult",
+    "AttentionResult",
     "Logits",
     "SAEActivationStore",
     "SAEEncode",
@@ -130,6 +135,7 @@ __all__ = [
     "save_results",
     "load_steering",
     "load_logit_lens",
+    "load_attention",
     "load_activation_store",
     "load_labeled_activation_store",
     "load_sae_activations",

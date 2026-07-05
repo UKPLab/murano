@@ -109,6 +109,35 @@ class ModelBackend(Protocol):
         """Generate from ``text``, optionally applying ``fn`` per layer/module."""
         ...
 
+    @property
+    def attn_probs_available(self) -> bool:
+        """Whether per-head attention weights can be read and written."""
+        ...
+
+    @property
+    def attention_probabilities(self) -> Any:
+        """Accessor for per-head softmax attention weights.
+
+        Inside a :meth:`trace`, ``[layer]`` reads the ``[batch, n_heads, query,
+        key]`` pattern and ``[layer] = tensor`` overwrites it. Only usable when
+        the backend was loaded with attention weights enabled.
+        """
+        ...
+
+    def require_attention_probs(self) -> None:
+        """Raise if per-head attention weights are unavailable on this backend."""
+        ...
+
+    def forward_logits_attention(
+        self, tokens: Any, edits: "dict[int, tuple[Tensor, Tensor]]"
+    ) -> Tensor:
+        """Run a forward pass overwriting per-head attention weights, return logits.
+
+        Each layer's weights become ``pattern * (1 - mask) + replacement * mask``
+        for its ``{layer: (replacement, mask)}`` entry in ``edits``.
+        """
+        ...
+
     def chat_template(self, messages: list[dict[str, Any]]) -> str:
         """Render ``messages`` through the tokenizer's chat template."""
         ...

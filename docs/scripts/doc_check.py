@@ -40,6 +40,7 @@ MODULES = [
     "murano.steps.ablate",
     "murano.steps.patch",
     "murano.steps.path_patch",
+    "murano.steps.attention",
     "murano.steps.logit_attribution",
 ]
 

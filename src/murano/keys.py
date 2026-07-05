@@ -51,3 +51,8 @@ PATCHED_MASK: Final = "patched_mask"
 # Default keys for the direct-path patched forward pass (the PathPatch step).
 PATH_PATCHED_LOGITS: Final = "path_patched_logits"
 PATH_PATCHED_MASK: Final = "path_patched_mask"
+
+# Default keys for attention-pattern analysis and intervention.
+ATTENTION_PATTERN: Final = "attention_pattern"
+ATTN_ABLATED_LOGITS: Final = "attn_ablated_logits"
+ATTN_ABLATED_MASK: Final = "attn_ablated_mask"
