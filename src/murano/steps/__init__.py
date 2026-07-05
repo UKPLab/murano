@@ -11,6 +11,12 @@ from murano.steps.intervene import Intervene
 from murano.steps.ablate import Ablate
 from murano.steps.patch import Patch
 from murano.steps.path_patch import PathPatch
+from murano.steps.attention import (
+    AblateAttention,
+    AttentionResult,
+    RecordAttention,
+    ov_circuit,
+)
 from murano.steps.weight_ablation import WeightAblation
 from murano.steps.evaluate import GenerationMetric
 from murano.steps.probe import Probe
@@ -48,6 +54,10 @@ __all__ = [
     "Ablate",
     "Patch",
     "PathPatch",
+    "RecordAttention",
+    "AblateAttention",
+    "AttentionResult",
+    "ov_circuit",
     "WeightAblation",
     "GenerationMetric",
     "Probe",

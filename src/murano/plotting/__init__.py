@@ -8,9 +8,11 @@ from murano.plotting.refusal import (
 )
 from murano.plotting.logit_lens import plot_logit_lens
 from murano.plotting.logit_attribution import plot_logit_attribution
+from murano.plotting.attention import plot_attention_pattern, plot_head_matrix
 from murano.plotting.plotly_utils import (
     plot_heatmap,
     plot_line_chart,
+    save_figure,
 )
 
 __all__ = [
@@ -20,6 +22,9 @@ __all__ = [
     "plot_direction_cosine_similarity",
     "plot_heatmap",
     "plot_line_chart",
+    "save_figure",
     "plot_logit_lens",
     "plot_logit_attribution",
+    "plot_attention_pattern",
+    "plot_head_matrix",
 ]

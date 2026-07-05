@@ -39,6 +39,7 @@ MODULES = [
     ("murano.steps.ablate", "steps/ablate"),
     ("murano.steps.patch", "steps/patch"),
     ("murano.steps.path_patch", "steps/path_patch"),
+    ("murano.steps.attention", "steps/attention"),
     ("murano.steps.weight_ablation", "steps/weight_ablation"),
     ("murano.steps.refusal.evaluate", "steps/refusal/evaluate"),
     ("murano.steps.refusal.plot", "steps/refusal/plot"),
@@ -51,6 +52,7 @@ MODULES = [
     ("murano.plotting.probing", "plotting/probing"),
     ("murano.plotting.logit_lens", "plotting/logit_lens"),
     ("murano.plotting.logit_attribution", "plotting/logit_attribution"),
+    ("murano.plotting.attention", "plotting/attention"),
     ("murano.plotting.plotly_utils", "plotting/plotly_utils"),
 ]
 

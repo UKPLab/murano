@@ -293,6 +293,54 @@ def load_logit_lens(path: str | Path) -> Any:
     )
 
 
+def save_attention(result: Any, path: Path) -> None:
+    """Save an AttentionResult to a .pt file.
+
+    Persists every captured layer's attention weights along with the mask,
+    decoded tokens, layer indices, addresses, and metadata, so the reductions
+    and pattern plots can run without re-tracing the model.
+
+    Args:
+        result: AttentionResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "patterns": result.patterns,
+            "attention_mask": result.attention_mask,
+            "str_tokens": result.str_tokens,
+            "layers": result.layers,
+            "addresses": result.addresses,
+            "metadata": result.metadata,
+        },
+        path,
+    )
+    logger.info("Saved attention result to %s", path)
+
+
+def load_attention(path: str | Path) -> Any:
+    """Load an AttentionResult from a file written by :func:`save_attention`.
+
+    Args:
+        path: Path to the attention.pt file.
+
+    Returns:
+        AttentionResult with its captured patterns and metadata.
+    """
+    from murano.steps.attention import AttentionResult
+
+    data = torch.load(path, weights_only=False)
+    return AttentionResult(
+        patterns=data["patterns"],
+        attention_mask=data["attention_mask"],
+        str_tokens=data["str_tokens"],
+        layers=data["layers"],
+        addresses=data["addresses"],
+        metadata=data.get("metadata", {}),
+    )
+
+
 def save_logit_attribution(result: Any, path: Path) -> None:
     """Save a LogitAttributionResult to a JSON file.
 
@@ -614,6 +662,7 @@ def register_artifact_serializer(
 
 
 def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
+    from murano.steps.attention import AttentionResult
     from murano.steps.logit_attribution import LogitAttributionResult
     from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
@@ -744,6 +793,22 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "n_inputs": logit_lens.all_probs.shape[1],
         }
 
+    def serialize_attention(
+        key: str,
+        attention: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "attention.pt" if key == keys.ATTENTION_PATTERN else f"{key}.pt"
+        save_attention(attention, out / "attention" / filename)
+        first = next(iter(attention.patterns.values()), None)
+        metadata[key] = {
+            "layers": list(attention.layers),
+            "n_inputs": first.shape[0] if first is not None else 0,
+            "n_heads": first.shape[1] if first is not None else 0,
+        }
+
     def serialize_logit_attribution(
         key: str,
         attribution: Any,
@@ -842,6 +907,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     register_artifact_serializer(registry, EvaluationResult, serialize_evaluation)
     register_artifact_serializer(registry, ProbeResult, serialize_probe)
     register_artifact_serializer(registry, LogitLensResult, serialize_logit_lens)
+    register_artifact_serializer(registry, AttentionResult, serialize_attention)
     register_artifact_serializer(
         registry, LogitAttributionResult, serialize_logit_attribution
     )
@@ -883,6 +949,8 @@ def save_results(
         │   └── eval.json
         ├── logit_lens/          # logit-lens probabilities + decoded words
         │   └── logit_lens.pt
+        ├── attention/           # captured per-head attention weights
+        │   └── attention.pt
         ├── activations/         # recorded activation stores (transitional format)
         │   └── record.pt
         ├── sae/                 # SAE activations + per-feature examples

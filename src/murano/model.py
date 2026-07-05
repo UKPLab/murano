@@ -60,6 +60,11 @@ class MuranoModel:
         model_id: HuggingFace model identifier.
         device_map: Device placement strategy.
         dtype: Model weight dtype.
+        enable_attention_probs: If True, load with eager attention so nnterp can
+            expose the per-head softmax attention weights via
+            :attr:`attention_probabilities`. Off by default because eager
+            attention is slower and heavier than the fused SDPA/flash kernels;
+            turn it on only for attention-pattern analysis or intervention.
 
     Example:
         model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
@@ -71,6 +76,7 @@ class MuranoModel:
         model_id: str,
         device_map: str = "auto",
         dtype: TorchDtype = bfloat16,
+        enable_attention_probs: bool = False,
     ):
         self.model_id = model_id
 
@@ -90,6 +96,7 @@ class MuranoModel:
                 device_map=device_map,
                 dtype=dtype,
                 dispatch=True,
+                enable_attention_probs=enable_attention_probs,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to load model {model_id}: {e}") from e
@@ -205,6 +212,83 @@ class MuranoModel:
         :meth:`project_on_vocab`; used by attribution to freeze the norm scale.
         """
         return self._lm.ln_final
+
+    @property
+    def attn_probs_available(self) -> bool:
+        """Whether per-head attention weights can be read/written.
+
+        True only when the model was loaded with
+        ``enable_attention_probs=True`` and nnterp validated the pattern source
+        for this architecture.
+        """
+        return bool(self._lm.attn_probs_available)
+
+    @property
+    def attention_probabilities(self):
+        """nnterp accessor for the per-head softmax attention weights.
+
+        Inside a :attr:`trace`, ``model.attention_probabilities[layer]`` reads
+        the ``[batch, n_heads, query, key]`` pattern (call ``.save()`` to keep
+        it), and ``model.attention_probabilities[layer] = tensor`` overwrites it
+        so an intervention flows to the output. Requires
+        ``enable_attention_probs=True`` at load; see :meth:`require_attention_probs`.
+        """
+        return self._lm.attention_probabilities
+
+    def require_attention_probs(self) -> None:
+        """Raise if attention weights were not enabled at load.
+
+        Raises:
+            RuntimeError: If the model was loaded without
+                ``enable_attention_probs=True``, so no attention-pattern hook
+                exists to read or write.
+        """
+        if not self.attn_probs_available:
+            raise RuntimeError(
+                f"Attention patterns are unavailable for {self.model_id!r}: load "
+                f"with MuranoModel(..., enable_attention_probs=True) to read or "
+                f"intervene on per-head attention weights."
+            )
+
+    def forward_logits_attention(
+        self, tokens: Any, edits: dict[int, tuple[Tensor, Tensor]]
+    ) -> Tensor:
+        """Run a forward pass overwriting per-head attention weights, return logits.
+
+        The attention-pattern analogue of :meth:`forward_logits`: it edits the
+        per-head softmax weights (which :meth:`forward_logits` cannot reach)
+        through nnterp's settable :attr:`attention_probabilities` accessor, then
+        reads the model's output logits under that intervention.
+
+        Each layer's weights become ``pattern * (1 - mask) + replacement * mask``,
+        so only the masked heads and query positions change and every other head,
+        position, and layer keeps its clean pattern.
+
+        Args:
+            tokens: Tokenizer output (or anything :attr:`trace` accepts) to run.
+            edits: ``{layer: (replacement, mask)}``; both tensors must already sit
+                on :attr:`device` and broadcast to the ``[batch, n_heads, query,
+                key]`` pattern.
+
+        Returns:
+            Output logits ``[batch, seq, vocab_size]`` on CPU as float32.
+        """
+        self.require_attention_probs()
+        # Match the replacement/mask to the model's compute dtype and device: the
+        # attention weights are the model's native dtype (e.g. bf16), so blending
+        # float32 tensors in would raise a dtype mismatch in the value matmul.
+        param = next(self.hf_model.parameters())
+        with self.trace(tokens):
+            for layer, (replacement, mask) in edits.items():
+                pattern = self.attention_probabilities[layer]
+                mask = mask.to(device=param.device, dtype=param.dtype)
+                replacement = replacement.to(device=param.device, dtype=param.dtype)
+                self.attention_probabilities[layer] = (
+                    pattern * (1 - mask) + replacement * mask
+                )
+            saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
+        value = saved.value if hasattr(saved, "value") else saved
+        return value.detach().float().cpu()
 
     def forward_logits(
         self,

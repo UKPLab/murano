@@ -132,3 +132,86 @@ def gpt2_model(tmp_path_factory):
     model_dir = tmp_path_factory.mktemp("tiny_gpt2")
     _build_tiny_gpt2(model_dir)
     return MuranoModel(str(model_dir), device_map="cpu", dtype=torch.float32)
+
+
+@pytest.fixture(scope="session")
+def murano_model_attn(tmp_path_factory):
+    """A tiny Llama MuranoModel with attention weights enabled (eager attention)."""
+    from murano.model import MuranoModel
+
+    model_dir = tmp_path_factory.mktemp("tiny_model_attn")
+    _build_tiny_local_model(model_dir)
+    return MuranoModel(
+        str(model_dir),
+        device_map="cpu",
+        dtype=torch.float32,
+        enable_attention_probs=True,
+    )
+
+
+@pytest.fixture(scope="session")
+def gpt2_model_attn(tmp_path_factory):
+    """A tiny GPT-2 MuranoModel with attention weights enabled (eager attention)."""
+    from murano.model import MuranoModel
+
+    model_dir = tmp_path_factory.mktemp("tiny_gpt2_attn")
+    _build_tiny_gpt2(model_dir)
+    return MuranoModel(
+        str(model_dir),
+        device_map="cpu",
+        dtype=torch.float32,
+        enable_attention_probs=True,
+    )
+
+
+@pytest.fixture(scope="session")
+def murano_model_attn_bf16(tmp_path_factory):
+    """A tiny Llama with attention weights enabled, loaded in bfloat16.
+
+    Covers the intervention's dtype handling: the attention weights are the
+    model's native dtype, so a float32 replacement must be coerced before the
+    blend.
+    """
+    from murano.model import MuranoModel
+
+    model_dir = tmp_path_factory.mktemp("tiny_model_attn_bf16")
+    _build_tiny_local_model(model_dir)
+    return MuranoModel(
+        str(model_dir),
+        device_map="cpu",
+        dtype=torch.bfloat16,
+        enable_attention_probs=True,
+    )
+
+
+def _build_tiny_mqa_model(path: Path) -> None:
+    """Build a tiny multi-query Llama (num_key_value_heads=1) for GQA coverage."""
+    _build_word_tokenizer(path)
+    config = LlamaConfig(
+        vocab_size=len(_VOCAB),
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=1,
+        max_position_embeddings=64,
+        pad_token_id=_VOCAB["<pad>"],
+        bos_token_id=_VOCAB["<s>"],
+        eos_token_id=_VOCAB["</s>"],
+    )
+    LlamaForCausalLM(config).save_pretrained(path)
+
+
+@pytest.fixture(scope="session")
+def murano_model_attn_mqa(tmp_path_factory):
+    """A tiny multi-query Llama with attention weights enabled (n_kv_heads=1)."""
+    from murano.model import MuranoModel
+
+    model_dir = tmp_path_factory.mktemp("tiny_model_attn_mqa")
+    _build_tiny_mqa_model(model_dir)
+    return MuranoModel(
+        str(model_dir),
+        device_map="cpu",
+        dtype=torch.float32,
+        enable_attention_probs=True,
+    )
