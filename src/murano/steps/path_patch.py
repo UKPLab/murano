@@ -21,6 +21,12 @@ For senders ``S`` and receiver ``R``, with ``base`` = the run to measure and
    ``base`` once more with ``R`` patched to its step-3 value and everything
    downstream of ``R`` free, and read the logits.
 
+``R`` is a residual-stream node, or a specific head's query/key/value input (a
+``Node(layer, "self_attn", head=h, side=Q|K|V)``): the latter isolates edges into a
+head, such as the S-inhibition heads writing to a name mover's query in IOI. For a
+Q/K/V receiver, step 3 captures the head's projection output and step 4 patches it,
+so the model's own rotary, softmax, and downstream layers recompute from it.
+
 Freezing head *outputs* (the attention output projection's per-head input) plus MLP
 outputs is equivalent to freezing the reference's q/k/v and matches what murano can
 write. The default direction (base = clean ``prompts``, source = corrupt
@@ -35,7 +41,7 @@ uses; it is independent of the nnsight tracing layer.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from torch import Tensor, arange, zeros  # pyright: ignore[reportPrivateImportUsage]
 
@@ -50,9 +56,11 @@ from murano.nodes import (
     Edge,
     Node,
     NodeSet,
+    Side,
 )
 from murano.results import Results
 from murano.steps.ablate import _coerce_targets
+from murano.steps.attention import _projection_weight
 from murano.steps.base import Step
 from murano.steps.metrics import _answer_positions
 
@@ -108,6 +116,63 @@ def _group_senders(nodes: list[Node]) -> tuple[dict[int, list[int]], set[int]]:
     return attn_senders, mlp_senders
 
 
+def _receiver_slot(model: ModelBackend, receiver: Node) -> tuple[Any, int, int]:
+    """Return ``(module, col_start, col_end)`` locating a head's Q/K/V activation.
+
+    The receiver head's query, key, or value is a contiguous column range on the
+    output of the attention module's projection: the separate query/key/value
+    projection (``self_attn.q_proj``/``k_proj``/``v_proj``) when they exist, or the
+    fused ``c_attn`` (GPT-2), where query, key and value are concatenated in that
+    order. Slicing the projection output means the receiver is the pre-rotary q/k
+    (the standard "path patch into a head's query" seam); the model's own rotary,
+    softmax, and downstream layers then run on the patched value.
+
+    On a grouped-query model a key or value receiver resolves to the shared
+    key/value head (the query head's kv group), so patching it affects every query
+    head in that group.
+
+    Args:
+        model: Model backend to resolve the attention module from.
+        receiver: A ``Node(layer, "self_attn", head=h, side=Q|K|V)`` receiver.
+
+    Returns:
+        The projection module to hook and the ``[col_start, col_end)`` slice of its
+        output holding the receiver head's ``head_dim`` activations.
+
+    Raises:
+        NotImplementedError: If the architecture exposes neither separate q/k/v
+            projections nor a contiguous fused ``c_attn`` (e.g. GPT-NeoX interleaves
+            q/k/v in a single ``query_key_value``).
+    """
+    head_dim = model.head_dim
+    head, side = receiver.head, receiver.side
+    # The caller only reaches here for a validated Q/K/V receiver; assert the
+    # invariant so the head/side arithmetic below is type-narrowed.
+    assert head is not None and side is not None
+    attn = model.resolve_module(receiver.layer, SELF_ATTN)._module  # pyright: ignore[reportAttributeAccessIssue]
+
+    if hasattr(attn, "q_proj"):
+        if side == Side.Q:
+            return attn.q_proj, head * head_dim, (head + 1) * head_dim
+        proj = attn.k_proj if side == Side.K else attn.v_proj
+        n_kv_heads = _projection_weight(proj).shape[0] // head_dim
+        kv_head = head // (model.n_heads // n_kv_heads)
+        return proj, kv_head * head_dim, (kv_head + 1) * head_dim
+    if hasattr(attn, "c_attn"):
+        # Fused q|k|v in that order; each block is n_heads*head_dim wide. The only
+        # fused-c_attn architecture (GPT-2) is multi-head, so key/value need no
+        # kv-group remap and the block width always equals d_model.
+        block = {Side.Q: 0, Side.K: 1, Side.V: 2}[side]
+        base = block * model.n_heads * head_dim + head * head_dim
+        return attn.c_attn, base, base + head_dim
+    raise NotImplementedError(
+        "path patching into a head's Q/K/V needs separate q/k/v projections "
+        "(self_attn.q_proj/k_proj/v_proj) or a contiguous fused c_attn (GPT-2 "
+        "style); this architecture's attention module exposes neither (e.g. "
+        "GPT-NeoX interleaves q/k/v in a single query_key_value)."
+    )
+
+
 class PathPatch(Step):
     """Path-patch senders into a receiver and write the resulting logits.
 
@@ -134,10 +199,12 @@ class PathPatch(Step):
             (its source is the sender, its dest the receiver). Each sender is an
             attention head (``Node(layer, "self_attn", head=h)``) or an MLP
             (``Node(layer, "mlp")``).
-        receiver: The receiving site, a residual-stream ``Node(layer,
-            "resid_post")``. Defaults to the final residual (the last layer). Only
-            residual-stream receivers are supported; a head/side or component-output
-            receiver raises.
+        receiver: The receiving site. A residual-stream ``Node(layer,
+            "resid_post")`` (default: the final residual, the last layer), or a
+            head's query/key/value input ``Node(layer, "self_attn", head=h,
+            side=Q|K|V)`` to path-patch into that head's Q/K/V (e.g. an S-inhibition
+            head into a name mover's query). The output side (O) is a head's output,
+            addressable only as a sender; an MLP or side-less head receiver raises.
         base_key: Results key of the batch to measure (default ``prompts``).
         source_key: Results key of the batch supplying sender activations (default
             ``corrupt_prompts``).
@@ -152,10 +219,12 @@ class PathPatch(Step):
 
     Raises:
         ValueError: If ``senders`` is empty or malformed, a sender/receiver layer
-            or sender head is out of range, both an ``Edge`` and a ``receiver`` are
-            given, or the base and source prompts are not token-length-matched per
-            pair.
-        NotImplementedError: If ``receiver`` is not a residual-stream site.
+            or sender/receiver head is out of range, a per-node receiver position is
+            given, both an ``Edge`` and a ``receiver`` are given, or the base and
+            source prompts are not token-length-matched per pair.
+        NotImplementedError: If ``receiver`` is neither a residual-stream site nor a
+            head's Q/K/V input, or if a head's Q/K/V receiver is requested on an
+            architecture with interleaved fused q/k/v (e.g. GPT-NeoX).
     """
 
     def __init__(
@@ -186,22 +255,30 @@ class PathPatch(Step):
             if receiver is None
             else Node.coerce(receiver)
         )
-        if (
-            receiver_node.module != RESID_POST
-            or receiver_node.head is not None
-            or receiver_node.side is not None
-        ):
-            raise NotImplementedError(
-                f"PathPatch supports residual-stream receivers "
-                f"(Node(layer, {RESID_POST!r})); component-output and head/side "
-                f"receivers (e.g. a head's value input) are not yet supported. "
-                f"Got {receiver_node}."
+        # Token selection is the step's positions= argument; a per-node receiver
+        # position would be silently ignored (as it is for senders), so reject it.
+        if receiver_node.position is not None:
+            raise ValueError(
+                f"per-node receiver position is out of scope; use the step's "
+                f"positions= argument instead. Got {receiver_node}."
             )
+        self._receiver_kind = self._classify_receiver(receiver_node)
         # Catch out-of-range layers/heads here rather than as an opaque IndexError
         # (or a silently dropped sender) deep in the forward passes.
         self._check_bounds(model, receiver_node)
         self.receiver = receiver_node
-        self._receiver_is_final = receiver_node.layer == model.n_layers - 1
+        # Resolve the Q/K/V slot now so an unsupported architecture (interleaved
+        # fused q/k/v) fails at construction, not mid-run, and is resolved once.
+        self._recv_slot = (
+            _receiver_slot(model, receiver_node)
+            if self._receiver_kind == "qkv"
+            else None
+        )
+        # A head's Q/K/V receiver always has the softmax and everything downstream
+        # to recompute, so it never short-circuits to the frozen run's logits.
+        self._receiver_is_final = (
+            self._receiver_kind == "resid" and receiver_node.layer == model.n_layers - 1
+        )
 
         self.model = model
         self.base_key = base_key
@@ -215,18 +292,54 @@ class PathPatch(Step):
         self.writes = [logits_key, mask_key]
         self.write_types = {logits_key: Tensor, mask_key: Tensor}
 
+    @staticmethod
+    def _classify_receiver(receiver: Node) -> str:
+        """Return the receiver kind, ``"resid"`` or ``"qkv"``.
+
+        Raises:
+            NotImplementedError: If ``receiver`` is neither a bare residual-stream
+                node nor a head's Q/K/V input.
+        """
+        if (
+            receiver.module == RESID_POST
+            and receiver.head is None
+            and receiver.side is None
+        ):
+            return "resid"
+        if (
+            receiver.module == SELF_ATTN
+            and receiver.head is not None
+            and receiver.side in (Side.Q, Side.K, Side.V)
+        ):
+            return "qkv"
+        raise NotImplementedError(
+            f"PathPatch receivers are a residual-stream node "
+            f"(Node(layer, {RESID_POST!r})) or a head's query/key/value input "
+            f"(Node(layer, {SELF_ATTN!r}, head=h, side=Q|K|V)). The output side (O) "
+            f"is the head's output, addressable only as a sender. Got {receiver}."
+        )
+
     def _check_bounds(self, model: ModelBackend, receiver: Node) -> None:
         """Reject layers/heads outside the model's range with a clear error.
 
         Raises:
-            ValueError: If the receiver layer, a sender layer, or a sender head is
-                out of range for ``model``.
+            ValueError: If the receiver layer or head, a sender layer, or a sender
+                head is out of range for ``model``.
         """
         n_layers, n_heads = model.n_layers, model.n_heads
         if receiver.layer >= n_layers:
             raise ValueError(
                 f"receiver layer {receiver.layer} is out of range for a "
                 f"{n_layers}-layer model."
+            )
+        if (
+            self._receiver_kind == "qkv"
+            and receiver.head is not None
+            and receiver.head >= n_heads
+        ):
+            raise ValueError(
+                f"receiver head {receiver.head} is out of range for a "
+                f"{n_heads}-head model."
             )
         for layer, heads in self.attn_senders.items():
             if layer >= n_layers:
@@ -436,12 +549,14 @@ class PathPatch(Step):
 
         Registers torch hooks that replace every o_proj input with its frozen
         tensor, freeze MLP outputs when ``freeze_mlps`` else inject any MLP sender
-        into the recomputed output, and capture the receiver's residual (unless the
-        receiver is the final residual, where the logits are the result).
+        into the recomputed output, and capture the receiver: its residual for a
+        residual receiver, or its head's Q/K/V activation for a Q/K/V receiver
+        (unless the receiver is the final residual, where the logits are the result).
 
         Returns:
             A pair ``(logits, captured)``: the forward logits, and the captured
-            receiver residual ``[B, S, d]`` (or None for the final-residual case).
+            receiver value (residual ``[B, S, d]`` or head Q/K/V ``[B, S, head_dim]``;
+            None for the final-residual case).
         """
         captured: dict[str, Tensor] = {}
         handles = []
@@ -473,6 +588,13 @@ class PathPatch(Step):
             out = output[0] if isinstance(output, tuple) else output
             captured["r"] = out.detach().clone()
 
+        def capture_qkv(start, end):
+            def hook(module, args, output):
+                out = output[0] if isinstance(output, tuple) else output
+                captured["r"] = out[:, :, start:end].detach().clone()
+
+            return hook
+
         for layer in frozen_attn:
             proj = self.model.attn_out_proj(layer, SELF_ATTN)._module  # pyright: ignore[reportAttributeAccessIssue]
             handles.append(proj.register_forward_pre_hook(freeze_attn(layer)))
@@ -484,7 +606,11 @@ class PathPatch(Step):
             for layer in self.mlp_senders:
                 mod = self.model.resolve_module(layer, MLP)._module  # pyright: ignore[reportAttributeAccessIssue]
                 handles.append(mod.register_forward_hook(inject_mlp(layer)))
-        if not self._receiver_is_final:
+        if self._receiver_kind == "qkv":
+            assert self._recv_slot is not None
+            module, start, end = self._recv_slot
+            handles.append(module.register_forward_hook(capture_qkv(start, end)))
+        elif not self._receiver_is_final:
             recv = self.model.layer(self.receiver.layer)._module  # pyright: ignore[reportAttributeAccessIssue]
             handles.append(recv.register_forward_hook(capture_receiver))
 
@@ -495,25 +621,57 @@ class PathPatch(Step):
                 handle.remove()
         return logits, captured.get("r")
 
-    def _run_patched_receiver(self, tokens, captured, pos_idx):
-        """Run the base batch with the receiver residual patched, nothing frozen.
+    @staticmethod
+    def _swap_qkv_slot(output, captured, start, end, pos_idx):
+        """Return ``output`` with columns ``[start:end)`` set to ``captured``.
 
-        Transplants the frozen run's receiver residual into an otherwise-normal
+        ``output`` is a projection output ``[B, S, F]`` whose ``[start:end)`` columns
+        hold the receiver head's Q/K/V. ``pos_idx`` selects one position per example,
+        or None for all positions. Does not mutate ``output``.
+        """
+        edited = output.clone()
+        value = captured.to(edited.device, edited.dtype)
+        if pos_idx is None:
+            edited[:, :, start:end] = value
+            return edited
+        rows = arange(edited.shape[0], device=edited.device)
+        cols = pos_idx.to(edited.device)
+        edited[rows, cols, start:end] = value[rows, cols]
+        return edited
+
+    def _run_patched_receiver(self, tokens, captured, pos_idx):
+        """Run the base batch with the receiver patched, nothing frozen.
+
+        Transplants the frozen run's receiver value (the residual for a residual
+        receiver, or the head's Q/K/V for a Q/K/V receiver) into an otherwise-normal
         forward pass, so everything downstream of the receiver recomputes from the
         direct-path value, and returns the logits.
         """
         handles = []
 
-        def patch(module, args, output):
-            hidden = output[0] if isinstance(output, tuple) else output
-            edited = hidden.clone()
-            self._swap_positions(edited, captured, None, pos_idx)
-            if isinstance(output, tuple):
-                return (edited, *output[1:])
-            return edited
+        if self._receiver_kind == "qkv":
+            assert self._recv_slot is not None
+            module, start, end = self._recv_slot
 
-        recv = self.model.layer(self.receiver.layer)._module  # pyright: ignore[reportAttributeAccessIssue]
-        handles.append(recv.register_forward_hook(patch))
+            def patch_qkv(module, args, output):
+                out = output[0] if isinstance(output, tuple) else output
+                edited = self._swap_qkv_slot(out, captured, start, end, pos_idx)
+                return (edited, *output[1:]) if isinstance(output, tuple) else edited
+
+            handles.append(module.register_forward_hook(patch_qkv))
+        else:
+
+            def patch(module, args, output):
+                hidden = output[0] if isinstance(output, tuple) else output
+                edited = hidden.clone()
+                self._swap_positions(edited, captured, None, pos_idx)
+                if isinstance(output, tuple):
+                    return (edited, *output[1:])
+                return edited
+
+            recv = self.model.layer(self.receiver.layer)._module  # pyright: ignore[reportAttributeAccessIssue]
+            handles.append(recv.register_forward_hook(patch))
+
         try:
             logits = self.model.forward_logits(tokens, fn=None)
         finally:
