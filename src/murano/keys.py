@@ -47,3 +47,7 @@ CORRUPT_MASK: Final = "corrupt_mask"
 # Default keys for the cross-run patched forward pass (the Patch step).
 PATCHED_LOGITS: Final = "patched_logits"
 PATCHED_MASK: Final = "patched_mask"
+
+# Default keys for the direct-path patched forward pass (the PathPatch step).
+PATH_PATCHED_LOGITS: Final = "path_patched_logits"
+PATH_PATCHED_MASK: Final = "path_patched_mask"
