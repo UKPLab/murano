@@ -57,7 +57,7 @@ notebook = [
     "ipykernel>=6.29",
 ]
 all = [
-    "murano-interp[probe,data,plot,sae]",
+    "murano-interp[probe,data,plot,sae,notebook]",
 ]
 
 [tool.hatch.version]

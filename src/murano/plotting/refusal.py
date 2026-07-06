@@ -131,6 +131,7 @@ def plot_refusal_heatmap(
     refusal_phrases: list[str] | None = None,
     save_path: str | Path | None = None,
     max_prompts: int = 30,
+    context_window: int = 300,
 ) -> None:
     """Plot a per-prompt refusal heatmap (compliant vs refusal).
 
@@ -146,6 +147,8 @@ def plot_refusal_heatmap(
             ``murano.evaluation.REFUSAL_PHRASES`` when None.
         save_path: If provided, write the figure to this path.
         max_prompts: Truncate the plot to the first ``max_prompts`` rows.
+        context_window: Leading characters of each generation to scan for a
+            refusal phrase.
     """
     import matplotlib.pyplot as plt
     import matplotlib.colors as mcolors
@@ -154,20 +157,21 @@ def plot_refusal_heatmap(
 
     sns = _setup()
 
-    from murano.evaluation import REFUSAL_PHRASES
+    from murano.evaluation import REFUSAL_PHRASES, is_refusal
 
     if refusal_phrases is None:
         refusal_phrases = REFUSAL_PHRASES
-
-    def is_refusal(text: str) -> bool:
-        return any(p in text.lower()[:300] for p in refusal_phrases)
 
     n = min(len(prompts), max_prompts)
     matrix = np.zeros((n, 2))
 
     for i in range(n):
-        matrix[i, 0] = 1.0 if is_refusal(clean_generations[i]) else 0.0
-        matrix[i, 1] = 1.0 if is_refusal(modified_generations[i]) else 0.0
+        matrix[i, 0] = float(
+            is_refusal(clean_generations[i], refusal_phrases, context_window)
+        )
+        matrix[i, 1] = float(
+            is_refusal(modified_generations[i], refusal_phrases, context_window)
+        )
 
     prompt_labels = [p[:60] + "..." if len(p) > 60 else p for p in prompts[:n]]
 

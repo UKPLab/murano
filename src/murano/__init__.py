@@ -49,6 +49,10 @@ if TYPE_CHECKING:
     from murano.results import Results
     from murano.steps.attention import AttentionResult
     from murano.steps.base import Step
+    from murano.steps.logit_attribution import (
+        LogitAttribution,
+        LogitAttributionResult,
+    )
     from murano.steps.logit_lens import LogitLens, LogitLensResult
     from murano.steps.logits import Logits
     from murano.steps.sae import (
@@ -84,6 +88,11 @@ _LAZY_ATTRS = {
     "Pipeline": ("murano.pipeline", "Pipeline"),
     "Results": ("murano.results", "Results"),
     "Step": ("murano.steps.base", "Step"),
+    "LogitAttribution": ("murano.steps.logit_attribution", "LogitAttribution"),
+    "LogitAttributionResult": (
+        "murano.steps.logit_attribution",
+        "LogitAttributionResult",
+    ),
     "LogitLens": ("murano.steps.logit_lens", "LogitLens"),
     "LogitLensResult": ("murano.steps.logit_lens", "LogitLensResult"),
     "AttentionResult": ("murano.steps.attention", "AttentionResult"),
@@ -132,6 +141,8 @@ __all__ = [
     "Pipeline",
     "Results",
     "Step",
+    "LogitAttribution",
+    "LogitAttributionResult",
     "LogitLens",
     "LogitLensResult",
     "AttentionResult",

@@ -17,8 +17,8 @@ is a genuinely different object and gets its own type composed on a
 This module is deliberately free of any heavy dependency (no torch): it is the
 address vocabulary, not the resolver that turns an address into a live hook. That
 resolution (head and side slicing, fused vs split QKV, grouped-query attention,
-position selection) is a separate concern handled by the model, much of it still
-future work.
+position selection) is a separate concern handled by the model and the steps
+that consume nodes, such as attention analysis and path patching.
 
 Canonical module names are the residual-stream points :data:`RESID_PRE`,
 :data:`RESID_MID`, :data:`RESID_POST` and the sub-block outputs :data:`MLP` and
@@ -366,8 +366,8 @@ def _parse_int(value: str, name: str, raw: str) -> int:
 class Edge:
     """A directed connection between two component addresses.
 
-    Expresses path-patching / circuit edges. Construction and serialization
-    land now; the engine that consumes edges is later work.
+    Expresses path-patching / circuit edges: the ``PathPatch`` step accepts an
+    edge as its (sender, receiver) pair.
 
     Attributes:
         source: Upstream :class:`Node`.

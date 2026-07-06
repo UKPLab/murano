@@ -8,6 +8,7 @@ from murano.plotting.refusal import (
 )
 from murano.plotting.logit_lens import plot_logit_lens
 from murano.plotting.logit_attribution import plot_logit_attribution
+from murano.plotting.probing import plot_probe_accuracy
 from murano.plotting.attention import plot_attention_pattern, plot_head_matrix
 from murano.plotting.plotly_utils import (
     plot_heatmap,
@@ -25,6 +26,7 @@ __all__ = [
     "save_figure",
     "plot_logit_lens",
     "plot_logit_attribution",
+    "plot_probe_accuracy",
     "plot_attention_pattern",
     "plot_head_matrix",
 ]

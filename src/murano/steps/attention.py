@@ -370,8 +370,10 @@ def _projection_weight(module: Any) -> Tensor:
     (and other OpenAI-style models) stores the transpose ``[in, out]`` and applies
     ``x @ weight``, so it is transposed to a common orientation.
     """
+    from transformers.pytorch_utils import Conv1D
+
     weight = module.weight.detach().float()
-    if type(module).__name__ == "Conv1D":
+    if isinstance(module, Conv1D):
         return weight.t()
     return weight
 
