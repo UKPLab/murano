@@ -394,8 +394,8 @@ def _head_ov_weights(
             ``query_key_value``).
     """
     head_dim = model.head_dim
-    attn = model.resolve_module(layer, SELF_ATTN)._module  # pyright: ignore[reportAttributeAccessIssue]
-    w_o = _projection_weight(model.attn_out_proj(layer, SELF_ATTN)._module)  # pyright: ignore[reportAttributeAccessIssue]
+    attn = model.raw_module(layer, SELF_ATTN)
+    w_o = _projection_weight(model.raw_attn_out_proj(layer, SELF_ATTN))
     w_o_head = w_o[:, head * head_dim : (head + 1) * head_dim]  # [d, head_dim]
 
     if hasattr(attn, "v_proj"):
