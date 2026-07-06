@@ -566,7 +566,7 @@ class TestComplianceRate:
         assert results["eval"].clean_compliance == 0.0
         assert results["eval"].ablated_compliance == 0.0
 
-    def test_works_with_weight_ablation_result(self):
+    def test_compliance_rate_on_ablation_result(self):
         """ComplianceRate should work with WeightAblationResult too,
         since WeightAblation writes an InterveneResult to results['intervene']."""
         r = Results()
@@ -734,7 +734,7 @@ class TestLabeledActivationStore:
 
     def test_labels_shape(self, labeled_activation_store):
         store = labeled_activation_store
-        n_total = sum(store.activations[(0, "residual")].shape[0] for _ in [None])
+        n_total = store.activations[(0, "residual")].shape[0]
         assert store.labels.shape == (n_total,)
         assert store.labels.dtype == torch.long
 

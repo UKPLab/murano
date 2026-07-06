@@ -47,7 +47,7 @@ from murano.nodes import (
 from murano.results import Results
 from murano.steps.base import Step
 from murano.steps.metrics import _answer_positions
-from murano.steps.record import _unwrap_traced
+from murano._proxy import unwrap_traced
 
 if TYPE_CHECKING:
     from murano.backend import ModelBackend
@@ -570,7 +570,7 @@ class Ablate(Step):
                             layer, module
                         ).output.save()
             for layer in layers:
-                value = _unwrap_traced(saved[layer])
+                value = unwrap_traced(saved[layer])
                 if self.per_head:
                     b, s, d = value.shape
                     value = value.reshape(b, s, self.model.n_heads, self.model.head_dim)

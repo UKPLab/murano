@@ -38,7 +38,7 @@ from murano.results import Results
 from murano.steps.ablate import _coerce_targets
 from murano.steps.base import Step
 from murano.steps.metrics import _answer_positions
-from murano.steps.record import _unwrap_traced
+from murano._proxy import unwrap_traced
 
 if TYPE_CHECKING:
     from murano.backend import ModelBackend
@@ -69,7 +69,7 @@ def _capture_patterns(
         for layer in sorted(layers):
             saved[layer] = model.attention_probabilities[layer].save()
     return {
-        layer: _unwrap_traced(saved[layer]).detach().float().cpu() for layer in layers
+        layer: unwrap_traced(saved[layer]).detach().float().cpu() for layer in layers
     }
 
 

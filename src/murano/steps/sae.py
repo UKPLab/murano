@@ -66,6 +66,7 @@ from torch import (  # pyright: ignore[reportPrivateImportUsage]
 
 from murano import keys
 from murano._optional import require_optional
+from murano._proxy import unwrap_traced
 from murano.artifacts import PromptBatch
 from murano.logging import logger
 from murano.nodes import Node
@@ -86,13 +87,6 @@ def _parse_layer(s: str | None) -> int | None:
         return None
     m = _LAYER_RE.search(s)
     return int(m.group(1)) if m else None
-
-
-def _unwrap(saved: Any) -> Tensor:
-    val = saved.value if hasattr(saved, "value") else saved
-    if isinstance(val, tuple):
-        val = val[0]
-    return val
 
 
 def _resolve_hook(sae_model: SAEModel) -> tuple[int, str]:
@@ -223,9 +217,9 @@ def _capture_residual(
             saved["main"] = layer.input.save()
             saved["extra"] = model.resolve_module(hook_layer, "self_attn").output.save()
 
-    residual = _unwrap(saved["main"])
+    residual = unwrap_traced(saved["main"])
     if "extra" in saved:
-        residual = residual + _unwrap(saved["extra"])
+        residual = residual + unwrap_traced(saved["extra"])
     return residual
 
 

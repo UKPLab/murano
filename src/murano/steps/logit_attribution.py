@@ -36,7 +36,7 @@ from murano.steps.metrics import (
     _check_token_ids,
     _gather_answer,
 )
-from murano.steps.record import _unwrap_traced
+from murano._proxy import unwrap_traced
 
 if TYPE_CHECKING:
     from murano.backend import ModelBackend
@@ -256,19 +256,19 @@ class LogitAttribution(Step):
         resid_saved: dict[str, Any] = {}
         with self.model.trace(tokens):
             resid_saved["r"] = self.model.layer(last).output.save()
-        captured["resid"] = _unwrap_traced(resid_saved["r"]).to(
+        captured["resid"] = unwrap_traced(resid_saved["r"]).to(
             device=device, dtype=model_dtype
         )
 
         # The embedding (pre-layer-0 residual) is captured in its own trace:
         # nnsight rejects saving a layer's input alongside a later layer's output
-        # in one trace as an out-of-order access. _unwrap_traced takes the first
+        # in one trace as an out-of-order access. unwrap_traced takes the first
         # positional arg, i.e. the hidden_states the block runs on.
         if self.include_embed:
             embed_saved: dict[str, Any] = {}
             with self.model.trace(tokens):
                 embed_saved["e"] = self.model.layer(0).input.save()
-            captured["embed"] = _unwrap_traced(embed_saved["e"]).to(
+            captured["embed"] = unwrap_traced(embed_saved["e"]).to(
                 device=device, dtype=model_dtype
             )
 
@@ -281,7 +281,7 @@ class LogitAttribution(Step):
         captured["attn"] = {}
         width = self.model.n_heads * self.model.head_dim
         for layer in self.layers:
-            value = _unwrap_traced(attn_saved[layer])
+            value = unwrap_traced(attn_saved[layer])
             b, s, d = value.shape
             if d != width:
                 raise ValueError(
@@ -302,7 +302,7 @@ class LogitAttribution(Step):
                         layer, MLP
                     ).output.save()
             for layer in self.layers:
-                captured["mlp"][layer] = _unwrap_traced(mlp_saved[layer]).to(
+                captured["mlp"][layer] = unwrap_traced(mlp_saved[layer]).to(
                     device=device, dtype=model_dtype
                 )
         return captured

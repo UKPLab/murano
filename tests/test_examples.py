@@ -96,15 +96,17 @@ def contrastive_dataset():
     )
 
 
-# ── Tests for federico_visualization.py logic ────────────────────────
+# ── Tests for activation_visualization.py logic ────────────────────────
 
 
-class TestFedericoVisualization:
-    """Tests the core logic of the ported federico_visualization example."""
+class TestActivationVisualization:
+    """Tests the core logic of the ported activation_visualization example."""
 
-    def test_plotter_lens_accepts_activation_store(self, model, contrastive_dataset):
+    def test_plotter_lens_accepts_activation_store(
+        self, model, contrastive_dataset, tmp_path
+    ):
         """PlotterLens.observe should accept an ActivationStore from Record."""
-        from examples.federico_visualization import PlotterLens
+        from examples.activation_visualization import PlotterLens
         from sklearn.decomposition import PCA
 
         pipe = Pipeline(
@@ -118,14 +120,14 @@ class TestFedericoVisualization:
 
         plotter = PlotterLens(
             reducer=PCA(n_components=2),
-            save_path="/tmp/test_activation_pca.html",
+            save_path=str(tmp_path / "test_activation_pca.html"),
         )
         # Should not raise
         plotter.observe(store, layer=0, title="Test PCA")
 
     def test_plotter_lens_with_lda(self, model, contrastive_dataset):
         """PlotterLens should work with LDA (supervised reducer)."""
-        from examples.federico_visualization import PlotterLens
+        from examples.activation_visualization import PlotterLens
         from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
         pipe = Pipeline(
