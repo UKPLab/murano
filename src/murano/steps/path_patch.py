@@ -149,7 +149,7 @@ def _receiver_slot(model: ModelBackend, receiver: Node) -> tuple[Any, int, int]:
     # The caller only reaches here for a validated Q/K/V receiver; assert the
     # invariant so the head/side arithmetic below is type-narrowed.
     assert head is not None and side is not None
-    attn = model.resolve_module(receiver.layer, SELF_ATTN)._module  # pyright: ignore[reportAttributeAccessIssue]
+    attn = model.raw_module(receiver.layer, SELF_ATTN)
 
     if hasattr(attn, "q_proj"):
         if side == Side.Q:
@@ -474,10 +474,10 @@ class PathPatch(Step):
             return hook
 
         for layer in attn_layers:
-            proj = self.model.attn_out_proj(layer, SELF_ATTN)._module  # pyright: ignore[reportAttributeAccessIssue]
+            proj = self.model.raw_attn_out_proj(layer, SELF_ATTN)
             handles.append(proj.register_forward_pre_hook(save_attn(layer)))
         for layer in mlp_layers:
-            mod = self.model.resolve_module(layer, MLP)._module  # pyright: ignore[reportAttributeAccessIssue]
+            mod = self.model.raw_module(layer, MLP)
             handles.append(mod.register_forward_hook(save_mlp(layer)))
         try:
             self.model.forward_logits(tokens, fn=None)
@@ -596,22 +596,22 @@ class PathPatch(Step):
             return hook
 
         for layer in frozen_attn:
-            proj = self.model.attn_out_proj(layer, SELF_ATTN)._module  # pyright: ignore[reportAttributeAccessIssue]
+            proj = self.model.raw_attn_out_proj(layer, SELF_ATTN)
             handles.append(proj.register_forward_pre_hook(freeze_attn(layer)))
         if self.freeze_mlps and frozen_mlp is not None:
             for layer in frozen_mlp:
-                mod = self.model.resolve_module(layer, MLP)._module  # pyright: ignore[reportAttributeAccessIssue]
+                mod = self.model.raw_module(layer, MLP)
                 handles.append(mod.register_forward_hook(freeze_mlp(layer)))
         else:
             for layer in self.mlp_senders:
-                mod = self.model.resolve_module(layer, MLP)._module  # pyright: ignore[reportAttributeAccessIssue]
+                mod = self.model.raw_module(layer, MLP)
                 handles.append(mod.register_forward_hook(inject_mlp(layer)))
         if self._receiver_kind == "qkv":
             assert self._recv_slot is not None
             module, start, end = self._recv_slot
             handles.append(module.register_forward_hook(capture_qkv(start, end)))
         elif not self._receiver_is_final:
-            recv = self.model.layer(self.receiver.layer)._module  # pyright: ignore[reportAttributeAccessIssue]
+            recv = self.model.raw_layer(self.receiver.layer)
             handles.append(recv.register_forward_hook(capture_receiver))
 
         try:
@@ -669,7 +669,7 @@ class PathPatch(Step):
                     return (edited, *output[1:])
                 return edited
 
-            recv = self.model.layer(self.receiver.layer)._module  # pyright: ignore[reportAttributeAccessIssue]
+            recv = self.model.raw_layer(self.receiver.layer)
             handles.append(recv.register_forward_hook(patch))
 
         try:

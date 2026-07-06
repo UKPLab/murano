@@ -96,7 +96,7 @@ def _resolve_hook(sae_model: SAEModel) -> tuple[int, str]:
     ``cfg.metadata.hook_layer`` is unset (some releases like gemma-scope do
     not populate it).
     """
-    meta = sae_model._sae.cfg.metadata
+    meta = sae_model.metadata
     hook_name = meta.hook_name
     hook_layer = meta.hook_layer
     if hook_layer is None:
@@ -503,6 +503,12 @@ class SAEModel:
         """SAE width (encoder output dimension)."""
         self._ensure_loaded()
         return int(self._sae.cfg.d_sae)
+
+    @property
+    def metadata(self) -> Any:
+        """SAE config metadata (``hook_name``, ``hook_layer``, and related fields)."""
+        self._ensure_loaded()
+        return self._sae.cfg.metadata
 
     def encode(self, residual: Tensor) -> Tensor:
         """Encode residual ``[N, seq, d_model]`` to SAE codes ``[N, seq, n_features]``."""

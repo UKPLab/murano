@@ -403,7 +403,7 @@ def _stub_model(attn, n_heads, head_dim):
     return SimpleNamespace(
         n_heads=n_heads,
         head_dim=head_dim,
-        resolve_module=lambda layer, module: SimpleNamespace(_module=attn),
+        raw_module=lambda layer, module: attn,
     )
 
 

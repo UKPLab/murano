@@ -186,6 +186,22 @@ class MuranoModel:
             f"none on this architecture."
         )
 
+    def raw_layer(self, idx: int):
+        """Return the raw torch module for decoder layer ``idx``.
+
+        The resolvers above return nnsight proxies for tracing; this returns the
+        module itself, for native ``torch`` hooks or weight access.
+        """
+        return self.layer(idx)._module  # pyright: ignore[reportAttributeAccessIssue]
+
+    def raw_module(self, layer_idx: int, module: str):
+        """Return the raw torch module named ``module`` at ``layer_idx``."""
+        return self.resolve_module(layer_idx, module)._module  # pyright: ignore[reportAttributeAccessIssue]
+
+    def raw_attn_out_proj(self, layer_idx: int, module: str):
+        """Return the raw torch module of the attention output projection."""
+        return self.attn_out_proj(layer_idx, module)._module  # pyright: ignore[reportAttributeAccessIssue]
+
     def project_on_vocab(self, hidden: Tensor) -> Tensor:
         """Project hidden states onto the vocabulary.
 
@@ -548,9 +564,9 @@ class MuranoModel:
         handles = []
         for layer_idx in self._layer_indices(layers):
             for mod_str in module_list:
-                # ._module is the nn.Module the Envoy wraps; a torch hook on it
-                # is independent of nnsight's tracing layer.
-                module = self._resolve_module(self.layer(layer_idx), mod_str)._module  # pyright: ignore[reportAttributeAccessIssue]
+                # A native torch hook on the raw module is independent of
+                # nnsight's tracing layer.
+                module = self.raw_module(layer_idx, mod_str)
                 key = Node(layer_idx, mod_str)
 
                 def hook(module, inputs, output, key=key):

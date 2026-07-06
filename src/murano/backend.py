@@ -10,7 +10,9 @@ Note:
     ``trace``, ``layer``, ``resolve_module``, and ``attn_out_proj`` return
     nnsight-compatible proxy objects, and steps still rely on nnsight proxy
     semantics (``.output.save()``, ``.input.save()``, assigning to
-    ``mod_proxy.output``). A non-nnsight backend would have to reproduce those
+    ``mod_proxy.output``); the ``raw_*`` accessors instead return the underlying
+    ``torch.nn.Module`` for native hook registration and weight reads. A
+    non-nnsight backend would have to reproduce those
     proxy semantics, so this protocol is a prerequisite for backend
     independence, not backend independence itself.
 """
@@ -62,6 +64,22 @@ class ModelBackend(Protocol):
 
     def attn_out_proj(self, layer_idx: int, module: str) -> Any:
         """Return the attention output-projection proxy for per-head capture."""
+        ...
+
+    def raw_layer(self, idx: int) -> Any:
+        """Return the raw ``torch.nn.Module`` for decoder layer ``idx``.
+
+        For native ``torch`` hook registration or weight access, where a step
+        needs the module itself rather than an nnsight proxy.
+        """
+        ...
+
+    def raw_module(self, layer_idx: int, module: str) -> Any:
+        """Return the raw ``torch.nn.Module`` named ``module`` at ``layer_idx``."""
+        ...
+
+    def raw_attn_out_proj(self, layer_idx: int, module: str) -> Any:
+        """Return the raw ``torch.nn.Module`` of the attention output projection."""
         ...
 
     def trace(self, tokens: Any) -> AbstractContextManager[Any]:
