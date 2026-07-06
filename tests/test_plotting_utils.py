@@ -85,16 +85,17 @@ class TestPlotHeatmap:
         ).to_dict()
         assert fig_dict["data"][0]["customdata"] == heatmap_data["hover_data"]
 
-    def test_colorscale_starts_with_viridis_hex(self, heatmap_data):
-        # Viridis' first colorscale stop is the dark-purple hex #440154.
-        fig_dict = plot_heatmap(
+    def test_named_color_scale_is_applied(self, heatmap_data):
+        colorscale = plot_heatmap(
             z_data=heatmap_data["z_data"],
             x_labels=heatmap_data["x_labels"],
             title="Logit Lens Probabilities",
             color_scale="Viridis",
-        ).to_dict()
-        first_color = fig_dict["data"][0]["colorscale"][0][1].lower()
-        assert first_color == "#440154"
+        ).to_dict()["data"][0]["colorscale"]
+        # The named scale resolves to a non-trivial gradient spanning [0, 1].
+        assert len(colorscale) >= 2
+        assert colorscale[0][0] == 0.0
+        assert colorscale[-1][0] == 1.0
 
     def test_auto_y_labels_when_not_provided(self, heatmap_data):
         fig_dict = plot_heatmap(

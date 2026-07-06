@@ -407,13 +407,18 @@ def load_logit_attribution(path: str | Path) -> Any:
     from murano.steps.logit_attribution import LogitAttributionResult
 
     data = json.loads(Path(path).read_text())
+
+    def _restore(value: Any) -> Any:
+        # null is how a non-finite scalar was stored; restore it as nan.
+        return float("nan") if value is None else value
+
     return LogitAttributionResult(
         contributions=data["contributions"],
-        embed_contribution=data["embed_contribution"],
-        other_contribution=data["other_contribution"],
+        embed_contribution=_restore(data["embed_contribution"]),
+        other_contribution=_restore(data["other_contribution"]),
         target=data["target"],
-        total=data["total"],
-        completeness_error=data["completeness_error"],
+        total=_restore(data["total"]),
+        completeness_error=_restore(data["completeness_error"]),
         per_example=data.get("per_example"),
         metadata=data.get("metadata", {}),
     )

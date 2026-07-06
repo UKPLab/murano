@@ -43,7 +43,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from torch import Tensor, arange, zeros  # pyright: ignore[reportPrivateImportUsage]
+from torch import Tensor, arange, tensor, zeros  # pyright: ignore[reportPrivateImportUsage]
 
 from murano import keys
 from murano.artifacts import PromptBatch
@@ -424,11 +424,11 @@ class PathPatch(Step):
         """
         base_lengths = self._natural_lengths(base_prompts)
         source_lengths = self._natural_lengths(source_prompts)
-        if base_lengths != source_lengths:
+        if base_lengths.tolist() != source_lengths.tolist():
             raise ValueError(
                 "PathPatch needs token-length-matched base/source pairs so the "
                 "injected positions align; got mismatched lengths "
-                f"{base_lengths} vs {source_lengths}."
+                f"{base_lengths.tolist()} vs {source_lengths.tolist()}."
             )
         kwargs = {
             "return_tensors": "pt",
@@ -440,12 +440,12 @@ class PathPatch(Step):
         source = self.model.tokenizer(source_prompts, **kwargs)
         return base, source, base["attention_mask"]
 
-    def _natural_lengths(self, prompts) -> list[int]:
+    def _natural_lengths(self, prompts) -> Tensor:
         """Return each prompt's token count with no padding or truncation."""
         encoded = self.model.tokenizer(prompts, return_token_type_ids=False)[
             "input_ids"
         ]
-        return [len(ids) for ids in encoded]
+        return tensor([len(ids) for ids in encoded])
 
     def _capture(self, tokens, attn_layers, mlp_layers):
         """Run one forward pass, caching per-head attention inputs and MLP outputs.

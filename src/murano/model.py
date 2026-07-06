@@ -11,6 +11,7 @@ from torch import dtype as TorchDtype  # pyright: ignore[reportPrivateImportUsag
 from nnterp import StandardizedTransformer
 
 from murano import keys
+from murano._proxy import unwrap_traced
 from murano.logging import logger
 from murano.nodes import (
     RESID_MID,
@@ -296,7 +297,7 @@ class MuranoModel:
                     pattern * (1 - mask) + replacement * mask
                 )
             saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
-        value = saved.value if hasattr(saved, "value") else saved
+        value = unwrap_traced(saved)
         return value.detach().float().cpu()
 
     def forward_logits(
@@ -345,7 +346,7 @@ class MuranoModel:
                 # Inside a trace, nnterp's `.logits` is an nnsight proxy exposing
                 # `.save()`; its stub types it as a plain Tensor, hence the ignore.
                 saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
-            value = saved.value if hasattr(saved, "value") else saved
+            value = unwrap_traced(saved)
             return value.detach().float().cpu()
 
         module_list = [modules] if isinstance(modules, str) else list(modules)
@@ -396,7 +397,7 @@ class MuranoModel:
                             if new is not h:
                                 mod_proxy.output = new  # pyright: ignore[reportArgumentType]
             saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
-        value = saved.value if hasattr(saved, "value") else saved
+        value = unwrap_traced(saved)
         return value.detach().float().cpu()
 
     @property
@@ -597,7 +598,7 @@ class MuranoModel:
             for handle in handles:
                 handle.remove()
 
-        out = output_ids.value if hasattr(output_ids, "value") else output_ids
+        out = unwrap_traced(output_ids)
         generated = out[0, input_len:]
         # nnsight returns a proxy; tokenizer.decode accepts it at runtime.
         return cast(str, self.tokenizer.decode(generated, skip_special_tokens=True))  # pyright: ignore[reportArgumentType]

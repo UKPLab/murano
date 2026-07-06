@@ -21,7 +21,7 @@ from murano.results import Results
 from murano.steps.logit_attribution import LogitAttribution, LogitAttributionResult
 from murano.steps.metrics import _answer_positions
 from murano.steps.prompts import LoadPrompts
-from murano.steps.record import _unwrap_traced
+from murano._proxy import unwrap_traced
 from murano.steps.save import Save
 
 PROMPTS = ["hello world", "good world"]
@@ -53,8 +53,8 @@ def _independent_head_contribution(model, layer, head, correct, incorrect) -> fl
         with model.trace(tokens):
             r_saved["r"] = model.layer(model.n_layers - 1).output.save()
 
-        z = _unwrap_traced(z_saved["z"]).float()
-        r = _unwrap_traced(r_saved["r"]).float()
+        z = unwrap_traced(z_saved["z"]).float()
+        r = unwrap_traced(r_saved["r"]).float()
         true_logits = model.project_on_vocab(
             r.to(next(model.hf_model.parameters()).dtype)
         )

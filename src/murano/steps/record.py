@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 from torch import Tensor, arange, cat, full_like, long, tensor  # pyright: ignore[reportPrivateImportUsage]
 
 from murano import keys
+from murano._proxy import unwrap_traced
 from murano.logging import logger
 from murano.nodes import Node, NodeDict
 from murano.results import Results
@@ -115,24 +116,6 @@ def _batched(iterable, n):
 def _rank_positions(attention_mask: Tensor) -> Tensor:
     """Return token ranks within each sequence, ignoring padding."""
     return attention_mask.cumsum(dim=1) - 1
-
-
-def _unwrap_traced(saved) -> Tensor:
-    """Resolve an nnsight ``.save()`` handle to its underlying tensor.
-
-    Reads ``.value`` when present, then unwraps any tuple nesting (decoder
-    layers return ``(hidden_states, ...)``; module inputs may be ``(args, ...)``)
-    down to the first tensor.
-    """
-    val = saved.value if hasattr(saved, "value") else saved
-    while isinstance(val, tuple):
-        val = val[0]
-    if not isinstance(val, Tensor):
-        raise TypeError(
-            f"Expected a tensor from the traced handle, got {type(val).__name__}; "
-            f"the module's output/input layout is not supported."
-        )
-    return val
 
 
 def _select_token_activations(
@@ -429,7 +412,7 @@ class Record(Step):
 
                 for layer in self.layers:
                     key = Node(layer, mod_str)
-                    output = _unwrap_traced(saved[layer])
+                    output = unwrap_traced(saved[layer])
                     if self.per_head:
                         # [batch, seq, n_heads * head_dim] -> per-head split.
                         if output.dim() != 3:
