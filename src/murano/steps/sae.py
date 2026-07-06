@@ -175,10 +175,35 @@ def _steer_site(hook_layer: int, hook_kind: str) -> tuple[int, str]:
     )
 
 
+def _is_sandwich_norm(model: ModelBackend, hook_layer: int) -> bool:
+    """Whether ``model`` normalizes sublayer outputs before the residual add.
+
+    Sandwich-norm layouts (e.g. Gemma-2/3) apply a norm to the attention output
+    before it is added back, which breaks the plain ``resid_pre + attn_out``
+    reconstruction of resid_mid. They are recognized by the extra feedforward
+    norms their decoder layers carry; if the layout cannot be introspected the
+    model is treated as plain pre-norm.
+    """
+    try:
+        layer = model.hf_model.layers[hook_layer]
+    except (AttributeError, IndexError, TypeError):
+        return False
+    return hasattr(layer, "post_feedforward_layernorm") or hasattr(
+        layer, "pre_feedforward_layernorm"
+    )
+
+
 def _capture_residual(
     model: ModelBackend, tokens: Any, hook_layer: int, hook_kind: str
 ) -> Tensor:
     """Trace ``tokens`` through ``model`` and return the residual the SAE expects."""
+    if hook_kind == "resid_mid" and _is_sandwich_norm(model, hook_layer):
+        raise NotImplementedError(
+            "resid_mid capture is not supported on sandwich-norm architectures "
+            "(e.g. Gemma-2): the attention output is normalized before the "
+            "residual add, so it cannot be reconstructed as resid_pre + attn_out. "
+            "Use a resid_post SAE or a plain pre-norm architecture."
+        )
     saved: dict[str, Any] = {}
     with model.trace(tokens):
         layer = model.layer(hook_layer)
@@ -190,15 +215,11 @@ def _capture_residual(
             saved["main"] = model.resolve_module(hook_layer, "mlp").output.save()
         elif hook_kind == "attn_out":
             saved["main"] = model.resolve_module(hook_layer, "self_attn").output.save()
-        else:  # resid_mid
-            # resid_mid = resid_pre + attn_out (post-attention, pre-MLP).
-            # NOTE: this reconstruction assumes a plain pre-norm residual
-            # (Llama, Mistral, GPT-2). It is WRONG for sandwich-norm models
-            # like Gemma-2, which apply post_attention_layernorm to the
-            # attention output before the residual add, so input + attn_out
-            # does not equal the true resid_mid there. The shipped gemma-scope
-            # SAEs are resid_post, so the tutorials are unaffected; only a
-            # resid_mid SAE on a sandwich-norm model would be miscaptured.
+        else:  # resid_mid (plain pre-norm residual)
+            # resid_mid = resid_pre + attn_out (post-attention, pre-MLP). This
+            # holds for pre-norm architectures (Llama, Mistral, GPT-2); sandwich-
+            # norm layouts normalize attn_out before the residual add and are
+            # rejected above, so this reconstruction is only reached where valid.
             saved["main"] = layer.input.save()
             saved["extra"] = model.resolve_module(hook_layer, "self_attn").output.save()
 

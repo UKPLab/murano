@@ -87,11 +87,56 @@ class ProjectionOperator:
         return (self.P @ W).to(W_data.dtype).to(orig_device)
 
 
+# Weight ablation rewrites named projection matrices in place, so it requires a
+# Llama-family decoder layout: separate q/k/v/o attention projections and a gated
+# (gate/up/down) MLP. Fused-QKV or Conv1D attention (e.g. GPT-2) and gate-less
+# MLPs are out of scope; a general per-architecture resolver is future work.
+_REQUIRED_ATTN_PROJECTIONS = ("q_proj", "k_proj", "v_proj", "o_proj")
+_REQUIRED_MLP_PROJECTIONS = ("gate_proj", "up_proj", "down_proj")
+
+
+def _require_ablatable_architecture(hf_model: Any, n_layers: int) -> None:
+    """Validate that every matrix weight ablation will rewrite is present.
+
+    Runs before any weight is modified so an unsupported architecture fails
+    cleanly and atomically, rather than mutating some matrices and silently
+    skipping (or erroring on) others midway through.
+
+    Raises:
+        NotImplementedError: If the model does not expose the Llama-family
+            module layout weight ablation rewrites.
+    """
+
+    def _fail(detail: str) -> None:
+        raise NotImplementedError(
+            f"WeightAblation requires a Llama-family module layout ({detail}); "
+            "this architecture is not supported. Use the activation-level "
+            "Intervene step, which does not depend on named weight matrices."
+        )
+
+    if not hasattr(hf_model, "embed_tokens"):
+        _fail("no token embedding at hf_model.embed_tokens")
+    if not hasattr(hf_model, "layers"):
+        _fail("no decoder layer stack at hf_model.layers")
+    for layer_idx in range(n_layers):
+        layer = hf_model.layers[layer_idx]
+        attn = getattr(layer, "self_attn", None)
+        for name in _REQUIRED_ATTN_PROJECTIONS:
+            if attn is None or not hasattr(attn, name):
+                _fail(f"layer {layer_idx} attention has no {name}")
+        mlp = getattr(layer, "mlp", None)
+        for name in _REQUIRED_MLP_PROJECTIONS:
+            if mlp is None or not hasattr(mlp, name):
+                _fail(f"layer {layer_idx} MLP has no {name}")
+
+
 def ablate_model_weights(model: ModelBackend, proj_op: ProjectionOperator) -> int:
     """Apply directional projection to all relevant weight matrices in-place.
 
-    Handles embedding, attention (q/k/v read, o_proj write), and
-    dense MLP (gate/up read, down write).
+    Rewrites the token embedding, attention (q/k/v read, o_proj write), and
+    gated MLP (gate/up read, down write) matrices. The architecture is validated
+    up front, so an unsupported layout raises before any weight is modified
+    rather than leaving the model partially ablated.
 
     Args:
         model: MuranoModel to modify.
@@ -99,15 +144,21 @@ def ablate_model_weights(model: ModelBackend, proj_op: ProjectionOperator) -> in
 
     Returns:
         Number of weight matrices modified.
+
+    Raises:
+        NotImplementedError: If the model is not a supported Llama-family layout.
     """
     # hf_model is typed as an nnsight Envoy union; at runtime it exposes
     # the plain transformer parameters we mutate below. Keep the Any binding so
     # the attribute / dtype checks don't fight with nnsight's proxy types.
     hf_model: Any = model.hf_model
+    _require_ablatable_architecture(hf_model, model.n_layers)
     n_modified = 0
 
     with torch.no_grad():
-        # Embedding (reads from residual stream → W @ P)
+        # Token embedding: writes the initial residual stream. Its weight is
+        # [vocab, d_model] with d_model on the output axis, so projecting the
+        # written direction uses the same W @ P form as a residual-reading matrix.
         hf_model.embed_tokens.weight.data = proj_op.project_read(
             hf_model.embed_tokens.weight.data
         )
@@ -128,22 +179,17 @@ def ablate_model_weights(model: ModelBackend, proj_op: ProjectionOperator) -> in
             )
             n_modified += 1
 
-            # Dense MLP
-            if hasattr(layer.mlp, "gate_proj"):
-                layer.mlp.gate_proj.weight.data = proj_op.project_read(
-                    layer.mlp.gate_proj.weight.data
-                )
-                n_modified += 1
-            if hasattr(layer.mlp, "up_proj"):
-                layer.mlp.up_proj.weight.data = proj_op.project_read(
-                    layer.mlp.up_proj.weight.data
-                )
-                n_modified += 1
-            if hasattr(layer.mlp, "down_proj"):
-                layer.mlp.down_proj.weight.data = proj_op.project_write(
-                    layer.mlp.down_proj.weight.data
-                )
-                n_modified += 1
+            # Gated MLP: gate/up read from the residual, down writes back.
+            layer.mlp.gate_proj.weight.data = proj_op.project_read(
+                layer.mlp.gate_proj.weight.data
+            )
+            layer.mlp.up_proj.weight.data = proj_op.project_read(
+                layer.mlp.up_proj.weight.data
+            )
+            layer.mlp.down_proj.weight.data = proj_op.project_write(
+                layer.mlp.down_proj.weight.data
+            )
+            n_modified += 3
 
     return n_modified
 
@@ -207,13 +253,19 @@ class WeightAblation(Step):
         results['steering']: SteeringResult (uses best_layer direction)
 
     Writes to results:
-        results['intervene']: InterveneResult
         results['weight_ablation']: WeightAblationResult
+        results[intervene_key]: InterveneResult, published under the shared
+            'intervene' slot so downstream evaluation and refusal steps consume
+            it exactly as they consume the activation-level Intervene step.
 
     Args:
         model: MuranoModel to generate with.
         save_dir: If provided, save the ablated model in HF format to this directory.
         gen_kwargs: Keyword arguments for generation.
+        intervene_key: Results key for the InterveneResult-shaped generations.
+            Defaults to the shared 'intervene' slot; retarget it when composing
+            this step with the activation-level Intervene step in one pipeline,
+            so the two producers do not overwrite each other.
     """
 
     reads = [keys.PROMPTS, keys.STEERING]
@@ -234,10 +286,19 @@ class WeightAblation(Step):
         model: ModelBackend,
         save_dir: str | None = None,
         gen_kwargs: dict | None = None,
+        intervene_key: str = keys.INTERVENE,
     ):
         self.model = model
         self.save_dir = save_dir
         self.gen_kwargs = gen_kwargs or {"max_new_tokens": 256, "do_sample": False}
+        self.intervene_key = intervene_key
+        self.writes = [keys.WEIGHT_ABLATION, intervene_key]
+
+    def expected_write_types(self, results=None, available_types=None):
+        return {
+            keys.WEIGHT_ABLATION: WeightAblationResult,
+            self.intervene_key: InterveneResult,
+        }
 
     def __call__(self, results: Results) -> Results:
         prompt_batch = results[keys.PROMPTS]
@@ -286,7 +347,7 @@ class WeightAblation(Step):
             },
         )
         results[keys.WEIGHT_ABLATION] = result
-        results[keys.INTERVENE] = InterveneResult(
+        results[self.intervene_key] = InterveneResult(
             clean_generations=clean_gens,
             modified_generations=modified_gens,
             prompts=result.prompts,
