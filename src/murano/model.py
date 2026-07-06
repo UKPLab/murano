@@ -33,20 +33,24 @@ _ATTN_OUT_PROJ_NAMES = ("o_proj", "out_proj", "c_proj", "dense", "wo")
 
 
 def _ensure_downloaded(model_id: str) -> str:
-    """Ensure the model is fully downloaded and return the local snapshot path.
+    """Ensure the model is available locally and return its snapshot path.
 
-    Tries offline first (no API calls) to avoid rate limits.
-    Falls back to online download if the model isn't cached yet.
+    A local directory is used as-is. Otherwise the Hugging Face cache is tried
+    offline first (no API calls, to avoid rate limits) and only falls back to a
+    network download when the snapshot is not already cached.
     """
     local_path = Path(model_id)
-    if local_path.exists():
+    if local_path.is_dir():
+        logger.info("Loading model from local path %s", local_path)
         return str(local_path)
 
     from huggingface_hub import snapshot_download
+    from huggingface_hub.errors import LocalEntryNotFoundError
 
     try:
         return snapshot_download(model_id, local_files_only=True)
-    except Exception:
+    except LocalEntryNotFoundError as exc:
+        logger.debug("%s not in local cache (%s); downloading", model_id, exc)
         return snapshot_download(model_id)
 
 

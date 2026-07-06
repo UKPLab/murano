@@ -92,7 +92,7 @@ def save_generations(
         entry[baseline_label] = intervene_result.clean_generations[i]
         entry[modified_label] = intervene_result.modified_generations[i]
         data.append(entry)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    _write_json(path, data)
     logger.info("Saved %d generation pairs to %s", n, path)
 
 
@@ -118,7 +118,7 @@ def save_eval(eval_result: Any, path: Path) -> None:
         data["clean_compliance"] = eval_result.clean_compliance
     if hasattr(eval_result, "ablated_compliance"):
         data["ablated_compliance"] = eval_result.ablated_compliance
-    path.write_text(json.dumps(data, indent=2))
+    _write_json(path, data)
     logger.info("Saved eval result to %s", path)
 
 
@@ -138,6 +138,34 @@ def _json_finite(obj: Any) -> Any:
     return obj
 
 
+def _write_json(
+    path: Path, data: Any, *, default: Callable[[Any], Any] | None = None
+) -> None:
+    """Serialize ``data`` to ``path`` as portable, strict JSON.
+
+    Non-finite floats (NaN, +/-Inf) are mapped to null via :func:`_json_finite`
+    so the artifact is valid RFC-8259 JSON that any parser can read back, and
+    ``allow_nan=False`` guarantees the non-standard tokens can never slip
+    through. Routing every JSON artifact through this writer keeps that
+    guarantee uniform across the library.
+
+    Args:
+        path: Destination file. Its parent directory must already exist.
+        data: JSON-serializable payload.
+        default: Fallback serializer for objects json cannot encode natively,
+            e.g. ``str`` for pathlib.Path values in metadata.
+    """
+    path.write_text(
+        json.dumps(
+            _json_finite(data),
+            indent=2,
+            ensure_ascii=False,
+            allow_nan=False,
+            default=default,
+        )
+    )
+
+
 def save_evaluation(evaluation: EvaluationResult, path: Path) -> None:
     """Save an EvaluationResult (scalar forward-pass metric) to JSON.
 
@@ -146,18 +174,15 @@ def save_evaluation(evaluation: EvaluationResult, path: Path) -> None:
         path: Output path. Parent directory is created if missing.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Non-finite scores (e.g. a recovered metric over a zero span -> nan) become
-    # JSON null so the file stays valid JSON for any reader; load_evaluation maps
-    # null back to nan. Bare NaN/Infinity tokens are not valid RFC-8259 JSON.
-    data = _json_finite(
-        {
-            "metric_name": evaluation.metric_name,
-            "value": evaluation.value,
-            "per_example": evaluation.per_example,
-            "metadata": evaluation.metadata,
-        }
-    )
-    path.write_text(json.dumps(data, indent=2, allow_nan=False))
+    # Non-finite scores (e.g. a recovered metric over a zero span -> nan) are
+    # written as JSON null by _write_json; load_evaluation maps null back to nan.
+    data = {
+        "metric_name": evaluation.metric_name,
+        "value": evaluation.value,
+        "per_example": evaluation.per_example,
+        "metadata": evaluation.metadata,
+    }
+    _write_json(path, data)
     logger.info("Saved evaluation result to %s", path)
 
 
@@ -229,7 +254,7 @@ def save_probe(probe_result: Any, path: Path) -> None:
         "best_layer": str(probe_result.best_layer),
         "label_names": probe_result.label_names,
     }
-    path.write_text(json.dumps(data, indent=2))
+    _write_json(path, data)
     logger.info("Saved probe result to %s", path)
 
 
@@ -366,7 +391,7 @@ def save_logit_attribution(result: Any, path: Path) -> None:
         ),
         "metadata": result.metadata,
     }
-    path.write_text(json.dumps(data, indent=2))
+    _write_json(path, data)
     logger.info("Saved logit attribution result to %s", path)
 
 
@@ -553,7 +578,7 @@ def save_sae_examples(feature_examples: Any, path: Path) -> None:
         "sae_id": feature_examples.sae_id,
         "k": feature_examples.k,
     }
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    _write_json(path, data)
     logger.info("Saved SAE feature examples to %s", path)
 
 
@@ -604,7 +629,7 @@ def save_sae_labels(feature_labels: Any, path: Path) -> None:
         "release": feature_labels.release,
         "sae_id": feature_labels.sae_id,
     }
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    _write_json(path, data)
     logger.info("Saved SAE feature labels to %s", path)
 
 
@@ -648,7 +673,7 @@ def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
         "raw_prompts": prompt_batch.raw_prompts,
         "metadata": prompt_batch.metadata,
     }
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    _write_json(path, data)
     logger.info("Saved %d prompts to %s", len(prompt_batch), path)
 
 
@@ -665,7 +690,7 @@ def save_metadata(metadata: dict, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     metadata.setdefault("murano_version", __version__)
     metadata.setdefault("timestamp", datetime.now().isoformat())
-    path.write_text(json.dumps(metadata, indent=2, default=str))
+    _write_json(path, metadata, default=str)
 
 
 def _resolve_output_dir(output_dir: str | Path, run_name: str | None) -> Path:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable
 
+from murano.logging import logger
+
 if TYPE_CHECKING:
     from datasets import Dataset as _HFDataset
 
@@ -25,8 +27,8 @@ def _load_dataset_cached(name, config, split) -> "_HFDataset":
     try:
         os.environ["HF_DATASETS_OFFLINE"] = "1"
         ds = load_dataset(name, config, split=split)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Offline load of %s failed (%s); downloading", name, exc)
     finally:
         if old is None:
             os.environ.pop("HF_DATASETS_OFFLINE", None)
