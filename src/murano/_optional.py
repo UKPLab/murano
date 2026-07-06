@@ -24,6 +24,7 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "data": ("datasets",),
     "plot": ("matplotlib", "seaborn", "plotly"),
     "sae": ("sae_lens",),
+    "notebook": ("ipykernel",),
 }
 
 
@@ -43,12 +44,19 @@ def require_optional(extra: str, *modules: str) -> None:
             for a Plotly-only helper).
 
     Raises:
-        KeyError: If ``extra`` is not a registered extra.
+        ValueError: If ``extra`` is not a registered extra.
         RuntimeError: If any required module is not installed. The message names
             the missing modules and the ``pip install`` command that provides
             them.
     """
-    names = modules or EXTRA_IMPORTS[extra]
+    if modules:
+        names: tuple[str, ...] = modules
+    elif extra in EXTRA_IMPORTS:
+        names = EXTRA_IMPORTS[extra]
+    else:
+        raise ValueError(
+            f"Unknown extra {extra!r}; expected one of {sorted(EXTRA_IMPORTS)}."
+        )
     missing = [name for name in names if find_spec(name) is None]
     if missing:
         raise RuntimeError(

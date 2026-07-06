@@ -646,6 +646,7 @@ class MuranoModel:
         Args:
             text: Single string or sequence of strings to record from.
             layers: Layer indices to record at, or ``"all"`` for every layer.
+            modules: Module name(s) to record at each layer.
             position: Token position to record. One of ``"last"``, ``"first"``,
                 ``"mean"``, an integer index, or ``"none"`` to keep every
                 position.
@@ -713,6 +714,7 @@ class MuranoModel:
             positive: Texts in the positive class.
             negative: Texts in the negative class.
             layers: Layer indices to record at, or ``"all"`` for every layer.
+            modules: Module name(s) to record at each layer.
             position: Token position to record. One of ``"last"``, ``"first"``,
                 ``"mean"``, or an integer index.
             batch_size: Forward-pass batch size.
@@ -762,6 +764,7 @@ class MuranoModel:
                 direction`` is added to the residual stream at each target
                 layer. Pass either ``ablate`` or ``steer``, not both.
             layers: Layer indices to apply the intervention at, or ``"all"``.
+            modules: Module name(s) to apply the intervention at each layer.
             gen_kwargs: Forwarded to the underlying generation call. Defaults
                 to ``{"max_new_tokens": 256, "do_sample": False}``.
 

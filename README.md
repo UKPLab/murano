@@ -153,9 +153,8 @@ To add your own step, subclass `Step`, set `reads` / `writes` (and optionally
 
 The Step API and the unmarked steps in the table above are alpha-stable for the
 0.1.x line; the ‡ causal-analysis steps are newer and their API may still
-change. The `murano.lenses` module (logit lens) ships in this release but is not
-yet wired into the Pipeline API and should be considered experimental until the
-work tracked in [#51](https://github.com/UKPLab/murano/issues/51) lands.
+change. The logit lens ships as the `LogitLens` step, available through the
+Pipeline API like the other steps.
 
 ## Core Ideas
 

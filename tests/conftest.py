@@ -94,6 +94,7 @@ def _build_tiny_local_model(path: Path) -> None:
         bos_token_id=vocab["<s>"],
         eos_token_id=vocab["</s>"],
     )
+    torch.manual_seed(0)
     model = LlamaForCausalLM(config)
     model.save_pretrained(path)
 
@@ -121,6 +122,7 @@ def _build_tiny_gpt2(path: Path) -> None:
         bos_token_id=_VOCAB["<s>"],
         eos_token_id=_VOCAB["</s>"],
     )
+    torch.manual_seed(0)
     GPT2LMHeadModel(config).save_pretrained(path)
 
 
