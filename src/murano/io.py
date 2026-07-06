@@ -584,6 +584,56 @@ def load_sae_examples(path: str | Path) -> Any:
     )
 
 
+def save_sae_labels(feature_labels: Any, path: Path) -> None:
+    """Save an SAEFeatureLabels to a JSON file.
+
+    Integer ``feat_id`` keys are stringified on save (JSON requires string
+    keys); :func:`load_sae_labels` casts them back.
+
+    Args:
+        feature_labels: SAEFeatureLabels to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "feat_ids": feature_labels.feat_ids,
+        "tokens": {str(k): v for k, v in feature_labels.tokens.items()},
+        "logits": {str(k): v for k, v in feature_labels.logits.items()},
+        "k_tokens": feature_labels.k_tokens,
+        "layer": feature_labels.layer,
+        "release": feature_labels.release,
+        "sae_id": feature_labels.sae_id,
+    }
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    logger.info("Saved SAE feature labels to %s", path)
+
+
+def load_sae_labels(path: str | Path) -> Any:
+    """Load an SAEFeatureLabels from a JSON file.
+
+    Stringified ``feat_id`` keys produced by :func:`save_sae_labels` are
+    cast back to int.
+
+    Args:
+        path: Path to the feature_labels.json file.
+
+    Returns:
+        SAEFeatureLabels reconstructed from the JSON payload.
+    """
+    from murano.steps.sae import SAEFeatureLabels
+
+    data = json.loads(Path(path).read_text())
+    return SAEFeatureLabels(
+        feat_ids=list(data["feat_ids"]),
+        tokens={int(k): v for k, v in data["tokens"].items()},
+        logits={int(k): v for k, v in data["logits"].items()},
+        k_tokens=data["k_tokens"],
+        layer=data["layer"],
+        release=data["release"],
+        sae_id=data["sae_id"],
+    )
+
+
 def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
     """Save a PromptBatch to JSON.
 
@@ -667,7 +717,11 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
     from murano.steps.record import ActivationStore, LabeledActivationStore
-    from murano.steps.sae import SAEActivationStore, SAEFeatureExamples
+    from murano.steps.sae import (
+        SAEActivationStore,
+        SAEFeatureExamples,
+        SAEFeatureLabels,
+    )
     from murano.steps.train import SteeringResult
 
     registry: list[tuple[type, ArtifactSerializer]] = []
@@ -900,6 +954,23 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "n_tracked": len(examples.feat_ids),
         }
 
+    def serialize_sae_labels(
+        key: str,
+        labels: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "feature_labels.json" if key == "feature_labels" else f"{key}.json"
+        save_sae_labels(labels, out / "sae" / filename)
+        metadata[key] = {
+            "layer": labels.layer,
+            "release": labels.release,
+            "sae_id": labels.sae_id,
+            "k_tokens": labels.k_tokens,
+            "n_labeled": len(labels.feat_ids),
+        }
+
     register_artifact_serializer(registry, PromptBatch, serialize_prompts)
     register_artifact_serializer(registry, SteeringResult, serialize_steering)
     register_artifact_serializer(registry, GenerationComparison, serialize_generations)
@@ -919,6 +990,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         registry, SAEActivationStore, serialize_sae_activations
     )
     register_artifact_serializer(registry, SAEFeatureExamples, serialize_sae_examples)
+    register_artifact_serializer(registry, SAEFeatureLabels, serialize_sae_labels)
     return registry
 
 

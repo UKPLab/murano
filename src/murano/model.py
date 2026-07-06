@@ -186,6 +186,9 @@ class MuranoModel:
 
         Applies the standardized final norm and unembedding,
         ``lm_head(ln_final(hidden))``, matching the logit-lens computation.
+        ``hidden`` is cast to the unembedding's device and dtype first, so a
+        direction stored elsewhere (e.g. an fp32 SAE feature on CPU) projects
+        cleanly against a model on GPU.
 
         Args:
             hidden: Hidden states ``[..., d_model]``.
@@ -193,7 +196,9 @@ class MuranoModel:
         Returns:
             Vocabulary logits ``[..., vocab_size]``.
         """
-        return self._lm.lm_head(self._lm.ln_final(hidden))
+        head = self._lm.lm_head
+        hidden = hidden.to(device=head.weight.device, dtype=head.weight.dtype)
+        return head(self._lm.ln_final(hidden))
 
     @property
     def unembed_weight(self) -> Tensor:
