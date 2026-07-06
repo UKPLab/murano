@@ -6,6 +6,16 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 const reproductions = [
   {
+    slug: 'ioi',
+    title: 'Interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 Small',
+    venue: 'ICLR 2023',
+    authors: 'Wang, Variengien, Conmy, Shlegeris, Steinhardt',
+    description: 'Reverse-engineers how GPT-2 small identifies the indirect object, localizing the name-mover, negative name-mover, and S-inhibition heads. Reproduced with Murano path patching, attention analysis, and OV circuits.',
+    tags: ['circuits', 'attention', 'path patching'],
+    paper: 'https://arxiv.org/abs/2211.00593',
+    code: 'https://github.com/redwoodresearch/Easy-Transformer',
+  },
+  {
     slug: 'tmlr2026',
     title: 'Shape Happens: Automatic Feature Manifold Discovery in LLMs via Supervised Multi-Dimensional Scaling',
     venue: 'TMLR 2026',
