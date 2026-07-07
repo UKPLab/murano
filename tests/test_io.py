@@ -200,11 +200,11 @@ def test_save_does_not_warn_on_dataset_or_transient(tmp_path, caplog):
 
 
 def test_save_and_reload_evaluation_result(tmp_path):
-    from murano.artifacts import EvaluationResult
-    from murano.io import load_evaluation
+    from murano.artifacts import MetricScore
+    from murano.io import load_metric_score
 
     results = Results()
-    results["logit_diff"] = EvaluationResult(
+    results["logit_diff"] = MetricScore(
         metric_name="logit_diff",
         value=2.5,
         per_example=[2.0, 3.0],
@@ -214,7 +214,7 @@ def test_save_and_reload_evaluation_result(tmp_path):
 
     path = tmp_path / "metrics" / "logit_diff.json"
     assert path.exists()
-    loaded = load_evaluation(path)
+    loaded = load_metric_score(path)
     assert loaded.metric_name == "logit_diff"
     assert loaded.value == 2.5
     assert loaded.per_example == [2.0, 3.0]
@@ -222,11 +222,11 @@ def test_save_and_reload_evaluation_result(tmp_path):
 
 
 def test_evaluation_nan_is_valid_json_and_round_trips(tmp_path):
-    from murano.artifacts import EvaluationResult
-    from murano.io import load_evaluation, save_evaluation
+    from murano.artifacts import MetricScore
+    from murano.io import load_metric_score, save_metric_score
 
     path = tmp_path / "metrics" / "recovered.json"
-    save_evaluation(EvaluationResult(metric_name="recovered", value=float("nan")), path)
+    save_metric_score(MetricScore(metric_name="recovered", value=float("nan")), path)
 
     # Must be strict (RFC-8259) JSON: parse_constant fires on bare NaN/Infinity.
     def _reject(token):
@@ -235,4 +235,4 @@ def test_evaluation_nan_is_valid_json_and_round_trips(tmp_path):
     json.loads(path.read_text(), parse_constant=_reject)
 
     # nan is stored as null and restored as nan.
-    assert math.isnan(load_evaluation(path).value)
+    assert math.isnan(load_metric_score(path).value)

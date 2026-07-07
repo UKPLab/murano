@@ -63,7 +63,7 @@ class GenerationComparison:
 
 
 @dataclass
-class MetricResult:
+class MetricComparison:
     """Aggregate metric comparing baseline vs modified generations.
 
     Attributes:
@@ -90,12 +90,12 @@ class MetricResult:
 
 
 @dataclass
-class EvaluationResult:
+class MetricScore:
     """Scalar result of a forward-pass evaluation metric.
 
     Holds one comparable number, plus an optional per-example breakdown, so a
     causal experiment ends in a value that can be compared across runs. Unlike
-    :class:`MetricResult`, which is shaped for baseline-vs-modified generation
+    :class:`MetricComparison`, which is shaped for baseline-vs-modified generation
     comparisons, this carries a single forward-pass score (logit difference,
     KL divergence, answer log-probability, recovered effect).
 

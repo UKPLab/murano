@@ -15,9 +15,9 @@ except PackageNotFoundError:  # pragma: no cover
 
 if TYPE_CHECKING:
     from murano.artifacts import (
-        EvaluationResult,
+        MetricScore,
         GenerationComparison,
-        MetricResult,
+        MetricComparison,
         PromptBatch,
     )
     from murano.dataset import CleanCorruptDataset, LabeledDataset, MuranoDataset
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from murano.io import (
         load_activation_store,
         load_attention,
-        load_evaluation,
+        load_metric_score,
         load_labeled_activation_store,
         load_logit_lens,
         load_sae_activations,
@@ -80,8 +80,8 @@ _LAZY_ATTRS = {
     "AddressLike": ("murano.nodes", "AddressLike"),
     "PromptBatch": ("murano.artifacts", "PromptBatch"),
     "GenerationComparison": ("murano.artifacts", "GenerationComparison"),
-    "MetricResult": ("murano.artifacts", "MetricResult"),
-    "EvaluationResult": ("murano.artifacts", "EvaluationResult"),
+    "MetricComparison": ("murano.artifacts", "MetricComparison"),
+    "MetricScore": ("murano.artifacts", "MetricScore"),
     "MuranoDataset": ("murano.dataset", "MuranoDataset"),
     "LabeledDataset": ("murano.dataset", "LabeledDataset"),
     "CleanCorruptDataset": ("murano.dataset", "CleanCorruptDataset"),
@@ -117,7 +117,7 @@ _LAZY_ATTRS = {
     "load_sae_activations": ("murano.io", "load_sae_activations"),
     "load_sae_examples": ("murano.io", "load_sae_examples"),
     "load_sae_labels": ("murano.io", "load_sae_labels"),
-    "load_evaluation": ("murano.io", "load_evaluation"),
+    "load_metric_score": ("murano.io", "load_metric_score"),
     "save_ablated_model": ("murano.io", "save_ablated_model"),
 }
 
@@ -133,8 +133,8 @@ __all__ = [
     "AddressLike",
     "PromptBatch",
     "GenerationComparison",
-    "MetricResult",
-    "EvaluationResult",
+    "MetricComparison",
+    "MetricScore",
     "MuranoDataset",
     "LabeledDataset",
     "CleanCorruptDataset",
@@ -169,7 +169,7 @@ __all__ = [
     "load_sae_activations",
     "load_sae_examples",
     "load_sae_labels",
-    "load_evaluation",
+    "load_metric_score",
     "save_ablated_model",
 ]
 

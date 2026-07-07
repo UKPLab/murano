@@ -15,7 +15,7 @@ from torch import arange, as_tensor, full  # pyright: ignore[reportPrivateImport
 from torch import long, tensor  # pyright: ignore[reportPrivateImportUsage]
 
 from murano import keys
-from murano.artifacts import EvaluationResult
+from murano.artifacts import MetricScore
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
@@ -323,9 +323,9 @@ def _gather_answer(answer_logits: torch.Tensor, ids: torch.Tensor) -> torch.Tens
     return answer_logits.gather(1, ids).mean(dim=1)
 
 
-def _scalar_score(value: Any) -> float:
-    """Extract a float from an EvaluationResult, a 0-dim tensor, or a number."""
-    if isinstance(value, EvaluationResult):
+def _metric_score(value: Any) -> float:
+    """Extract a float from a MetricScore, a 0-dim tensor, or a number."""
+    if isinstance(value, MetricScore):
         return float(value.value)
     if isinstance(value, torch.Tensor):
         return float(value.item())
@@ -346,7 +346,7 @@ class LogitDiffStep(Step):
             position when ``positions`` is not given.
 
     Writes to results:
-        results[output_key]: EvaluationResult.
+        results[output_key]: MetricScore.
 
     Args:
         correct: Correct-answer token spec: a token id, an answer string, a
@@ -356,7 +356,7 @@ class LogitDiffStep(Step):
             ``correct``.
         logits_key: Results key holding the logits.
         mask_key: Results key holding the attention mask.
-        output_key: Results key to write the EvaluationResult under.
+        output_key: Results key to write the MetricScore under.
         positions: Optional explicit answer position(s); overrides the mask.
         model: Model backend, required only to tokenize string answers.
     """
@@ -384,7 +384,7 @@ class LogitDiffStep(Step):
         self.reads = [logits_key]
         self.writes = [output_key]
         self.read_types = {logits_key: torch.Tensor}
-        self.write_types = {output_key: EvaluationResult}
+        self.write_types = {output_key: MetricScore}
 
     def __call__(self, results: Results) -> Results:
         logits: torch.Tensor = results[self.logits_key]
@@ -405,7 +405,7 @@ class LogitDiffStep(Step):
             answer_logits, incorrect
         )
         value = float(diff.mean().item())
-        results[self.output_key] = EvaluationResult(
+        results[self.output_key] = MetricScore(
             metric_name="logit_diff",
             value=value,
             per_example=diff.tolist(),
@@ -427,7 +427,7 @@ class KLDivergenceStep(Step):
         results[mask_key]: optional Tensor [B, S] for the answer position.
 
     Writes to results:
-        results[output_key]: EvaluationResult.
+        results[output_key]: MetricScore.
 
     Note:
         The answer position is taken from P; P and Q are assumed to come from
@@ -437,7 +437,7 @@ class KLDivergenceStep(Step):
         p_key: Results key for the reference distribution P.
         q_key: Results key for the comparison distribution Q.
         mask_key: Results key holding the attention mask.
-        output_key: Results key to write the EvaluationResult under.
+        output_key: Results key to write the MetricScore under.
         positions: Optional explicit answer position(s); overrides the mask.
     """
 
@@ -460,7 +460,7 @@ class KLDivergenceStep(Step):
         self.reads = [p_key, q_key]
         self.writes = [output_key]
         self.read_types = {p_key: torch.Tensor, q_key: torch.Tensor}
-        self.write_types = {output_key: EvaluationResult}
+        self.write_types = {output_key: MetricScore}
 
     def __call__(self, results: Results) -> Results:
         p_logits: torch.Tensor = results[self.p_key]
@@ -472,7 +472,7 @@ class KLDivergenceStep(Step):
         log_q = F.log_softmax(_answer_logits(q_logits, positions), dim=-1)
         kl = (log_p.exp() * (log_p - log_q)).sum(dim=-1)
         value = float(kl.mean().item())
-        results[self.output_key] = EvaluationResult(
+        results[self.output_key] = MetricScore(
             metric_name="kl_divergence",
             value=value,
             per_example=kl.tolist(),
@@ -499,14 +499,14 @@ class AnswerLogProbStep(Step):
         results[mask_key]: optional Tensor [B, S] for the answer position.
 
     Writes to results:
-        results[output_key]: EvaluationResult.
+        results[output_key]: MetricScore.
 
     Args:
         correct: Correct-answer token spec (id, string, per-example sequence,
             or tensor), as in :class:`LogitDiffStep`.
         logits_key: Results key holding the logits.
         mask_key: Results key holding the attention mask.
-        output_key: Results key to write the EvaluationResult under.
+        output_key: Results key to write the MetricScore under.
         positions: Optional explicit answer position(s); overrides the mask.
         as_loss: If True, report mean negative log-prob instead of log-prob.
         model: Model backend, required only to tokenize string answers.
@@ -535,7 +535,7 @@ class AnswerLogProbStep(Step):
         self.reads = [logits_key]
         self.writes = [output_key]
         self.read_types = {logits_key: torch.Tensor}
-        self.write_types = {output_key: EvaluationResult}
+        self.write_types = {output_key: MetricScore}
 
     def __call__(self, results: Results) -> Results:
         logits: torch.Tensor = results[self.logits_key]
@@ -557,7 +557,7 @@ class AnswerLogProbStep(Step):
         else:
             metric_name = "answer_logprob"
             value = float(log_probs.mean().item())
-        results[self.output_key] = EvaluationResult(
+        results[self.output_key] = MetricScore(
             metric_name=metric_name,
             value=value,
             per_example=per_example,
@@ -583,16 +583,16 @@ class RecoveredMetricStep(Step):
 
     Reads from results:
         results[clean_key], results[corrupted_key], results[patched_key]:
-            an EvaluationResult, a 0-dim tensor, or a plain float.
+            a MetricScore, a 0-dim tensor, or a plain float.
 
     Writes to results:
-        results[output_key]: EvaluationResult.
+        results[output_key]: MetricScore.
 
     Args:
         clean_key: Results key for the clean-run score.
         corrupted_key: Results key for the corrupted-run score.
         patched_key: Results key for the patched-run score.
-        output_key: Results key to write the EvaluationResult under.
+        output_key: Results key to write the MetricScore under.
     """
 
     reads: list[str] = []
@@ -611,12 +611,12 @@ class RecoveredMetricStep(Step):
         self.output_key = output_key
         self.reads = [clean_key, corrupted_key, patched_key]
         self.writes = [output_key]
-        self.write_types = {output_key: EvaluationResult}
+        self.write_types = {output_key: MetricScore}
 
     def __call__(self, results: Results) -> Results:
-        clean = _scalar_score(results[self.clean_key])
-        corrupted = _scalar_score(results[self.corrupted_key])
-        patched = _scalar_score(results[self.patched_key])
+        clean = _metric_score(results[self.clean_key])
+        corrupted = _metric_score(results[self.corrupted_key])
+        patched = _metric_score(results[self.patched_key])
 
         denominator = clean - corrupted
         # A zero span means clean and corrupted scored the same, so "fraction
@@ -630,7 +630,7 @@ class RecoveredMetricStep(Step):
             value = float("nan")
         else:
             value = (patched - corrupted) / denominator
-        results[self.output_key] = EvaluationResult(
+        results[self.output_key] = MetricScore(
             metric_name="recovered",
             value=value,
             metadata={"clean": clean, "corrupted": corrupted, "patched": patched},
