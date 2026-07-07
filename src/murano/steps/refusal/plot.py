@@ -19,7 +19,7 @@ class Plot(Step):
     Reads from results (uses whatever is available):
         results['steering']: SteeringResult
         results['intervene']: InterveneResult
-        results['eval']: EvalResult
+        results['eval']: MetricComparison
         results['prompts']: PromptBatch
         results['output_dir']: Path (from Save step, optional)
 

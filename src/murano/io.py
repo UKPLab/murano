@@ -12,9 +12,9 @@ import torch
 
 from murano import __version__, keys
 from murano.artifacts import (
-    EvaluationResult,
+    MetricScore,
     GenerationComparison,
-    MetricResult,
+    MetricComparison,
     PromptBatch,
 )
 from murano.logging import logger
@@ -96,11 +96,11 @@ def save_generations(
     logger.info("Saved %d generation pairs to %s", n, path)
 
 
-def save_eval(eval_result: Any, path: Path) -> None:
-    """Save an EvalResult to a JSON file.
+def save_metric_comparison(eval_result: Any, path: Path) -> None:
+    """Save a MetricComparison to a JSON file.
 
     Args:
-        eval_result: MetricResult or EvalResult to serialize.
+        eval_result: MetricComparison to serialize.
         path: Output path. Parent directory is created if missing.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,10 +114,6 @@ def save_eval(eval_result: Any, path: Path) -> None:
         "modified_scores": eval_result.modified_scores,
         "metadata": getattr(eval_result, "metadata", {}),
     }
-    if hasattr(eval_result, "clean_compliance"):
-        data["clean_compliance"] = eval_result.clean_compliance
-    if hasattr(eval_result, "ablated_compliance"):
-        data["ablated_compliance"] = eval_result.ablated_compliance
     _write_json(path, data)
     logger.info("Saved eval result to %s", path)
 
@@ -166,16 +162,16 @@ def _write_json(
     )
 
 
-def save_evaluation(evaluation: EvaluationResult, path: Path) -> None:
-    """Save an EvaluationResult (scalar forward-pass metric) to JSON.
+def save_metric_score(evaluation: MetricScore, path: Path) -> None:
+    """Save a MetricScore (scalar forward-pass metric) to JSON.
 
     Args:
-        evaluation: The EvaluationResult to serialize.
+        evaluation: The MetricScore to serialize.
         path: Output path. Parent directory is created if missing.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     # Non-finite scores (e.g. a recovered metric over a zero span -> nan) are
-    # written as JSON null by _write_json; load_evaluation maps null back to nan.
+    # written as JSON null by _write_json; load_metric_score maps null back to nan.
     data = {
         "metric_name": evaluation.metric_name,
         "value": evaluation.value,
@@ -186,19 +182,19 @@ def save_evaluation(evaluation: EvaluationResult, path: Path) -> None:
     logger.info("Saved evaluation result to %s", path)
 
 
-def load_evaluation(path: str | Path) -> EvaluationResult:
-    """Load an EvaluationResult from a file written by :func:`save_evaluation`.
+def load_metric_score(path: str | Path) -> MetricScore:
+    """Load a MetricScore from a file written by :func:`save_metric_score`.
 
     Args:
         path: Path to the JSON file.
 
     Returns:
-        The reconstructed EvaluationResult.
+        The reconstructed MetricScore.
     """
     data = json.loads(Path(path).read_text())
     value = data["value"]
     per_example = data.get("per_example")
-    return EvaluationResult(
+    return MetricScore(
         metric_name=data["metric_name"],
         # null is how a non-finite score was stored; restore it as nan.
         value=float("nan") if value is None else value,
@@ -811,16 +807,16 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "metadata": comparison.metadata,
         }
 
-    def serialize_metric(
+    def serialize_metric_comparison(
         key: str,
-        metric: MetricResult,
+        metric: MetricComparison,
         out: Path,
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
         filename = "eval.json" if key == keys.EVAL else f"{key}.json"
         folder = "evaluation" if key == keys.EVAL else "metrics"
-        save_eval(metric, out / folder / filename)
+        save_metric_comparison(metric, out / folder / filename)
         metadata[key] = {
             "metric_name": metric.metric_name,
             "baseline_label": metric.baseline_label,
@@ -836,14 +832,14 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
                 "modified_score": metric.modified_score,
             }
 
-    def serialize_evaluation(
+    def serialize_metric_score(
         key: str,
-        evaluation: EvaluationResult,
+        evaluation: MetricScore,
         out: Path,
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        save_evaluation(evaluation, out / "metrics" / f"{key}.json")
+        save_metric_score(evaluation, out / "metrics" / f"{key}.json")
         metadata[key] = {
             "metric_name": evaluation.metric_name,
             "value": evaluation.value,
@@ -1004,8 +1000,10 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     register_artifact_serializer(registry, PromptBatch, serialize_prompts)
     register_artifact_serializer(registry, SteeringResult, serialize_steering)
     register_artifact_serializer(registry, GenerationComparison, serialize_generations)
-    register_artifact_serializer(registry, MetricResult, serialize_metric)
-    register_artifact_serializer(registry, EvaluationResult, serialize_evaluation)
+    register_artifact_serializer(
+        registry, MetricComparison, serialize_metric_comparison
+    )
+    register_artifact_serializer(registry, MetricScore, serialize_metric_score)
     register_artifact_serializer(registry, ProbeResult, serialize_probe)
     register_artifact_serializer(registry, LogitLensResult, serialize_logit_lens)
     register_artifact_serializer(registry, AttentionResult, serialize_attention)

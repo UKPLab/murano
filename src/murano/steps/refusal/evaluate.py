@@ -8,47 +8,11 @@ in murano/steps/ directly.
 from __future__ import annotations
 
 from murano import keys
-from murano.artifacts import GenerationComparison, MetricResult
+from murano.artifacts import GenerationComparison, MetricComparison
 from murano.evaluation import REFUSAL_PHRASES, is_refusal, score_generations
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
-
-
-class EvalResult(MetricResult):
-    """Output of ComplianceRate evaluation.
-
-    Attributes:
-        clean_compliance: Fraction of clean generations that comply (not refuse).
-        ablated_compliance: Fraction of ablated generations that comply.
-    """
-
-    def __init__(
-        self,
-        clean_compliance: float,
-        ablated_compliance: float,
-        clean_scores: list[float] | None = None,
-        ablated_scores: list[float] | None = None,
-        context_window: int = 300,
-    ):
-        super().__init__(
-            metric_name="compliance_rate",
-            baseline_score=clean_compliance,
-            modified_score=ablated_compliance,
-            baseline_scores=clean_scores,
-            modified_scores=ablated_scores,
-            baseline_label="clean",
-            modified_label="ablated",
-            metadata={"method": "keyword", "context_window": context_window},
-        )
-
-    @property
-    def clean_compliance(self) -> float:
-        return self.baseline_score
-
-    @property
-    def ablated_compliance(self) -> float:
-        return self.modified_score
 
 
 class ComplianceRate(Step):
@@ -58,7 +22,7 @@ class ComplianceRate(Step):
         results['intervene']: GenerationComparison-compatible artifact
 
     Writes to results:
-        results['eval']: EvalResult
+        results['eval']: MetricComparison (metric_name "compliance_rate")
 
     Args:
         method: Detection method. Currently only ``"keyword"`` is supported.
@@ -72,7 +36,7 @@ class ComplianceRate(Step):
     reads = [keys.INTERVENE]
     writes = [keys.EVAL]
     read_types = {keys.INTERVENE: GenerationComparison}
-    write_types = {keys.EVAL: EvalResult}
+    write_types = {keys.EVAL: MetricComparison}
 
     def __init__(self, method: str = "keyword", context_window: int = 300):
         if method != "keyword":
@@ -88,12 +52,15 @@ class ComplianceRate(Step):
         ]
         clean_compliance = self._score(intervene.clean_generations)
         ablated_compliance = self._score(intervene.modified_generations)
-        results[keys.EVAL] = EvalResult(
-            clean_compliance=clean_compliance,
-            ablated_compliance=ablated_compliance,
-            clean_scores=clean_scores,
-            ablated_scores=ablated_scores,
-            context_window=self.context_window,
+        results[keys.EVAL] = MetricComparison(
+            metric_name="compliance_rate",
+            baseline_score=clean_compliance,
+            modified_score=ablated_compliance,
+            baseline_scores=clean_scores,
+            modified_scores=ablated_scores,
+            baseline_label="clean",
+            modified_label="ablated",
+            metadata={"method": "keyword", "context_window": self.context_window},
         )
         logger.info(
             "Compliance: clean=%.1f%%, ablated=%.1f%%",

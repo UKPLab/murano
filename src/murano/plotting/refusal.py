@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 from murano.plotting._common import _save, _setup
 
 if TYPE_CHECKING:
+    from murano.artifacts import MetricComparison
     from murano.steps.train import SteeringResult
-    from murano.steps.refusal.evaluate import EvalResult
 
 
 def plot_separation_scores(
@@ -53,14 +53,14 @@ def plot_separation_scores(
 
 
 def plot_compliance_comparison(
-    eval_result: EvalResult,
+    eval_result: MetricComparison,
     save_path: str | Path | None = None,
 ) -> None:
     """Plot clean vs ablated compliance rates as side-by-side bars.
 
     Args:
-        eval_result: EvalResult with ``clean_compliance`` and
-            ``ablated_compliance`` attributes.
+        eval_result: MetricComparison whose ``baseline_score`` and
+            ``modified_score`` are the clean and ablated compliance rates.
         save_path: If provided, write the figure to this path.
     """
     import matplotlib.pyplot as plt
@@ -68,7 +68,7 @@ def plot_compliance_comparison(
     sns = _setup()
 
     labels = ["Clean", "Ablated"]
-    values = [eval_result.clean_compliance, eval_result.ablated_compliance]
+    values = [eval_result.baseline_score, eval_result.modified_score]
 
     fig, ax = plt.subplots(figsize=(5, 4))
     bars = ax.bar(

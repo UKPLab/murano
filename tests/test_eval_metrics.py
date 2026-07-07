@@ -13,7 +13,7 @@ import torch
 import torch.nn.functional as F
 
 from murano import Pipeline
-from murano.artifacts import EvaluationResult
+from murano.artifacts import MetricScore
 from murano.results import Results
 from murano.steps.logits import Logits
 from murano.steps.metrics import (
@@ -47,7 +47,7 @@ class TestLogitDiffStep:
         out = LogitDiffStep(correct=[1, 2], incorrect=[3, 4])(_results(logits))
         result = out["logit_diff"]
 
-        assert isinstance(result, EvaluationResult)
+        assert isinstance(result, MetricScore)
         assert result.value == pytest.approx(3.5)  # mean of 4.0 and 3.0
         assert result.per_example == pytest.approx([4.0, 3.0])
 
@@ -213,9 +213,9 @@ class TestAnswerLogProbStep:
 class TestRecoveredMetricStep:
     def test_formula(self):
         r = Results()
-        r["clean"] = EvaluationResult(metric_name="logit_diff", value=4.0)
-        r["corrupted"] = EvaluationResult(metric_name="logit_diff", value=0.0)
-        r["patched"] = EvaluationResult(metric_name="logit_diff", value=3.0)
+        r["clean"] = MetricScore(metric_name="logit_diff", value=4.0)
+        r["corrupted"] = MetricScore(metric_name="logit_diff", value=0.0)
+        r["patched"] = MetricScore(metric_name="logit_diff", value=3.0)
         out = RecoveredMetricStep("clean", "corrupted", "patched")(r)
         assert out["recovered"].value == pytest.approx(0.75)
 
@@ -223,7 +223,7 @@ class TestRecoveredMetricStep:
         r = Results()
         r["clean"] = 4.0
         r["corrupted"] = torch.tensor(0.0)
-        r["patched"] = EvaluationResult(metric_name="x", value=3.0)
+        r["patched"] = MetricScore(metric_name="x", value=3.0)
         out = RecoveredMetricStep("clean", "corrupted", "patched")(r)
         assert out["recovered"].value == pytest.approx(0.75)
 
@@ -249,7 +249,7 @@ class TestEndToEnd:
             ]
         ).run()
         result = results["logit_diff"]
-        assert isinstance(result, EvaluationResult)
+        assert isinstance(result, MetricScore)
         assert math.isfinite(result.value)
         assert result.per_example is not None and len(result.per_example) == 2
 

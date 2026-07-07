@@ -161,7 +161,7 @@ Pipeline API like the other steps.
 - `MuranoModel` is a thin model wrapper around `nnsight`.
 - `Pipeline`, `Step`, and `Results` are the orchestration core.
 - artifacts such as `PromptBatch`, `ActivationStore`, `SteeringResult`,
-  `GenerationComparison`, `MetricResult`, and `EvaluationResult` make experiment
+  `GenerationComparison`, `MetricComparison`, and `MetricScore` make experiment
   dataflow explicit.
 - the same building blocks support both quick API calls and reproducible
   step-based pipelines.
