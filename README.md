@@ -191,7 +191,6 @@ src/murano/
 - `examples/quick_prototype.py`
 - `examples/refusal_direction.py`
 - `examples/sae_example.py`
-- `examples/sae_sst2_feature_enrichment.py`
 
 ## Development
 

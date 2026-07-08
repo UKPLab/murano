@@ -15,6 +15,10 @@ from murano.plotting.plotly_utils import (
     plot_line_chart,
     save_figure,
 )
+from murano.plotting.sae import (
+    plot_sae_feature_logit_effects,
+    plot_sae_token_activations,
+)
 
 __all__ = [
     "plot_separation_scores",
@@ -25,6 +29,8 @@ __all__ = [
     "plot_line_chart",
     "save_figure",
     "plot_logit_lens",
+    "plot_sae_feature_logit_effects",
+    "plot_sae_token_activations",
     "plot_logit_attribution",
     "plot_probe_accuracy",
     "plot_attention_pattern",

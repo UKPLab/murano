@@ -2243,6 +2243,7 @@ all = [
     { name = "ipykernel" },
     { name = "jupyter" },
     { name = "matplotlib" },
+    { name = "nltk" },
     { name = "plotly" },
     { name = "sae-lens" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -2255,6 +2256,7 @@ data = [
 notebook = [
     { name = "ipykernel" },
     { name = "jupyter" },
+    { name = "nltk" },
 ]
 plot = [
     { name = "matplotlib" },
@@ -2291,6 +2293,8 @@ requires-dist = [
     { name = "jupyter", marker = "extra == 'notebook'", specifier = ">=1.1" },
     { name = "matplotlib", marker = "extra == 'all'", specifier = ">=3.10" },
     { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.10" },
+    { name = "nltk", marker = "extra == 'all'", specifier = ">=3.9.4" },
+    { name = "nltk", marker = "extra == 'notebook'", specifier = ">=3.9.4" },
     { name = "nnsight", specifier = ">=0.4.8" },
     { name = "nnterp", specifier = ">=1.2.2,<2.0" },
     { name = "plotly", marker = "extra == 'all'", specifier = ">=6.7.0" },
