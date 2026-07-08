@@ -24,7 +24,6 @@ SAE_RECORD: Final = "sae_record"
 FEATURE_EXAMPLES: Final = "feature_examples"
 SELECTION: Final = "selection"
 METRIC: Final = "metric"
-EVAL: Final = "eval"
 WEIGHT_ABLATION: Final = "weight_ablation"
 OUTPUT_DIR: Final = "output_dir"
 

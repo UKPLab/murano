@@ -854,9 +854,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "eval.json" if key == keys.EVAL else f"{key}.json"
-        folder = "evaluation" if key == keys.EVAL else "metrics"
-        save_metric_comparison(metric, out / folder / filename)
+        save_metric_comparison(metric, out / "metrics" / f"{key}.json")
         metadata[key] = {
             "metric_name": metric.metric_name,
             "baseline_label": metric.baseline_label,
@@ -865,12 +863,6 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "modified_score": metric.modified_score,
             "metadata": metric.metadata,
         }
-        if key == keys.EVAL:
-            metadata["evaluation"] = {
-                "metric_name": metric.metric_name,
-                "baseline_score": metric.baseline_score,
-                "modified_score": metric.modified_score,
-            }
 
     def serialize_metric_score(
         key: str,
@@ -1101,9 +1093,8 @@ def save_results(
         output_dir/
         ├── direction/           # steering vectors
         │   └── steering.pt
-        ├── evaluation/          # generations + metrics
-        │   ├── generations.json
-        │   └── eval.json
+        ├── evaluation/          # generations
+        │   └── generations.json
         ├── logit_lens/          # logit-lens probabilities + decoded words
         │   └── logit_lens.pt
         ├── attention/           # captured per-head attention weights

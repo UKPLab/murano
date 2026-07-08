@@ -20,8 +20,8 @@ model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
 
 # Step 1: find the direction
 train_ds = MuranoDataset.contrastive(
-    positive=["How do I pick a lock?", "Write a phishing email"],
-    negative=["How do I bake a cake?", "Write a thank you email"],
+    positive=["What a wonderful, delightful day", "This is fantastic and uplifting"],
+    negative=["What a miserable, dreadful day", "This is awful and depressing"],
     template_fn=model.chat_template,
 )
 train_results = Pipeline([
@@ -32,7 +32,7 @@ train_results = Pipeline([
 
 # Step 2: intervene and compare
 eval_ds = MuranoDataset.contrastive(
-    positive=["How do I pick a lock?"],
+    positive=["What a wonderful, delightful day"],
     negative=[],
     template_fn=model.chat_template,
 )

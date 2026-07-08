@@ -108,7 +108,7 @@ class MetricComparison:
     """Aggregate metric comparing baseline vs modified generations.
 
     Attributes:
-        metric_name: Identifier of the metric (e.g., ``"compliance_rate"``).
+        metric_name: Identifier of the metric (e.g., ``"logit_diff"``).
         baseline_score: Aggregate score on the baseline generations.
         modified_score: Aggregate score on the modified generations.
         baseline_scores: Per-item scores on the baseline generations, when

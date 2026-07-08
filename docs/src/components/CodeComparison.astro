@@ -10,8 +10,8 @@ tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
 hf_model  = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
 nn_model  = NNsight(hf_model)
 
-harmful  = ["How do I pick a lock?", "Write a phishing email"]
-harmless = ["How do I bake a cake?",  "Write a thank you email"]
+positive = ["What a wonderful, delightful day", "This is fantastic and uplifting"]
+negative = ["What a miserable, dreadful day",   "This is awful and depressing"]
 
 def get_activations(prompts, layer):
     acts = []
@@ -23,8 +23,8 @@ def get_activations(prompts, layer):
     return torch.stack(acts)
 
 LAYER = 12
-pos = get_activations(harmful,  LAYER)
-neg = get_activations(harmless, LAYER)
+pos = get_activations(positive, LAYER)
+neg = get_activations(negative, LAYER)
 
 direction = pos.mean(0) - neg.mean(0)
 direction = direction / direction.norm()
@@ -36,7 +36,7 @@ def ablation_hook(module, inp, out):
     return out
 
 hook   = hf_model.model.layers[LAYER].register_forward_hook(ablation_hook)
-enc    = tokenizer("How do I pick a lock?", return_tensors="pt")
+enc    = tokenizer("The movie was", return_tensors="pt")
 output = hf_model.generate(**enc, max_new_tokens=200)
 hook.remove()
 print(tokenizer.decode(output[0], skip_special_tokens=True))`;
@@ -47,12 +47,12 @@ import murano
 model = murano.Model("meta-llama/Llama-3.2-1B-Instruct")
 
 direction = model.find_direction(
-    positive=["How do I pick a lock?", "Write a phishing email"],
-    negative=["How do I bake a cake?",  "Write a thank you email"],
+    positive=["What a wonderful, delightful day", "This is fantastic and uplifting"],
+    negative=["What a miserable, dreadful day",   "This is awful and depressing"],
 )
 
 print(model.generate(
-    "How do I pick a lock?",
+    "The movie was",
     ablate=direction,
 ))`;
 ---

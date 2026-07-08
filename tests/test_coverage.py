@@ -9,28 +9,9 @@ import math
 import pytest
 import torch
 
-from murano.evaluation import REFUSAL_PHRASES, is_refusal
-
 
 def _reject(token: str):
     raise ValueError(f"non-finite token {token!r} is not strict JSON")
-
-
-# ── evaluation.is_refusal ──────────────────────────────────────────────
-
-
-def test_is_refusal_detects_refusal_phrase():
-    assert is_refusal(f"Honestly, {REFUSAL_PHRASES[0]} with that request.")
-
-
-def test_is_refusal_ignores_compliant_text():
-    assert not is_refusal("Sure, here is the answer you asked for.")
-
-
-def test_is_refusal_respects_context_window():
-    text = "x" * 400 + " " + REFUSAL_PHRASES[0]
-    assert is_refusal(text, context_window=1000)
-    assert not is_refusal(text, context_window=50)
 
 
 # ── logging.setup_logging ──────────────────────────────────────────────
@@ -82,20 +63,6 @@ def test_logit_attribution_nan_round_trips(tmp_path):
 # ── plotting smoke tests (matplotlib/seaborn) ──────────────────────────
 
 
-def test_plot_refusal_heatmap_writes_png(tmp_path):
-    pytest.importorskip("seaborn")
-    from murano.plotting import plot_refusal_heatmap
-
-    out = tmp_path / "refusal.png"
-    plot_refusal_heatmap(
-        prompts=["p1", "p2"],
-        clean_generations=[f"{REFUSAL_PHRASES[0]} help", "sure thing"],
-        modified_generations=["sure thing", f"{REFUSAL_PHRASES[0]}"],
-        save_path=out,
-    )
-    assert out.exists()
-
-
 def test_plot_probe_accuracy_writes_png(tmp_path):
     pytest.importorskip("seaborn")
     import numpy as np
@@ -125,7 +92,7 @@ def test_plot_step_writes_files(tmp_path):
     pytest.importorskip("seaborn")
     from murano import keys
     from murano.results import Results
-    from murano.steps.refusal.plot import Plot
+    from murano.steps.plot import Plot
     from murano.steps.train import SteeringResult
 
     results = Results()

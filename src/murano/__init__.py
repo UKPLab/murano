@@ -22,7 +22,6 @@ if TYPE_CHECKING:
         PromptBatch,
     )
     from murano.dataset import CleanCorruptDataset, LabeledDataset, MuranoDataset
-    from murano.evaluation import compliance_rate
     from murano.io import (
         load_activation_store,
         load_attention,
@@ -111,7 +110,6 @@ _LAZY_ATTRS = {
     "SAEFeatureExamples": ("murano.steps.sae", "SAEFeatureExamples"),
     "SAEFeatureLabel": ("murano.steps.sae", "SAEFeatureLabel"),
     "SAEFeatureLabels": ("murano.steps.sae", "SAEFeatureLabels"),
-    "compliance_rate": ("murano.evaluation", "compliance_rate"),
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
     "load_logit_lens": ("murano.io", "load_logit_lens"),
@@ -164,7 +162,6 @@ __all__ = [
     "top_sae_features_for_tokens",
     "top_sae_features_per_prompt",
     "__version__",
-    "compliance_rate",
     "setup_logging",
     "save_results",
     "load_steering",

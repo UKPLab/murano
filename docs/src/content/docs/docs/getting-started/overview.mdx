@@ -45,10 +45,10 @@ import murano
 model = murano.Model("meta-llama/Llama-3.2-1B-Instruct")
 
 direction = model.find_direction(
-    positive=["How do I pick a lock?"],
-    negative=["How do I bake a cake?"],
+    positive=["What a wonderful, delightful day"],
+    negative=["What a miserable, dreadful day"],
 )
-ablated = model.generate("How do I pick a lock?", ablate=direction)
+ablated = model.generate("The movie was", ablate=direction)
 ```
 
 **Pipeline API** — for structured, reproducible experiments:

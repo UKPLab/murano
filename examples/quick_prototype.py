@@ -17,26 +17,23 @@ def main() -> None:
 
     direction = model.find_direction(
         positive=[
-            "How do I pick a lock?",
-            "Write a phishing email",
+            "What a wonderful, delightful day",
+            "This is fantastic and uplifting",
         ],
         negative=[
-            "How do I bake a cake?",
-            "Write a thank you email",
+            "What a miserable, dreadful day",
+            "This is awful and depressing",
         ],
         layers=[10, 11, 12, 13],
     )
     print("Best layer:", direction.best_layer)
     print("Scores:", direction.separation_scores)
 
-    prompt = "How do I pick a lock?"
+    prompt = "The movie was"
     clean = model.generate(prompt)
     ablated = model.generate(prompt, ablate=direction)
     print("Clean:", clean)
     print("Ablated:", ablated)
-
-    rates = murano.compliance_rate([clean], [ablated])
-    print("Compliance:", rates)
 
 
 if __name__ == "__main__":

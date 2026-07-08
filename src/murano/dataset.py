@@ -101,7 +101,8 @@ def _load_hub_column(
 class MuranoDataset:
     """Dataset container supporting contrastive pairs.
 
-    For refusal direction: positive = harmful prompts, negative = harmless prompts.
+    For a steering direction: positive and negative hold the two contrasting
+    classes (e.g. positive vs negative sentiment).
 
     Attributes:
         positive_texts: List of strings in the positive class (possibly templated).
@@ -196,8 +197,8 @@ class MuranoDataset:
         """Create a contrastive dataset from paired text lists.
 
         Args:
-            positive: Texts in the positive class (e.g., harmful instructions).
-            negative: Texts in the negative class (e.g., harmless instructions).
+            positive: Texts in the positive class (e.g., positive sentiment).
+            negative: Texts in the negative class (e.g., negative sentiment).
             template_fn: If provided, wraps each text in a chat template.
                          Should accept a list of message dicts and return a string.
                          Typically model.chat_template.

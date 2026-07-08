@@ -30,9 +30,6 @@ from murano.steps.intervene import (
     steer_direction,
 )
 from murano.steps.weight_ablation import ProjectionOperator
-from murano.steps.refusal.evaluate import (
-    ComplianceRate,
-)
 from murano.dataset import MuranoDataset, LabeledDataset
 from murano.steps.probe import Probe, ProbeResult
 
@@ -100,11 +97,10 @@ class TestStepProtocol:
             Load,
             Save,
             SteeringVector,
-            ComplianceRate,
             Plot,
         )
 
-        for cls in [Load, Save, SteeringVector, ComplianceRate, Plot]:
+        for cls in [Load, Save, SteeringVector, Plot]:
             assert hasattr(cls, "reads"), f"{cls.__name__} missing reads"
             assert hasattr(cls, "writes"), f"{cls.__name__} missing writes"
             assert isinstance(cls.reads, list), f"{cls.__name__}.reads must be list"
@@ -512,83 +508,6 @@ class TestProjectionOperator:
         v = direction.unsqueeze(0)  # [1, d_model]
         result = proj_op.project_read(v)  # v @ P
         assert result.norm().item() < 1e-4
-
-
-# ── ComplianceRate Tests ──────────────────────────────────────────────
-
-
-class TestComplianceRate:
-    """Tests for compliance rate evaluation."""
-
-    def test_unknown_method_raises(self):
-        with pytest.raises(ValueError, match="method='keyword'"):
-            ComplianceRate(method="unsupported")
-
-    def test_output_type(self):
-        r = Results()
-        r["intervene"] = InterveneResult(
-            clean_generations=["I'm sorry, I can't help"],
-            modified_generations=["Sure, here's how"],
-        )
-        results = ComplianceRate()(r)
-        assert isinstance(results["eval"], MetricComparison)
-        assert results["eval"].baseline_scores == [0.0]
-        assert results["eval"].modified_scores == [1.0]
-
-    def test_refusal_detected(self):
-        r = Results()
-        r["intervene"] = InterveneResult(
-            clean_generations=["I'm sorry, I cannot help with that."],
-            modified_generations=["Sure, here is the information."],
-        )
-        results = ComplianceRate()(r)
-        assert results["eval"].baseline_score == 0.0
-        assert results["eval"].modified_score == 1.0
-
-    def test_all_compliant(self):
-        r = Results()
-        r["intervene"] = InterveneResult(
-            clean_generations=["Sure thing!", "Here you go."],
-            modified_generations=["Of course!", "No problem."],
-        )
-        results = ComplianceRate()(r)
-        assert results["eval"].baseline_score == 1.0
-        assert results["eval"].modified_score == 1.0
-
-    def test_empty_generations(self):
-        r = Results()
-        r["intervene"] = InterveneResult(
-            clean_generations=[],
-            modified_generations=[],
-        )
-        results = ComplianceRate()(r)
-        assert results["eval"].baseline_score == 0.0
-        assert results["eval"].modified_score == 0.0
-
-    def test_compliance_rate_on_ablation_result(self):
-        """ComplianceRate should work with WeightAblationResult too,
-        since WeightAblation writes an InterveneResult to results['intervene']."""
-        r = Results()
-        r["intervene"] = InterveneResult(
-            clean_generations=["I refuse to help"],
-            modified_generations=["Here's how to do it"],
-        )
-        results = ComplianceRate()(r)
-        assert results["eval"].baseline_score == 0.0
-        assert results["eval"].modified_score == 1.0
-
-    def test_context_window(self):
-        """Refusal phrase after context_window should not be detected."""
-        # Phrase at position 10 with context_window=5 should not be caught
-        r = Results()
-        text = "A" * 310 + " i'm sorry"
-        r["intervene"] = InterveneResult(
-            clean_generations=[text],
-            modified_generations=["ok"],
-        )
-        results = ComplianceRate(context_window=300)(r)
-        # The refusal phrase is past the 300-char window
-        assert results["eval"].baseline_score == 1.0
 
 
 class TestGenerationMetric:

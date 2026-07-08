@@ -21,7 +21,7 @@ from murano.steps.attention import (
 from murano.steps.weight_ablation import WeightAblation
 from murano.steps.evaluate import GenerationMetric
 from murano.steps.probe import Probe
-from murano.steps.refusal import ComplianceRate, Plot
+from murano.steps.plot import Plot
 from murano.steps.probing import ProbePlot
 from murano.steps.logit_lens import LogitLens, LogitLensResult
 from murano.steps.logit_attribution import LogitAttribution, LogitAttributionResult
@@ -68,7 +68,6 @@ __all__ = [
     "WeightAblation",
     "GenerationMetric",
     "Probe",
-    "ComplianceRate",
     "Plot",
     "ProbePlot",
     "LogitLens",

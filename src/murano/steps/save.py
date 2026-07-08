@@ -16,11 +16,11 @@ class Save(Step):
     Output structure:
         output_dir/
         ├── direction/steering.pt
-        ├── evaluation/{generations.json, eval.json}
+        ├── evaluation/generations.json
         └── metadata.json
 
     Reads from results:
-        Whatever keys are present (steering, intervene, eval).
+        Whatever keys are present (steering, intervene).
 
     Writes to results:
         results['output_dir']: Path to the output directory.

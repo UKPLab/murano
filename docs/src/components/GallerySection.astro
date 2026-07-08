@@ -22,8 +22,8 @@ print(acts.positive[15].shape)   # (1, 2048)`,
     description: 'Compute contrastive steering vectors from paired datasets. Murano picks the layer with the highest linear separation.',
     href: `${base}docs/guides/steer/`,
     code: `direction = model.find_direction(
-    positive=harmful_prompts,
-    negative=harmless_prompts,
+    positive=["What a wonderful, delightful day"],
+    negative=["What a miserable, dreadful day"],
 )
 print(direction.best_layer)        # e.g. 12
 print(direction.separation_scores) # {10: 1.3, 12: 3.4}`,
@@ -51,7 +51,6 @@ steered = model.generate(
     Record(model, layers="all"),
     SteeringVector(normalize=True),
     Intervene(model, ablate_direction(...)),
-    ComplianceRate(),
 ]).run()`,
   },
 ];
