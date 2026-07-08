@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%E2%80%933.13-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![CI](https://img.shields.io/github/actions/workflow/status/UKPLab/murano/main-checks.yml?branch=main&style=flat-square&label=CI)](https://github.com/UKPLab/murano/actions/workflows/main-checks.yml)
-[![License: MIT](https://img.shields.io/github/license/UKPLab/murano?style=flat-square&color=brightgreen)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/github/license/UKPLab/murano?style=flat-square&color=brightgreen)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-ukplab.github.io%2Fmurano-blue?style=flat-square)](https://ukplab.github.io/murano/)
 
 Murano is a mechanistic interpretability framework for recording activations,
@@ -42,9 +42,13 @@ to install. The PyPI distribution is `murano-interp` (the bare name `murano`
 belongs to an unrelated OpenStack project); the module name is unchanged:
 `import murano`.
 
-For a development install from source:
+For a development install from source, into a fresh virtual environment:
 
 ```bash
+git clone https://github.com/UKPLab/murano.git
+cd murano
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[all]"
 ```
 
@@ -158,7 +162,8 @@ Pipeline API like the other steps.
 
 ## Core Ideas
 
-- `MuranoModel` is a thin model wrapper around `nnsight`.
+- `MuranoModel` is a thin wrapper around `nnterp`'s `StandardizedTransformer`
+  (built on `nnsight`), which standardizes model internals across families.
 - `Pipeline`, `Step`, and `Results` are the orchestration core.
 - artifacts such as `PromptBatch`, `ActivationStore`, `SteeringResult`,
   `GenerationComparison`, `MetricComparison`, and `MetricScore` make experiment
@@ -195,7 +200,32 @@ uv sync --all-extras --dev
 python -m pytest -q
 ```
 
+## Citation
+
+A citation for the accompanying publication will be added here on release. Until
+then, please cite this repository:
+
+```bibtex
+@software{murano,
+  title  = {Murano: Mechanistic Interpretability Pipelines},
+  author = {{UKP Lab, Technische Universität Darmstadt}},
+  url    = {https://github.com/UKPLab/murano},
+  year   = {2026}
+}
+```
+
+## Contact & Maintainers
+
+Murano is developed and maintained by the
+[Ubiquitous Knowledge Processing (UKP) Lab](https://www.ukp.tu-darmstadt.de/) at
+the [Technische Universität Darmstadt](https://www.tu-darmstadt.de/).
+
+For questions, bug reports, and feature requests, please open an issue on the
+[issue tracker](https://github.com/UKPLab/murano/issues).
+
 ## Disclaimer
 
-> This repository contains experimental software and is intended as a research
-> framework for mechanistic interpretability workflows.
+> This repository contains experimental software and is published to provide
+> additional background details for the associated research. It is a research
+> framework, provided as-is and without warranty; APIs may change between
+> releases.
