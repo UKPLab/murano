@@ -272,7 +272,6 @@ def plot_sae_feature_logit_effects(
     if bins < 1:
         raise ValueError(f"bins must be >= 1, got {bins}")
 
-    # Compute the one-feature raw vocabulary projection required by the PRD.
     effects = _logit_effects(decoder, unembedding, feature_id)
     labels = _token_labels(effects.numel(), token_labels, token_ids)
     k = min(num_tokens, effects.numel())
@@ -411,23 +410,25 @@ def plot_sae_token_activations(
     rows = []
     for row in examples:
         tokens = [str(token) for token in _row_get(row, "tokens", [])]
-        activations = [float(value) for value in _row_get(row, "activations", [])]
+        row_activations = [float(value) for value in _row_get(row, "activations", [])]
         if not tokens:
             raise ValueError("each example must include at least one token")
-        if len(tokens) != len(activations):
+        if len(tokens) != len(row_activations):
             raise ValueError("each example must have aligned tokens and activations")
         max_activation = _row_get(row, "max_activation")
         max_value = float(
-            max(activations) if max_activation is None else max_activation
+            max(row_activations) if max_activation is None else max_activation
         )
         max_index = _row_get(row, "max_activation_token_index")
         if max_index is None:
-            max_index = max(range(len(activations)), key=activations.__getitem__)
+            max_index = max(
+                range(len(row_activations)), key=row_activations.__getitem__
+            )
         max_token = _row_get(row, "max_token", tokens[int(max_index)])
         rows.append(
             {
                 "tokens": tokens,
-                "activations": activations,
+                "activations": row_activations,
                 "max_activation": max_value,
                 "max_index": int(max_index),
                 "max_token": str(max_token),
@@ -480,7 +481,8 @@ def plot_sae_token_activations(
 
     for row_index, row in enumerate(rows):
         y = header_y - (row_index + 1) * row_gap
-        # ponytail: width-budget crop keeps max centered without a pixel-measure pass.
+        # Grow the visible window outward from the max-activation token by
+        # budgeting box widths, since Plotly exposes no text-measurement API.
         all_tokens = row["tokens"]
         all_values = row["activations"]
         all_widths = [_token_width(token) for token in all_tokens]
