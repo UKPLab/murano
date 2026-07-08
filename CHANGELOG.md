@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `SelectComponents` step and `ComponentSelection` artifact: rank an attribution result (for example `LogitAttribution`) by magnitude, signed value, or most-negative, keep the top `top_k` or everything past a `threshold`, and write the chosen addresses for a downstream step to read. `Patch` / `PathPatch` / `Ablate` accept a `targets_key` / `senders_key` naming that selection, so attribute-then-patch runs as one pipeline instead of two with a hand-copied node list.
+- `Intervene` gains `direction_layers` (`"all"`, `"best"`, or an explicit layer list) for the `direction_key` steering path, so a one-pipeline steer can apply only the best-separating layer's direction instead of every recorded layer, which keeps deep models coherent.
+
 ## [0.1.0a2] - 2026-07-08
 
 ### Added

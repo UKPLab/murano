@@ -11,6 +11,7 @@ from murano.steps.intervene import Intervene
 from murano.steps.ablate import Ablate
 from murano.steps.patch import Patch
 from murano.steps.path_patch import PathPatch
+from murano.steps.select import SelectComponents
 from murano.steps.attention import (
     AblateAttention,
     AttentionResult,
@@ -59,6 +60,7 @@ __all__ = [
     "Ablate",
     "Patch",
     "PathPatch",
+    "SelectComponents",
     "RecordAttention",
     "AblateAttention",
     "AttentionResult",
