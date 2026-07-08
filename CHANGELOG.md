@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0a2] - 2026-07-08
+
+### Added
+
+- `Node` addressing for model components: a single scheme naming a layer, submodule (residual / MLP / attention), and optional head, Q/K/V/O side, and token position, with a string form (`L5.self_attn.h3.Q`) and `NodeSet` / `NodeDict` / `Edge` helpers.
+- Causal-analysis steps: `Logits` (forward pass exposing output logits and next-token targets), `Patch` (cross-run activation patching), `PathPatch` (direct-path patching, with per-head and per-side Q/K/V receivers), `Ablate` (zero / mean / resample a component, with support for precomputed per-head means), `LogitAttribution` (per-head and per-MLP direct logit attribution), and `LoadPaired` with clean/corrupt paired datasets.
+- Generic attention analysis: pattern capture, reductions, OV circuits, and plots (`RecordAttention`, `ov_circuit`).
+- Evaluation metrics: logit difference, KL divergence, and recovered-fraction (`LogitDiffStep`, `KLDivergenceStep`, `RecoveredMetricStep`).
+- `attn_implementation` and other loader keyword arguments are forwarded through `MuranoModel` to the nnterp loader, so models that need eager attention or `check_renaming=False` (for example GPT-J) can be loaded.
+- Packaging metadata: SPDX `license`, `authors` / `maintainers`, project URLs, trove classifiers, and keywords.
+- Documentation: SAE tutorials and a reproduction gallery (IOI, Geometry of Truth, Function Vectors).
+
+### Changed
+
+- **BREAKING:** activations are keyed by `Node` rather than `(layer, module)` tuples across `ActivationStore` / `SteeringResult` / `ProbeResult`.
+- **BREAKING:** feature dependencies are split into per-use-case extras (`[probe]`, `[data]`, `[plot]`, `[sae]`, `[notebook]`, `[all]`); the base install carries only the recording / steering / intervention core.
+- **BREAKING:** the metric value types are renamed to `MetricScore` (one scalar) and `MetricComparison` (two labeled conditions); the refusal-specific `EvalResult` subclass is removed.
+- The source distribution is slimmed to the package and its supporting files; the docs site (and its `node_modules`), notebooks, and tutorials are excluded.
+
+### Fixed
+
+- Generation-time interventions apply on every decoded token, so a steering or ablation edit holds across a whole completion.
+- Hardened serialization, loading, and architecture preconditions, and deduplicated internal helpers with added test coverage.
+
 ## [0.1.0a1] - 2026-06-15
 
 ### Added
