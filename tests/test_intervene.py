@@ -19,10 +19,13 @@ from __future__ import annotations
 import pytest
 import torch
 
-from murano import Pipeline, keys
+from murano import Node, Pipeline, keys
 from murano.dataset import MuranoDataset
+from murano.results import Results
 from murano.steps.intervene import Intervene, InterveneResult, steer_direction
 from murano.steps.load import Load
+from murano.steps.record import Record
+from murano.steps.train import SteeringResult, SteeringVector
 
 FIXTURES = ["murano_model", "gpt2_model"]
 
@@ -165,3 +168,110 @@ def test_steer_direction_is_usable_during_generation(murano_model):
     )
 
     assert isinstance(out, str)
+
+
+# ── Results-driven interventions (direction_key) ──────────────────────
+
+
+def _contrastive():
+    """Return a small contrastive dataset for deriving a steering direction."""
+    return MuranoDataset(
+        positive_texts=["good great wonderful", "nice lovely fine"],
+        negative_texts=["bad awful terrible", "poor nasty grim"],
+    )
+
+
+class TestDirectionKeyComposition:
+    """Intervene reads its direction from Results, so deriving a direction and
+    applying it is one pipeline rather than two with a manual hand-off."""
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    @pytest.mark.parametrize("mode", ["steer", "ablate"])
+    def test_derive_then_apply_in_one_pipeline(self, fixture, mode, request):
+        model = request.getfixturevalue(fixture)
+        out = Pipeline(
+            [
+                Load(_contrastive()),
+                Record(model, layers="all", position="mean"),
+                SteeringVector(normalize=True),
+                Intervene(
+                    model,
+                    direction_key=keys.STEERING,
+                    mode=mode,
+                    alpha=4.0,
+                    gen_kwargs={"max_new_tokens": 3, "do_sample": False},
+                ),
+            ]
+        ).run()
+        assert keys.STEERING in out  # the direction was derived in the same run
+        intervene: InterveneResult = out[keys.INTERVENE]
+        assert (
+            0 < len(intervene.clean_generations) == len(intervene.modified_generations)
+        )
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_resolve_fn_applies_the_results_direction(self, fixture, request):
+        # Weight-independent: a direction placed in Results is turned into an
+        # intervention that perturbs the activation at its node.
+        model = request.getfixturevalue(fixture)
+        node = Node(0, "residual")
+        steering = SteeringResult(
+            direction_per_layer={node: torch.ones(model.d_model)},
+            separation_scores={node: 1.0},
+            best_layer=node,
+        )
+        step = Intervene(model, direction_key=keys.STEERING, mode="steer", alpha=5.0)
+        results = Results()
+        results[keys.STEERING] = steering
+        fn = step._resolve_fn(results)
+
+        activation = torch.zeros(1, 1, model.d_model)
+        assert not torch.allclose(fn(activation, node), activation)
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_missing_direction_fails_preflight(self, fixture, request):
+        # The direction key joins the step's reads, so a pipeline that forgets to
+        # produce it fails validation up front instead of silently not steering.
+        model = request.getfixturevalue(fixture)
+        pipe = Pipeline(
+            [
+                Load(MuranoDataset(positive_texts=["x"], negative_texts=[])),
+                Intervene(model, direction_key=keys.STEERING, mode="steer"),
+            ]
+        )
+        with pytest.raises(KeyError):
+            pipe.validate()
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_full_arc_validates(self, fixture, request):
+        model = request.getfixturevalue(fixture)
+        produced = Pipeline(
+            [
+                Load(_contrastive()),
+                Record(model, layers="all", position="mean"),
+                SteeringVector(),
+                Intervene(model, direction_key=keys.STEERING),
+            ]
+        ).validate()
+        assert keys.INTERVENE in produced
+
+
+class TestInterveneConstructorGuards:
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_requires_exactly_one_source(self, fixture, request):
+        model = request.getfixturevalue(fixture)
+        with pytest.raises(ValueError):
+            Intervene(model)
+        with pytest.raises(ValueError):
+            Intervene(model, fn=lambda a, k: a, direction_key=keys.STEERING)
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_rejects_unknown_mode(self, fixture, request):
+        model = request.getfixturevalue(fixture)
+        with pytest.raises(ValueError):
+            Intervene(model, direction_key=keys.STEERING, mode="flip")
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_fn_path_reads_only_prompts(self, fixture, request):
+        model = request.getfixturevalue(fixture)
+        assert Intervene(model, fn=lambda a, k: a).reads == [keys.PROMPTS]
