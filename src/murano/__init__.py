@@ -15,6 +15,7 @@ except PackageNotFoundError:  # pragma: no cover
 
 if TYPE_CHECKING:
     from murano.artifacts import (
+        ComponentSelection,
         MetricScore,
         GenerationComparison,
         MetricComparison,
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     )
     from murano.steps.logit_lens import LogitLens, LogitLensResult
     from murano.steps.logits import Logits
+    from murano.steps.select import SelectComponents
     from murano.steps.sae import (
         SAEActivationStore,
         SAEEncode,
@@ -82,6 +84,8 @@ _LAZY_ATTRS = {
     "GenerationComparison": ("murano.artifacts", "GenerationComparison"),
     "MetricComparison": ("murano.artifacts", "MetricComparison"),
     "MetricScore": ("murano.artifacts", "MetricScore"),
+    "ComponentSelection": ("murano.artifacts", "ComponentSelection"),
+    "SelectComponents": ("murano.steps.select", "SelectComponents"),
     "MuranoDataset": ("murano.dataset", "MuranoDataset"),
     "LabeledDataset": ("murano.dataset", "LabeledDataset"),
     "CleanCorruptDataset": ("murano.dataset", "CleanCorruptDataset"),
@@ -135,6 +139,8 @@ __all__ = [
     "GenerationComparison",
     "MetricComparison",
     "MetricScore",
+    "ComponentSelection",
+    "SelectComponents",
     "MuranoDataset",
     "LabeledDataset",
     "CleanCorruptDataset",

@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING, Any
 from torch import Tensor, arange, tensor, zeros  # pyright: ignore[reportPrivateImportUsage]
 
 from murano import keys
-from murano.artifacts import PromptBatch
+from murano.artifacts import ComponentSelection, PromptBatch
 from murano.logging import logger
 from murano.nodes import (
     MLP,
@@ -198,7 +198,12 @@ class PathPatch(Step):
             address, an iterable of addresses, or an :class:`~murano.nodes.Edge`
             (its source is the sender, its dest the receiver). Each sender is an
             attention head (``Node(layer, "self_attn", head=h)``) or an MLP
-            (``Node(layer, "mlp")``).
+            (``Node(layer, "mlp")``). Pass this or ``senders_key``, not both.
+        senders_key: Results key holding a
+            :class:`~murano.artifacts.ComponentSelection` a discovery step wrote,
+            read at run time so attribute-then-path-patch composes in one pipeline.
+            The ``receiver`` is still fixed at construction. Pass this or
+            ``senders``, not both.
         receiver: The receiving site. A residual-stream ``Node(layer,
             "resid_post")`` (default: the final residual, the last layer), or a
             head's query/key/value input ``Node(layer, "self_attn", head=h,
@@ -218,10 +223,12 @@ class PathPatch(Step):
         mask_key: Results key to write the base attention mask under.
 
     Raises:
-        ValueError: If ``senders`` is empty or malformed, a sender/receiver layer
-            or sender/receiver head is out of range, a per-node receiver position is
-            given, both an ``Edge`` and a ``receiver`` are given, or the base and
-            source prompts are not token-length-matched per pair.
+        ValueError: If neither or both of ``senders`` and ``senders_key`` are
+            given, ``senders`` is empty or malformed, a sender/receiver layer or
+            sender/receiver head is out of range, a per-node receiver position is
+            given, both an ``Edge`` and a ``receiver`` are given, an ``Edge`` is
+            combined with ``senders_key``, or the base and source prompts are not
+            token-length-matched per pair.
         NotImplementedError: If ``receiver`` is neither a residual-stream site nor a
             head's Q/K/V input, or if a head's Q/K/V receiver is requested on an
             architecture with interleaved fused q/k/v (e.g. GPT-NeoX).
@@ -230,9 +237,10 @@ class PathPatch(Step):
     def __init__(
         self,
         model: ModelBackend,
-        senders: NodeSet | AddressLike | Iterable[AddressLike] | Edge,
+        senders: NodeSet | AddressLike | Iterable[AddressLike] | Edge | None = None,
         receiver: AddressLike | None = None,
         *,
+        senders_key: str | None = None,
         base_key: str = keys.PROMPTS,
         source_key: str = keys.CORRUPT_PROMPTS,
         positions: int | Sequence[int] | Tensor | None = None,
@@ -240,15 +248,33 @@ class PathPatch(Step):
         logits_key: str = keys.PATH_PATCHED_LOGITS,
         mask_key: str = keys.PATH_PATCHED_MASK,
     ):
+        if (senders is None) == (senders_key is None):
+            raise ValueError(
+                "Pass exactly one of senders= (addresses or an Edge) or "
+                "senders_key= (a ComponentSelection a discovery step wrote)."
+            )
         if isinstance(senders, Edge):
+            # An Edge is a senders= form, so senders_key= is already rejected by the
+            # exactly-one guard above; here only the receiver can conflict.
             if receiver is not None:
                 raise ValueError("pass an Edge OR (senders, receiver), not both.")
             receiver = senders.dest
             senders = senders.source
 
-        self.attn_senders, self.mlp_senders = _group_senders(_coerce_targets(senders))
-        if not self.attn_senders and not self.mlp_senders:
-            raise ValueError("PathPatch needs at least one sender (a head or an MLP).")
+        # With senders_key the senders are resolved from Results in __call__; hold
+        # valid-but-empty placeholders so _check_bounds validates the receiver here
+        # and the sender bounds are checked once the selection is read.
+        if senders is not None:
+            self.attn_senders, self.mlp_senders = _group_senders(
+                _coerce_targets(senders)
+            )
+            if not self.attn_senders and not self.mlp_senders:
+                raise ValueError(
+                    "PathPatch needs at least one sender (a head or an MLP)."
+                )
+        else:
+            self.attn_senders, self.mlp_senders = {}, set()
+        self.senders_key = senders_key
 
         receiver_node = (
             Node(model.n_layers - 1, RESID_POST)
@@ -287,8 +313,14 @@ class PathPatch(Step):
         self.freeze_mlps = freeze_mlps
         self.logits_key = logits_key
         self.mask_key = mask_key
-        self.reads = [base_key, source_key]
-        self.read_types = {base_key: PromptBatch, source_key: PromptBatch}
+        self.reads = [base_key, source_key] + (
+            [senders_key] if senders_key is not None else []
+        )
+        self.read_types = {
+            base_key: PromptBatch,
+            source_key: PromptBatch,
+            **({senders_key: ComponentSelection} if senders_key is not None else {}),
+        }
         self.writes = [logits_key, mask_key]
         self.write_types = {logits_key: Tensor, mask_key: Tensor}
 
@@ -358,6 +390,20 @@ class PathPatch(Step):
                 )
 
     def __call__(self, results: Results) -> Results:
+        if self.senders_key is not None:
+            # Resolve the senders a discovery step wrote before running, so
+            # attribute-then-path-patch is one pipeline. Group them, then check
+            # the sender bounds now that they are known (the receiver was already
+            # bounds-checked at construction).
+            self.attn_senders, self.mlp_senders = _group_senders(
+                _coerce_targets(results[self.senders_key])
+            )
+            if not self.attn_senders and not self.mlp_senders:
+                raise ValueError(
+                    "PathPatch needs at least one sender (a head or an MLP); the "
+                    f"selection at '{self.senders_key}' was empty."
+                )
+            self._check_bounds(self.model, self.receiver)
         base_prompts = results[self.base_key].prompts
         source_prompts = results[self.source_key].prompts
         base_tokens, source_tokens, attention_mask = self._tokenize_pair(

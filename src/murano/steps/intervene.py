@@ -119,6 +119,13 @@ class Intervene(Step):
       steer or ablate intervention, so deriving a direction and applying it
       compose in a single pipeline.
 
+    With ``direction_key``, ``direction_layers`` chooses which of the recorded
+    per-layer directions to apply. A ``SteeringResult`` carries one direction per
+    recorded layer; adding all of them at once over-steers deep models into
+    degenerate text, so ``"best"`` (the single best-separating layer) or an
+    explicit layer list keeps the flagship one-pipeline steer coherent, while
+    ``"all"`` preserves the every-layer behavior.
+
     Reads from results:
         results['prompts']: PromptBatch
         results[direction_key]: SteeringResult, when ``direction_key`` is set.
@@ -135,13 +142,19 @@ class Intervene(Step):
         mode: With ``direction_key``, ``"steer"`` adds the direction and
             ``"ablate"`` projects it out. Ignored when ``fn`` is given.
         alpha: Steering strength for ``mode="steer"``.
+        direction_layers: With ``direction_key``, which recorded directions to
+            apply: ``"all"`` every layer, ``"best"`` only the best-separating
+            layer (``SteeringResult.best_layer``), or an explicit list of layer
+            indices. Only valid with ``direction_key``.
         layers: Layers to apply the intervention at, or ``"all"``.
         modules: Module name(s) to apply the intervention at each layer.
         gen_kwargs: Keyword arguments forwarded to generation.
 
     Raises:
         ValueError: If neither or both of ``fn`` and ``direction_key`` are given,
-            or if ``mode`` is not ``"steer"`` or ``"ablate"``.
+            if ``mode`` is not ``"steer"`` or ``"ablate"``, or if
+            ``direction_layers`` is given without ``direction_key`` or is not
+            ``"all"``, ``"best"``, or a list of layer indices.
     """
 
     writes = [keys.INTERVENE]
@@ -166,6 +179,7 @@ class Intervene(Step):
         direction_key: str | None = None,
         mode: str = "steer",
         alpha: float = 1.0,
+        direction_layers: str | list[int] = "all",
         layers: list[int] | str = "all",
         modules: str | list[str] = "residual",
         gen_kwargs: dict | None = None,
@@ -178,6 +192,21 @@ class Intervene(Step):
             )
         if direction_key is not None and mode not in ("steer", "ablate"):
             raise ValueError(f"mode must be 'steer' or 'ablate', got {mode!r}")
+        if fn is not None and direction_layers != "all":
+            raise ValueError(
+                "direction_layers only applies with direction_key=; a prebuilt "
+                "fn= already fixes which layers it touches."
+            )
+        if isinstance(direction_layers, str):
+            if direction_layers not in ("all", "best"):
+                raise ValueError(
+                    f"direction_layers as a string must be 'all' or 'best', got "
+                    f"{direction_layers!r}; pass a list of layer indices to choose "
+                    f"specific layers."
+                )
+            self.direction_layers: str | list[int] = direction_layers
+        else:
+            self.direction_layers = list(direction_layers)
         self.model = model
         self.fn = fn
         self.direction_key = direction_key
@@ -235,10 +264,44 @@ class Intervene(Step):
         # so the derive-then-apply arc is one pipeline. steer_direction /
         # ablate_direction normalize the direction keys to canonical Nodes.
         steering = results[self.direction_key]
-        directions = getattr(steering, "direction_per_layer", steering)
+        directions = self._select_directions(steering)
         if self.mode == "steer":
             return steer_direction(directions, self.alpha)
         return ablate_direction(directions)
+
+    def _select_directions(self, steering: object) -> dict[Node, Tensor]:
+        """Return the subset of recorded directions ``direction_layers`` selects.
+
+        ``steering`` is the ``SteeringResult`` read from Results (its
+        ``direction_per_layer`` is a ``{Node: tensor}`` map); a bare mapping is
+        also accepted so a caller can write directions directly under the key.
+
+        Raises:
+            ValueError: If ``direction_layers="best"`` but ``steering`` carries no
+                ``best_layer``, or an explicit layer list matches no recorded layer.
+        """
+        directions = NodeDict(getattr(steering, "direction_per_layer", steering))
+        if self.direction_layers == "all":
+            return directions
+        if self.direction_layers == "best":
+            best = getattr(steering, "best_layer", None)
+            if best is None:
+                raise ValueError(
+                    "direction_layers='best' needs a SteeringResult with a "
+                    "best_layer; the direction source has none."
+                )
+            return NodeDict({best: directions[best]})
+        wanted = set(self.direction_layers)
+        subset = NodeDict(
+            {node: vec for node, vec in directions.items() if node.layer in wanted}
+        )
+        if not subset:
+            available = sorted({node.layer for node in directions})
+            raise ValueError(
+                f"direction_layers={self.direction_layers} selected no recorded "
+                f"layer; the direction source covers layers {available}."
+            )
+        return subset
 
     def _generate_clean(self, text: str) -> str:
         """Generate without any intervention."""

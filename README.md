@@ -215,8 +215,8 @@ then, please cite this repository:
 
 ## Contact & Maintainers
 
-Murano is developed and maintained by the
-[Ubiquitous Knowledge Processing (UKP) Lab](https://www.ukp.tu-darmstadt.de/) at
+Murano is developed and maintained by the Mechanistic Interpretability Team of
+[Ubiquitous Knowledge Processing (UKP) Lab](https://www.informatik.tu-darmstadt.de/ukp/ukp_home/index.en.jsp) at
 the [Technische Universität Darmstadt](https://www.tu-darmstadt.de/).
 
 For questions, bug reports, and feature requests, please open an issue on the
