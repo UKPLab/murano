@@ -70,6 +70,11 @@ class MuranoModel:
             :attr:`attention_probabilities`. Off by default because eager
             attention is slower and heavier than the fused SDPA/flash kernels;
             turn it on only for attention-pattern analysis or intervention.
+        loader_kwargs: Extra keyword arguments forwarded to the nnterp loader
+            (e.g. ``attn_implementation="eager"``, ``check_renaming=False``).
+            GPT-J needs both: its fused SDPA path traces to symbolic tensors, and
+            nnterp's renaming-validation scan trips a data-dependent op under
+            fake tensors, so it loads with those two set.
 
     Example:
         model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
@@ -82,6 +87,7 @@ class MuranoModel:
         device_map: str = "auto",
         dtype: TorchDtype = bfloat16,
         enable_attention_probs: bool = False,
+        **loader_kwargs: Any,
     ):
         self.model_id = model_id
 
@@ -102,6 +108,7 @@ class MuranoModel:
                 dtype=dtype,
                 dispatch=True,
                 enable_attention_probs=enable_attention_probs,
+                **loader_kwargs,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to load model {model_id}: {e}") from e
