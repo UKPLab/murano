@@ -1,6 +1,6 @@
 """Plotting utilities for refusal results.
 
-Requires matplotlib and seaborn (install with: pip install murano[plot]).
+Requires the ``plot`` extra (install with: pip install murano-interp[plot]).
 """
 
 from __future__ import annotations
@@ -8,40 +8,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from murano.plotting._common import _save, _setup
+
 if TYPE_CHECKING:
+    from murano.artifacts import MetricComparison
     from murano.steps.train import SteeringResult
-    from murano.steps.refusal.evaluate import EvalResult
-
-
-def _require_plotting():
-    """Ensure plotting dependencies are installed."""
-    try:
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-
-        return plt, sns
-    except ImportError as e:
-        raise RuntimeError(
-            "Plotting utilities require additional dependencies. "
-            "Please install them via: pip install murano[plot]"
-        ) from e
-
-
-def _setup():
-    """Consistent seaborn style for all plots."""
-    _, sns = _require_plotting()
-
-    sns.set_theme(
-        style="whitegrid", context="notebook", palette="muted", font_scale=1.1
-    )
-    return sns
-
-
-def _save(fig, save_path):
-    """Save figure with consistent settings."""
-    if save_path:
-        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="white")
 
 
 def plot_separation_scores(
@@ -82,14 +53,14 @@ def plot_separation_scores(
 
 
 def plot_compliance_comparison(
-    eval_result: EvalResult,
+    eval_result: MetricComparison,
     save_path: str | Path | None = None,
 ) -> None:
     """Plot clean vs ablated compliance rates as side-by-side bars.
 
     Args:
-        eval_result: EvalResult with ``clean_compliance`` and
-            ``ablated_compliance`` attributes.
+        eval_result: MetricComparison whose ``baseline_score`` and
+            ``modified_score`` are the clean and ablated compliance rates.
         save_path: If provided, write the figure to this path.
     """
     import matplotlib.pyplot as plt
@@ -97,7 +68,7 @@ def plot_compliance_comparison(
     sns = _setup()
 
     labels = ["Clean", "Ablated"]
-    values = [eval_result.clean_compliance, eval_result.ablated_compliance]
+    values = [eval_result.baseline_score, eval_result.modified_score]
 
     fig, ax = plt.subplots(figsize=(5, 4))
     bars = ax.bar(
@@ -130,6 +101,7 @@ def plot_refusal_heatmap(
     refusal_phrases: list[str] | None = None,
     save_path: str | Path | None = None,
     max_prompts: int = 30,
+    context_window: int = 300,
 ) -> None:
     """Plot a per-prompt refusal heatmap (compliant vs refusal).
 
@@ -145,6 +117,8 @@ def plot_refusal_heatmap(
             ``murano.evaluation.REFUSAL_PHRASES`` when None.
         save_path: If provided, write the figure to this path.
         max_prompts: Truncate the plot to the first ``max_prompts`` rows.
+        context_window: Leading characters of each generation to scan for a
+            refusal phrase.
     """
     import matplotlib.pyplot as plt
     import matplotlib.colors as mcolors
@@ -153,20 +127,21 @@ def plot_refusal_heatmap(
 
     sns = _setup()
 
-    from murano.evaluation import REFUSAL_PHRASES
+    from murano.evaluation import REFUSAL_PHRASES, is_refusal
 
     if refusal_phrases is None:
         refusal_phrases = REFUSAL_PHRASES
-
-    def is_refusal(text: str) -> bool:
-        return any(p in text.lower()[:300] for p in refusal_phrases)
 
     n = min(len(prompts), max_prompts)
     matrix = np.zeros((n, 2))
 
     for i in range(n):
-        matrix[i, 0] = 1.0 if is_refusal(clean_generations[i]) else 0.0
-        matrix[i, 1] = 1.0 if is_refusal(modified_generations[i]) else 0.0
+        matrix[i, 0] = float(
+            is_refusal(clean_generations[i], refusal_phrases, context_window)
+        )
+        matrix[i, 1] = float(
+            is_refusal(modified_generations[i], refusal_phrases, context_window)
+        )
 
     prompt_labels = [p[:60] + "..." if len(p) > 60 else p for p in prompts[:n]]
 

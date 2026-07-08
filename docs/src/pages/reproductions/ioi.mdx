@@ -1,0 +1,155 @@
+---
+layout: ../../layouts/ReproLayout.astro
+title: "IOI: a Circuit for Indirect Object Identification"
+description: Reproducing Wang et al. (ICLR 2023): localizing the name-mover, negative name-mover, and S-inhibition heads of GPT-2 small with Murano path patching, attention analysis, and OV circuits.
+---
+
+<div class="mc-header">
+  <a href="/murano/reproductions" class="mc-back">← Back to gallery</a>
+
+  <div class="mc-badges">
+    <span class="badge badge--venue">ICLR 2023</span>
+    <span class="badge badge--tag">circuits</span>
+    <span class="badge badge--tag">attention</span>
+    <span class="badge badge--tag">path patching</span>
+  </div>
+
+  <h1 class="mc-title">
+    Interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 Small
+  </h1>
+
+  <p class="mc-authors">
+    Kevin Ro Wang, Alexandre Variengien, Arthur Conmy, Buck Shlegeris, Jacob Steinhardt
+  </p>
+
+  <div class="mc-actions">
+    <a href="https://colab.research.google.com/github/UKPLab/murano/blob/main/notebooks/reproductions/wang2023_ioi.ipynb" class="btn btn--primary" target="_blank" rel="noopener">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Try in Colab
+    </a>
+    <a href="https://arxiv.org/abs/2211.00593" class="btn btn--outline" target="_blank" rel="noopener">arXiv</a>
+    <a href="https://github.com/redwoodresearch/Easy-Transformer" class="btn btn--outline" target="_blank" rel="noopener">Original code</a>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<article class="mc-body">
+
+## TL;DR
+
+GPT-2 small solves indirect object identification (predicting *Mary* in *"When Mary and John went to the store, John gave a drink to ___"*) with a small, human-readable circuit: a handful of late **name-mover heads** write the answer, two **negative name movers** push back, and upstream **S-inhibition heads** tell the movers which name to attend to. This reproduction rebuilds that circuit end to end with Murano.
+
+## Abstract
+
+> Research in mechanistic interpretability seeks to explain behaviors of machine learning models in terms of their internal components. However, most previous work either focuses on simple behaviors in small models, or describes complicated behaviors in larger models with broad strokes. In this work, we bridge this gap by presenting an explanation for how GPT-2 small performs a natural language task called indirect object identification (IOI). Our explanation encompasses 26 attention heads grouped into 7 main classes, which we discovered using a combination of interpretability approaches relying on causal interventions. To our knowledge, this investigation is the largest end-to-end attempt at reverse-engineering a natural behavior "in the wild" in a language model. We evaluate the reliability of our explanation using three quantitative criteria—faithfulness, completeness and minimality. Though these criteria support our explanation, they also point to remaining gaps in our understanding. Our work provides evidence that a mechanistic understanding of large ML models is feasible, opening opportunities to scale our understanding to both larger models and more complex tasks.
+
+<hr class="divider" />
+
+## Reproducing with Murano
+
+The whole reproduction runs through Murano's `Pipeline` steps: contrastive data, path patching, attention capture, and OV circuits, with no bespoke hook code.
+
+### Step 1: Contrastive data and the baseline metric
+
+The metric is the **logit difference** logit(IO) − logit(S) at the final token. A clean IOI prompt scores clearly positive; the corrupt ABC run (three distinct names) sits near zero.
+
+```python
+from murano import keys
+from murano.dataset import CleanCorruptDataset
+from murano.model import MuranoModel
+from murano.steps.logits import Logits
+from murano.steps.metrics import LogitDiffStep
+from murano.steps.paired import LoadPaired
+from murano.results import Results
+
+model = MuranoModel("gpt2", enable_attention_probs=True)
+ds = CleanCorruptDataset(clean=clean, corrupt=corrupt, correct=io_ids, incorrect=s_ids)
+
+base = LoadPaired(ds)(Results())
+clean_ld = LogitDiffStep(correct=io_ids, incorrect=s_ids)(Logits(model)(base))[keys.LOGIT_DIFF].value
+```
+
+### Step 2: Localize the name movers with path patching
+
+`PathPatch` injects a head's corrupt activation into the clean run along the direct path to the logits, freezing everything else. Name movers write the IO answer, so patching them collapses the logit difference (large negative % change); negative name movers do the opposite.
+
+```python
+from murano.nodes import SELF_ATTN, Node
+from murano.steps.path_patch import PathPatch
+
+for layer in range(model.n_layers):
+    for head in range(model.n_heads):
+        out = PathPatch(model, Node(layer, SELF_ATTN, head=head), positions=[-1])(base)
+        effect[layer, head] = LogitDiffStep(
+            correct=io_ids, incorrect=s_ids,
+            logits_key=keys.PATH_PATCHED_LOGITS, mask_key=keys.PATH_PATCHED_MASK,
+        )(out)[keys.LOGIT_DIFF].value
+# largest negative effect: heads 9.9, 9.6, 10.0 (the name movers)
+```
+
+### Step 3: What the movers read and copy
+
+`RecordAttention` captures the attention pattern; `attention_to` reduces it to the mean attention between two positions per head (the name movers attend from END to the IO name). `ov_circuit` returns a head's value-output map, so pushing a name through it and the unembedding tests whether the head **copies** that name.
+
+```python
+from murano.steps.attention import RecordAttention, ov_circuit
+
+attn = RecordAttention(model, layers="all")(base)[keys.ATTENTION_PATTERN]
+end_to_io = attn.attention_to(query=None, key=io_pos)   # [n_layers, n_heads]; END → IO
+ov = ov_circuit(model, 9, 9)                            # L9.H9 value-output map
+```
+
+### Step 4: Trace the S-inhibition edge (per-head query patch)
+
+The S-inhibition heads act on the movers through their **query**, not their value. A per-head, per-side receiver patches the corrupt S-inhibition signal directly into a mover's query: it drops the logit difference, while patching the value does not.
+
+```python
+s_inhibition = [Node(7, SELF_ATTN, head=3), Node(7, SELF_ATTN, head=9),
+                Node(8, SELF_ATTN, head=6), Node(8, SELF_ATTN, head=10)]
+
+# receiver = the name mover's query input
+out = PathPatch(model, s_inhibition,
+                receiver=Node(9, SELF_ATTN, head=9, side="Q"), positions=[-1])(base)
+```
+
+<p class="aside">
+  The Colab notebook runs the full experiment end-to-end, including the negative name movers,
+  the duplicate-token heads, mean-ablation (with the backup name movers compensating), and the plots.
+</p>
+
+<hr class="divider" />
+
+## Key results
+
+| What | Wang et al. | This reproduction |
+| --- | --- | --- |
+| Name-mover heads | 9.9, 10.0, 9.6 | 9.9, 9.6, 10.0 (largest direct effect) |
+| Negative name movers | 10.7, 11.10 | 10.7, 11.10 (largest positive effect) |
+| Copy score, top mover | 100% | ~100% |
+| S-inhibition acts via | the movers' query | query patch drops the logit diff, value does not |
+
+<p class="aside">
+  The absolute logit difference (~2.5 here vs. ~3.4 in the paper) reflects the smaller,
+  single-template prompt set used in the notebook; the head identities and the mechanism match.
+</p>
+
+<hr class="divider" />
+
+## Citation
+
+```bibtex
+@inproceedings{DBLP:conf/iclr/WangVCSS23,
+  author    = {Kevin Ro Wang and Alexandre Variengien and Arthur Conmy and
+               Buck Shlegeris and Jacob Steinhardt},
+  title     = {Interpretability in the Wild: a Circuit for Indirect Object
+               Identification in {GPT-2} Small},
+  booktitle = {The Eleventh International Conference on Learning Representations,
+               {ICLR} 2023, Kigali, Rwanda, May 1-5, 2023},
+  publisher = {OpenReview.net},
+  year      = {2023},
+  url       = {https://openreview.net/forum?id=NpsVSN6o4ul}
+}
+```
+
+</article>

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Callable
 
 from murano import keys
-from murano.artifacts import GenerationComparison, MetricResult
+from murano.artifacts import GenerationComparison, MetricComparison
 from murano.logging import logger
 from murano.results import Results
 from murano.steps.base import Step
@@ -18,15 +18,15 @@ class GenerationMetric(Step):
         results['intervene']: GenerationComparison
 
     Writes to results:
-        results['metric']: MetricResult
+        results['metric']: MetricComparison
 
     Args:
-        metric_name: Identifier written to ``MetricResult.metric_name``.
+        metric_name: Identifier written to ``MetricComparison.metric_name``.
         score_fn: Aggregate scoring function applied to a list of generations.
         item_score_fn: Optional per-item scorer; results populate
-            ``MetricResult.baseline_scores`` / ``modified_scores``.
+            ``MetricComparison.baseline_scores`` / ``modified_scores``.
         input_key: Results key to read the GenerationComparison from.
-        output_key: Results key under which to write the MetricResult.
+        output_key: Results key under which to write the MetricComparison.
     """
 
     reads = [keys.INTERVENE]
@@ -53,8 +53,8 @@ class GenerationMetric(Step):
         return {self.input_key: GenerationComparison}
 
     def expected_write_types(self, results=None, available_types=None):
-        """Return ``{output_key: MetricResult}``."""
-        return {self.output_key: MetricResult}
+        """Return ``{output_key: MetricComparison}``."""
+        return {self.output_key: MetricComparison}
 
     def __call__(self, results: Results) -> Results:
         comparison = results[self.input_key]
@@ -67,7 +67,7 @@ class GenerationMetric(Step):
             baseline_scores = [self.item_score_fn(text) for text in baseline]
             modified_scores = [self.item_score_fn(text) for text in modified]
 
-        metric = MetricResult(
+        metric = MetricComparison(
             metric_name=self.metric_name,
             baseline_score=self.score_fn(baseline),
             modified_score=self.score_fn(modified),

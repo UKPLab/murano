@@ -9,6 +9,7 @@ from typing import Any
 from numpy import ndarray
 
 from murano import keys
+from murano._optional import require_optional
 from murano.logging import logger
 from murano.nodes import Node, NodeDict
 from murano.results import Results
@@ -78,6 +79,7 @@ class Probe(Step):
         self._classifier_template = classifier
 
     def __call__(self, results: Results) -> Results:
+        require_optional("probe")
         from sklearn.linear_model import LogisticRegression
         from sklearn.model_selection import cross_val_score
         from sklearn.base import clone

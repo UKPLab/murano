@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, Callable
@@ -10,7 +11,12 @@ from typing import Any, TYPE_CHECKING, Callable
 import torch
 
 from murano import __version__, keys
-from murano.artifacts import GenerationComparison, MetricResult, PromptBatch
+from murano.artifacts import (
+    MetricScore,
+    GenerationComparison,
+    MetricComparison,
+    PromptBatch,
+)
 from murano.logging import logger
 
 if TYPE_CHECKING:
@@ -86,15 +92,15 @@ def save_generations(
         entry[baseline_label] = intervene_result.clean_generations[i]
         entry[modified_label] = intervene_result.modified_generations[i]
         data.append(entry)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    _write_json(path, data)
     logger.info("Saved %d generation pairs to %s", n, path)
 
 
-def save_eval(eval_result: Any, path: Path) -> None:
-    """Save an EvalResult to a JSON file.
+def save_metric_comparison(eval_result: Any, path: Path) -> None:
+    """Save a MetricComparison to a JSON file.
 
     Args:
-        eval_result: MetricResult or EvalResult to serialize.
+        eval_result: MetricComparison to serialize.
         path: Output path. Parent directory is created if missing.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -108,12 +114,97 @@ def save_eval(eval_result: Any, path: Path) -> None:
         "modified_scores": eval_result.modified_scores,
         "metadata": getattr(eval_result, "metadata", {}),
     }
-    if hasattr(eval_result, "clean_compliance"):
-        data["clean_compliance"] = eval_result.clean_compliance
-    if hasattr(eval_result, "ablated_compliance"):
-        data["ablated_compliance"] = eval_result.ablated_compliance
-    path.write_text(json.dumps(data, indent=2))
+    _write_json(path, data)
     logger.info("Saved eval result to %s", path)
+
+
+def _json_finite(obj: Any) -> Any:
+    """Recursively replace non-finite floats (NaN, +/-Inf) with None.
+
+    JSON has no representation for NaN or Infinity; emitting the bare tokens
+    produces output that strict (RFC-8259) parsers reject. Mapping them to null
+    keeps the file portable.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_finite(v) for v in obj]
+    return obj
+
+
+def _write_json(
+    path: Path, data: Any, *, default: Callable[[Any], Any] | None = None
+) -> None:
+    """Serialize ``data`` to ``path`` as portable, strict JSON.
+
+    Non-finite floats (NaN, +/-Inf) are mapped to null via :func:`_json_finite`
+    so the artifact is valid RFC-8259 JSON that any parser can read back, and
+    ``allow_nan=False`` guarantees the non-standard tokens can never slip
+    through. Routing every JSON artifact through this writer keeps that
+    guarantee uniform across the library.
+
+    Args:
+        path: Destination file. Its parent directory must already exist.
+        data: JSON-serializable payload.
+        default: Fallback serializer for objects json cannot encode natively,
+            e.g. ``str`` for pathlib.Path values in metadata.
+    """
+    path.write_text(
+        json.dumps(
+            _json_finite(data),
+            indent=2,
+            ensure_ascii=False,
+            allow_nan=False,
+            default=default,
+        )
+    )
+
+
+def save_metric_score(evaluation: MetricScore, path: Path) -> None:
+    """Save a MetricScore (scalar forward-pass metric) to JSON.
+
+    Args:
+        evaluation: The MetricScore to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Non-finite scores (e.g. a recovered metric over a zero span -> nan) are
+    # written as JSON null by _write_json; load_metric_score maps null back to nan.
+    data = {
+        "metric_name": evaluation.metric_name,
+        "value": evaluation.value,
+        "per_example": evaluation.per_example,
+        "metadata": evaluation.metadata,
+    }
+    _write_json(path, data)
+    logger.info("Saved evaluation result to %s", path)
+
+
+def load_metric_score(path: str | Path) -> MetricScore:
+    """Load a MetricScore from a file written by :func:`save_metric_score`.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        The reconstructed MetricScore.
+    """
+    data = json.loads(Path(path).read_text())
+    value = data["value"]
+    per_example = data.get("per_example")
+    return MetricScore(
+        metric_name=data["metric_name"],
+        # null is how a non-finite score was stored; restore it as nan.
+        value=float("nan") if value is None else value,
+        per_example=(
+            None
+            if per_example is None
+            else [float("nan") if v is None else v for v in per_example]
+        ),
+        metadata=data.get("metadata", {}),
+    )
 
 
 def save_ablated_model(model: ModelBackend, save_dir: str | Path) -> Path:
@@ -159,7 +250,7 @@ def save_probe(probe_result: Any, path: Path) -> None:
         "best_layer": str(probe_result.best_layer),
         "label_names": probe_result.label_names,
     }
-    path.write_text(json.dumps(data, indent=2))
+    _write_json(path, data)
     logger.info("Saved probe result to %s", path)
 
 
@@ -220,6 +311,112 @@ def load_logit_lens(path: str | Path) -> Any:
         input_words=data["input_words"],
         attention_mask=data["attention_mask"],
         addresses=addresses,
+    )
+
+
+def save_attention(result: Any, path: Path) -> None:
+    """Save an AttentionResult to a .pt file.
+
+    Persists every captured layer's attention weights along with the mask,
+    decoded tokens, layer indices, addresses, and metadata, so the reductions
+    and pattern plots can run without re-tracing the model.
+
+    Args:
+        result: AttentionResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "patterns": result.patterns,
+            "attention_mask": result.attention_mask,
+            "str_tokens": result.str_tokens,
+            "layers": result.layers,
+            "addresses": result.addresses,
+            "metadata": result.metadata,
+        },
+        path,
+    )
+    logger.info("Saved attention result to %s", path)
+
+
+def load_attention(path: str | Path) -> Any:
+    """Load an AttentionResult from a file written by :func:`save_attention`.
+
+    Args:
+        path: Path to the attention.pt file.
+
+    Returns:
+        AttentionResult with its captured patterns and metadata.
+    """
+    from murano.steps.attention import AttentionResult
+
+    data = torch.load(path, weights_only=False)
+    return AttentionResult(
+        patterns=data["patterns"],
+        attention_mask=data["attention_mask"],
+        str_tokens=data["str_tokens"],
+        layers=data["layers"],
+        addresses=data["addresses"],
+        metadata=data.get("metadata", {}),
+    )
+
+
+def save_logit_attribution(result: Any, path: Path) -> None:
+    """Save a LogitAttributionResult to a JSON file.
+
+    Component contributions are keyed by their string address; the loader coerces
+    them back to Node objects.
+
+    Args:
+        result: LogitAttributionResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "contributions": {str(k): v for k, v in result.contributions.items()},
+        "embed_contribution": result.embed_contribution,
+        "other_contribution": result.other_contribution,
+        "target": result.target,
+        "total": result.total,
+        "completeness_error": result.completeness_error,
+        "per_example": (
+            {str(k): v for k, v in result.per_example.items()}
+            if result.per_example is not None
+            else None
+        ),
+        "metadata": result.metadata,
+    }
+    _write_json(path, data)
+    logger.info("Saved logit attribution result to %s", path)
+
+
+def load_logit_attribution(path: str | Path) -> Any:
+    """Load a LogitAttributionResult from a file written by :func:`save_logit_attribution`.
+
+    Args:
+        path: Path to the logit_attribution.json file.
+
+    Returns:
+        LogitAttributionResult with string addresses coerced back to Node keys.
+    """
+    from murano.steps.logit_attribution import LogitAttributionResult
+
+    data = json.loads(Path(path).read_text())
+
+    def _restore(value: Any) -> Any:
+        # null is how a non-finite scalar was stored; restore it as nan.
+        return float("nan") if value is None else value
+
+    return LogitAttributionResult(
+        contributions=data["contributions"],
+        embed_contribution=_restore(data["embed_contribution"]),
+        other_contribution=_restore(data["other_contribution"]),
+        target=data["target"],
+        total=_restore(data["total"]),
+        completeness_error=_restore(data["completeness_error"]),
+        per_example=data.get("per_example"),
+        metadata=data.get("metadata", {}),
     )
 
 
@@ -382,7 +579,7 @@ def save_sae_examples(feature_examples: Any, path: Path) -> None:
         "sae_id": feature_examples.sae_id,
         "k": feature_examples.k,
     }
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    _write_json(path, data)
     logger.info("Saved SAE feature examples to %s", path)
 
 
@@ -413,6 +610,56 @@ def load_sae_examples(path: str | Path) -> Any:
     )
 
 
+def save_sae_labels(feature_labels: Any, path: Path) -> None:
+    """Save an SAEFeatureLabels to a JSON file.
+
+    Integer ``feat_id`` keys are stringified on save (JSON requires string
+    keys); :func:`load_sae_labels` casts them back.
+
+    Args:
+        feature_labels: SAEFeatureLabels to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "feat_ids": feature_labels.feat_ids,
+        "tokens": {str(k): v for k, v in feature_labels.tokens.items()},
+        "logits": {str(k): v for k, v in feature_labels.logits.items()},
+        "k_tokens": feature_labels.k_tokens,
+        "layer": feature_labels.layer,
+        "release": feature_labels.release,
+        "sae_id": feature_labels.sae_id,
+    }
+    _write_json(path, data)
+    logger.info("Saved SAE feature labels to %s", path)
+
+
+def load_sae_labels(path: str | Path) -> Any:
+    """Load an SAEFeatureLabels from a JSON file.
+
+    Stringified ``feat_id`` keys produced by :func:`save_sae_labels` are
+    cast back to int.
+
+    Args:
+        path: Path to the feature_labels.json file.
+
+    Returns:
+        SAEFeatureLabels reconstructed from the JSON payload.
+    """
+    from murano.steps.sae import SAEFeatureLabels
+
+    data = json.loads(Path(path).read_text())
+    return SAEFeatureLabels(
+        feat_ids=list(data["feat_ids"]),
+        tokens={int(k): v for k, v in data["tokens"].items()},
+        logits={int(k): v for k, v in data["logits"].items()},
+        k_tokens=data["k_tokens"],
+        layer=data["layer"],
+        release=data["release"],
+        sae_id=data["sae_id"],
+    )
+
+
 def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
     """Save a PromptBatch to JSON.
 
@@ -427,7 +674,7 @@ def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
         "raw_prompts": prompt_batch.raw_prompts,
         "metadata": prompt_batch.metadata,
     }
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    _write_json(path, data)
     logger.info("Saved %d prompts to %s", len(prompt_batch), path)
 
 
@@ -444,7 +691,7 @@ def save_metadata(metadata: dict, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     metadata.setdefault("murano_version", __version__)
     metadata.setdefault("timestamp", datetime.now().isoformat())
-    path.write_text(json.dumps(metadata, indent=2, default=str))
+    _write_json(path, metadata, default=str)
 
 
 def _resolve_output_dir(output_dir: str | Path, run_name: str | None) -> Path:
@@ -491,10 +738,16 @@ def register_artifact_serializer(
 
 
 def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
+    from murano.steps.attention import AttentionResult
+    from murano.steps.logit_attribution import LogitAttributionResult
     from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
     from murano.steps.record import ActivationStore, LabeledActivationStore
-    from murano.steps.sae import SAEActivationStore, SAEFeatureExamples
+    from murano.steps.sae import (
+        SAEActivationStore,
+        SAEFeatureExamples,
+        SAEFeatureLabels,
+    )
     from murano.steps.train import SteeringResult
 
     registry: list[tuple[type, ArtifactSerializer]] = []
@@ -507,7 +760,10 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         metadata: dict[str, Any],
     ) -> None:
         save_prompts(prompts, out / "prompts" / f"{key}.json")
-        metadata["prompts"] = {
+        # Key the summary by the artifact key, not a fixed "prompts", so a paired
+        # run with both clean and corrupt prompt batches records both instead of
+        # the second silently overwriting the first.
+        metadata[key] = {
             "source": prompts.source,
             "n_prompts": len(prompts),
         }
@@ -551,16 +807,16 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "metadata": comparison.metadata,
         }
 
-    def serialize_metric(
+    def serialize_metric_comparison(
         key: str,
-        metric: MetricResult,
+        metric: MetricComparison,
         out: Path,
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
         filename = "eval.json" if key == keys.EVAL else f"{key}.json"
         folder = "evaluation" if key == keys.EVAL else "metrics"
-        save_eval(metric, out / folder / filename)
+        save_metric_comparison(metric, out / folder / filename)
         metadata[key] = {
             "metric_name": metric.metric_name,
             "baseline_label": metric.baseline_label,
@@ -575,6 +831,20 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
                 "baseline_score": metric.baseline_score,
                 "modified_score": metric.modified_score,
             }
+
+    def serialize_metric_score(
+        key: str,
+        evaluation: MetricScore,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        save_metric_score(evaluation, out / "metrics" / f"{key}.json")
+        metadata[key] = {
+            "metric_name": evaluation.metric_name,
+            "value": evaluation.value,
+            "metadata": evaluation.metadata,
+        }
 
     def serialize_probe(
         key: str, probe: Any, out: Path, _results: Any, metadata: dict[str, Any]
@@ -601,6 +871,39 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "addresses": [str(a) for a in logit_lens.addresses],
             "n_layers": logit_lens.all_probs.shape[0],
             "n_inputs": logit_lens.all_probs.shape[1],
+        }
+
+    def serialize_attention(
+        key: str,
+        attention: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "attention.pt" if key == keys.ATTENTION_PATTERN else f"{key}.pt"
+        save_attention(attention, out / "attention" / filename)
+        first = next(iter(attention.patterns.values()), None)
+        metadata[key] = {
+            "layers": list(attention.layers),
+            "n_inputs": first.shape[0] if first is not None else 0,
+            "n_heads": first.shape[1] if first is not None else 0,
+        }
+
+    def serialize_logit_attribution(
+        key: str,
+        attribution: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = (
+            "logit_attribution.json" if key == keys.LOGIT_ATTRIBUTION else f"{key}.json"
+        )
+        save_logit_attribution(attribution, out / "logit_attribution" / filename)
+        metadata[key] = {
+            "target": attribution.target,
+            "total": attribution.total,
+            "completeness_error": attribution.completeness_error,
         }
 
     def serialize_activation_store(
@@ -677,12 +980,36 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "n_tracked": len(examples.feat_ids),
         }
 
+    def serialize_sae_labels(
+        key: str,
+        labels: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "feature_labels.json" if key == "feature_labels" else f"{key}.json"
+        save_sae_labels(labels, out / "sae" / filename)
+        metadata[key] = {
+            "layer": labels.layer,
+            "release": labels.release,
+            "sae_id": labels.sae_id,
+            "k_tokens": labels.k_tokens,
+            "n_labeled": len(labels.feat_ids),
+        }
+
     register_artifact_serializer(registry, PromptBatch, serialize_prompts)
     register_artifact_serializer(registry, SteeringResult, serialize_steering)
     register_artifact_serializer(registry, GenerationComparison, serialize_generations)
-    register_artifact_serializer(registry, MetricResult, serialize_metric)
+    register_artifact_serializer(
+        registry, MetricComparison, serialize_metric_comparison
+    )
+    register_artifact_serializer(registry, MetricScore, serialize_metric_score)
     register_artifact_serializer(registry, ProbeResult, serialize_probe)
     register_artifact_serializer(registry, LogitLensResult, serialize_logit_lens)
+    register_artifact_serializer(registry, AttentionResult, serialize_attention)
+    register_artifact_serializer(
+        registry, LogitAttributionResult, serialize_logit_attribution
+    )
     register_artifact_serializer(registry, ActivationStore, serialize_activation_store)
     register_artifact_serializer(
         registry, LabeledActivationStore, serialize_labeled_activation_store
@@ -691,6 +1018,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         registry, SAEActivationStore, serialize_sae_activations
     )
     register_artifact_serializer(registry, SAEFeatureExamples, serialize_sae_examples)
+    register_artifact_serializer(registry, SAEFeatureLabels, serialize_sae_labels)
     return registry
 
 
@@ -721,6 +1049,8 @@ def save_results(
         │   └── eval.json
         ├── logit_lens/          # logit-lens probabilities + decoded words
         │   └── logit_lens.pt
+        ├── attention/           # captured per-head attention weights
+        │   └── attention.pt
         ├── activations/         # recorded activation stores (transitional format)
         │   └── record.pt
         ├── sae/                 # SAE activations + per-feature examples
@@ -748,7 +1078,7 @@ def save_results(
     # Record dataset provenance
     if keys.DATASET in results:
         ds = results[keys.DATASET]
-        from murano.dataset import LabeledDataset
+        from murano.dataset import CleanCorruptDataset, LabeledDataset
 
         if isinstance(ds, LabeledDataset):
             metadata["dataset"] = {
@@ -756,6 +1086,13 @@ def save_results(
                 "n_examples": len(ds.texts),
                 "n_classes": len(set(ds.labels)),
                 "label_names": ds.label_names,
+            }
+        elif isinstance(ds, CleanCorruptDataset):
+            metadata["dataset"] = {
+                "type": "paired",
+                "n_pairs": len(ds),
+                "has_answers": ds.correct is not None,
+                "chat_templated": ds.raw_clean is not None,
             }
         else:
             metadata["dataset"] = {

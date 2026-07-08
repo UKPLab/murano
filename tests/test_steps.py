@@ -9,7 +9,7 @@ import math
 import pytest
 import torch
 
-from murano.artifacts import MetricResult, PromptBatch
+from murano.artifacts import MetricComparison, PromptBatch
 from murano.nodes import Node
 from murano.results import Results
 from murano.pipeline import Pipeline
@@ -32,7 +32,6 @@ from murano.steps.intervene import (
 from murano.steps.weight_ablation import ProjectionOperator
 from murano.steps.refusal.evaluate import (
     ComplianceRate,
-    EvalResult,
 )
 from murano.dataset import MuranoDataset, LabeledDataset
 from murano.steps.probe import Probe, ProbeResult
@@ -532,7 +531,7 @@ class TestComplianceRate:
             modified_generations=["Sure, here's how"],
         )
         results = ComplianceRate()(r)
-        assert isinstance(results["eval"], EvalResult)
+        assert isinstance(results["eval"], MetricComparison)
         assert results["eval"].baseline_scores == [0.0]
         assert results["eval"].modified_scores == [1.0]
 
@@ -543,8 +542,8 @@ class TestComplianceRate:
             modified_generations=["Sure, here is the information."],
         )
         results = ComplianceRate()(r)
-        assert results["eval"].clean_compliance == 0.0
-        assert results["eval"].ablated_compliance == 1.0
+        assert results["eval"].baseline_score == 0.0
+        assert results["eval"].modified_score == 1.0
 
     def test_all_compliant(self):
         r = Results()
@@ -553,8 +552,8 @@ class TestComplianceRate:
             modified_generations=["Of course!", "No problem."],
         )
         results = ComplianceRate()(r)
-        assert results["eval"].clean_compliance == 1.0
-        assert results["eval"].ablated_compliance == 1.0
+        assert results["eval"].baseline_score == 1.0
+        assert results["eval"].modified_score == 1.0
 
     def test_empty_generations(self):
         r = Results()
@@ -563,10 +562,10 @@ class TestComplianceRate:
             modified_generations=[],
         )
         results = ComplianceRate()(r)
-        assert results["eval"].clean_compliance == 0.0
-        assert results["eval"].ablated_compliance == 0.0
+        assert results["eval"].baseline_score == 0.0
+        assert results["eval"].modified_score == 0.0
 
-    def test_works_with_weight_ablation_result(self):
+    def test_compliance_rate_on_ablation_result(self):
         """ComplianceRate should work with WeightAblationResult too,
         since WeightAblation writes an InterveneResult to results['intervene']."""
         r = Results()
@@ -575,8 +574,8 @@ class TestComplianceRate:
             modified_generations=["Here's how to do it"],
         )
         results = ComplianceRate()(r)
-        assert results["eval"].clean_compliance == 0.0
-        assert results["eval"].ablated_compliance == 1.0
+        assert results["eval"].baseline_score == 0.0
+        assert results["eval"].modified_score == 1.0
 
     def test_context_window(self):
         """Refusal phrase after context_window should not be detected."""
@@ -589,7 +588,7 @@ class TestComplianceRate:
         )
         results = ComplianceRate(context_window=300)(r)
         # The refusal phrase is past the 300-char window
-        assert results["eval"].clean_compliance == 1.0
+        assert results["eval"].baseline_score == 1.0
 
 
 class TestGenerationMetric:
@@ -604,7 +603,7 @@ class TestGenerationMetric:
             score_fn=lambda texts: sum(len(text) for text in texts) / len(texts),
             item_score_fn=lambda text: float(len(text)),
         )(r)
-        assert isinstance(results["metric"], MetricResult)
+        assert isinstance(results["metric"], MetricComparison)
         assert results["metric"].metric_name == "mean_length"
         assert results["metric"].baseline_score == pytest.approx(3.0)
         assert results["metric"].modified_score == pytest.approx(3.0)
@@ -652,7 +651,7 @@ class TestResults:
             modified_generations=["modified answer"],
             prompts=["raw prompt"],
         )
-        r["metric"] = MetricResult(
+        r["metric"] = MetricComparison(
             metric_name="toy_metric",
             baseline_score=0.25,
             modified_score=0.75,
@@ -734,7 +733,7 @@ class TestLabeledActivationStore:
 
     def test_labels_shape(self, labeled_activation_store):
         store = labeled_activation_store
-        n_total = sum(store.activations[(0, "residual")].shape[0] for _ in [None])
+        n_total = store.activations[(0, "residual")].shape[0]
         assert store.labels.shape == (n_total,)
         assert store.labels.dtype == torch.long
 

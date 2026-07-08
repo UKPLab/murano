@@ -7,7 +7,15 @@ from html import escape
 from math import log1p
 from typing import TYPE_CHECKING, Any
 
-import torch
+from torch import (  # pyright: ignore[reportPrivateImportUsage]
+    Tensor,
+    argsort,  # pyright: ignore[reportPrivateImportUsage]
+    as_tensor,  # pyright: ignore[reportPrivateImportUsage]
+    bool as torch_bool,  # pyright: ignore[reportPrivateImportUsage]
+    isfinite,  # pyright: ignore[reportPrivateImportUsage]
+    ones_like,  # pyright: ignore[reportPrivateImportUsage]
+    topk,  # pyright: ignore[reportPrivateImportUsage]
+)
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
@@ -22,12 +30,10 @@ _POS = "#10b981"
 _POS_LIGHT = "#bdf4df"
 
 
-def _as_2d_tensor(name: str, value: Any) -> torch.Tensor:
+def _as_2d_tensor(name: str, value: Any) -> Tensor:
     """Return ``value`` as a detached 2-D float tensor."""
     # Normalize common tensor-like inputs without keeping autograd state.
-    tensor = (
-        value.detach() if isinstance(value, torch.Tensor) else torch.as_tensor(value)
-    )
+    tensor = value.detach() if isinstance(value, Tensor) else as_tensor(value)
     tensor = tensor.float().cpu()
     if tensor.dim() != 2:
         raise ValueError(f"{name} must be 2-D, got shape {tuple(tensor.shape)}")
@@ -36,7 +42,7 @@ def _as_2d_tensor(name: str, value: Any) -> torch.Tensor:
 
 def _feature_decoder(
     decoder: Any, feature_id: int, unembedding_dims: tuple[int, int]
-) -> torch.Tensor:
+) -> Tensor:
     """Select one decoder vector whose width matches the unembedding."""
     # Match decoder orientation against the unembedding before selecting.
     matrix = _as_2d_tensor("decoder", decoder)
@@ -53,7 +59,7 @@ def _feature_decoder(
     )
 
 
-def _logit_effects(decoder: Any, unembedding: Any, feature_id: int) -> torch.Tensor:
+def _logit_effects(decoder: Any, unembedding: Any, feature_id: int) -> Tensor:
     """Compute raw vocabulary effects for one feature with ``d_f @ W_U`` semantics."""
     # Match whichever unembedding orientation the caller supplied.
     w_u = _as_2d_tensor("unembedding", unembedding)
@@ -125,8 +131,8 @@ def _activation_examples(
 ) -> list[dict[str, Any]]:
     """Prepare highest-activating token rows from raw activation arrays."""
     # Normalize token and activation arrays without importing Murano artifacts.
-    acts = torch.as_tensor(activations)
-    tokens = torch.as_tensor(token_ids).cpu()
+    acts = as_tensor(activations)
+    tokens = as_tensor(token_ids).cpu()
     if acts.dim() == 3:
         if feature_id is None:
             raise ValueError(
@@ -149,9 +155,9 @@ def _activation_examples(
 
     # Build the validity mask from optional padding and BOS metadata.
     if attention_mask is None:
-        mask = torch.ones_like(acts, dtype=torch.bool)
+        mask = ones_like(acts, dtype=torch_bool)
     else:
-        mask = torch.as_tensor(attention_mask).bool().cpu()
+        mask = as_tensor(attention_mask).bool().cpu()
         if mask.shape != acts.shape:
             raise ValueError(
                 f"attention_mask must match activation shape {tuple(acts.shape)}, got {tuple(mask.shape)}"
@@ -160,14 +166,12 @@ def _activation_examples(
         mask = mask & (tokens != int(bos_token_id))
 
     # Sort examples by their strongest valid token activation.
-    masked = acts.masked_fill(~mask, -torch.inf)
+    masked = acts.masked_fill(~mask, float("-inf"))
     max_values, max_indices = masked.max(dim=1)
-    valid_rows = torch.isfinite(max_values)
+    valid_rows = isfinite(max_values)
     if not bool(valid_rows.any()):
         raise ValueError("no valid token positions remain after masking")
-    order = torch.argsort(
-        max_values.masked_fill(~valid_rows, -torch.inf), descending=True
-    )
+    order = argsort(max_values.masked_fill(~valid_rows, float("-inf")), descending=True)
 
     # Decode each selected row into the same prepared-row contract.
     rows: list[dict[str, Any]] = []
@@ -272,8 +276,8 @@ def plot_sae_feature_logit_effects(
     effects = _logit_effects(decoder, unembedding, feature_id)
     labels = _token_labels(effects.numel(), token_labels, token_ids)
     k = min(num_tokens, effects.numel())
-    pos_vals, pos_idx = torch.topk(effects, k=k)
-    neg_vals, neg_idx = torch.topk(-effects, k=k)
+    pos_vals, pos_idx = topk(effects, k=k)
+    neg_vals, neg_idx = topk(-effects, k=k)
 
     # Render the shared effect vector as signed token columns and split histogram bars.
     fig = make_subplots(
@@ -281,7 +285,10 @@ def plot_sae_feature_logit_effects(
         cols=2,
         specs=[[{"type": "table"}, {"type": "histogram"}]],
         column_widths=[0.46, 0.54],
-        subplot_titles=("Negative / positive token effects", "Vocabulary effect distribution"),
+        subplot_titles=(
+            "Negative / positive token effects",
+            "Vocabulary effect distribution",
+        ),
     )
     fig.add_trace(
         go.Table(
@@ -487,11 +494,16 @@ def plot_sae_token_activations(
             options = []
             if start > 0 and left_used + gap + all_widths[start - 1] <= left_budget:
                 options.append("left")
-            if end < len(all_tokens) and right_used + gap + all_widths[end] <= right_budget:
+            if (
+                end < len(all_tokens)
+                and right_used + gap + all_widths[end] <= right_budget
+            ):
                 options.append("right")
             if not options:
                 break
-            if "left" in options and ("right" not in options or left_used <= right_used):
+            if "left" in options and (
+                "right" not in options or left_used <= right_used
+            ):
                 start -= 1
                 left_used += gap + all_widths[start]
             else:
@@ -501,7 +513,10 @@ def plot_sae_token_activations(
         lane_budget = token_x1 - token_x0
         span_used = left_used + right_used
         if start == 0:
-            while end < len(all_tokens) and span_used + gap + all_widths[end] <= lane_budget:
+            while (
+                end < len(all_tokens)
+                and span_used + gap + all_widths[end] <= lane_budget
+            ):
                 span_used += gap + all_widths[end]
                 end += 1
         if end == len(all_tokens):

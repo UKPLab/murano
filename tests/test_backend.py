@@ -95,6 +95,22 @@ class TestModelBackendBehavior:
         with pytest.raises(NotImplementedError):
             tiny_model.attn_out_proj(0, "mlp")
 
+    def test_raw_accessors_return_hookable_modules(self, tiny_model):
+        # Steps use these to register native torch hooks and read weights, so
+        # they must return real nn.Modules, not nnsight proxies.
+        from torch.nn import Module
+        from torch.utils.hooks import RemovableHandle
+
+        layer = tiny_model.raw_layer(0)
+        mlp = tiny_model.raw_module(0, "mlp")
+        out_proj = tiny_model.raw_attn_out_proj(0, "self_attn")
+        assert isinstance(layer, Module)
+        assert isinstance(mlp, Module) and hasattr(mlp, "gate_proj")
+        assert isinstance(out_proj, Module) and hasattr(out_proj, "weight")
+        handle = out_proj.register_forward_hook(lambda *args: None)
+        assert isinstance(handle, RemovableHandle)
+        handle.remove()
+
     def test_trace_yields_savable_output(self, tiny_model):
         tokens = tiny_model.tokenizer(
             ["hello world"], return_tensors="pt", return_token_type_ids=False
@@ -126,6 +142,56 @@ class TestModelBackendBehavior:
         assert logits.dtype == torch.float32
         assert logits.device.type == "cpu"
 
+    def test_forward_logits_fn_intervenes(self, tiny_model):
+        from murano.nodes import Node
+
+        tokens = tiny_model.tokenizer(
+            ["hello world"],
+            return_tensors="pt",
+            padding=True,
+            return_token_type_ids=False,
+        )
+        base = tiny_model.forward_logits(tokens)
+
+        def zero_layer0(activation, key: Node):
+            return activation * 0 if key.layer == 0 else activation
+
+        out = tiny_model.forward_logits(
+            tokens, fn=zero_layer0, layers=[0], modules="residual"
+        )
+        assert out.shape == base.shape
+        assert out.dtype == torch.float32
+        assert out.device.type == "cpu"
+        assert not torch.allclose(out, base)
+
+        # fn=None preserves the plain forward pass exactly.
+        again = tiny_model.forward_logits(tokens, fn=None)
+        assert torch.allclose(again, base)
+
+    def test_forward_logits_per_head_intervenes(self, tiny_model):
+        from murano.nodes import SELF_ATTN, Node
+
+        tokens = tiny_model.tokenizer(
+            ["hello world"],
+            return_tensors="pt",
+            padding=True,
+            return_token_type_ids=False,
+        )
+        base = tiny_model.forward_logits(tokens)
+
+        def zero_head0(activation, key: Node):
+            # activation is [B, S, n_heads, head_dim]; drop head 0 only.
+            head_mask = torch.ones(tiny_model.n_heads, 1)
+            head_mask[0] = 0.0
+            return activation * head_mask
+
+        out = tiny_model.forward_logits(
+            tokens, fn=zero_head0, layers=[0], modules=SELF_ATTN, per_head=True
+        )
+        assert out.shape == base.shape
+        assert out.dtype == torch.float32
+        assert not torch.allclose(out, base)
+
     def test_hf_model_is_underlying(self, tiny_model):
         assert tiny_model.hf_model is tiny_model._lm.model
 
@@ -152,7 +218,7 @@ class TestModelBackendBehavior:
 
 # ── Scoped lint: steps and io must not touch model internals ──────────
 
-_BANNED_INTERNALS = {"_lm", "_resolve_module", "_generate_single"}
+_BANNED_INTERNALS = {"_lm", "_module", "_resolve_module", "_generate_single"}
 
 
 _MURANO_ROOT = Path(__file__).resolve().parents[1] / "src" / "murano"

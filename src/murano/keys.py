@@ -19,6 +19,7 @@ STEERING: Final = "steering"
 INTERVENE: Final = "intervene"
 PROBE: Final = "probe"
 LOGIT_LENS: Final = "logit_lens"
+LOGIT_ATTRIBUTION: Final = "logit_attribution"
 SAE_RECORD: Final = "sae_record"
 FEATURE_EXAMPLES: Final = "feature_examples"
 METRIC: Final = "metric"
@@ -29,5 +30,29 @@ OUTPUT_DIR: Final = "output_dir"
 # Default keys for the configurable metric steps (callers may override these).
 FINAL_LOGITS: Final = "final_logits"
 TARGET_IDS: Final = "target_ids"
+ATTENTION_MASK: Final = "attention_mask"
 LOSS: Final = "loss"
 ACCURACY: Final = "accuracy"
+LOGIT_DIFF: Final = "logit_diff"
+KL_DIV: Final = "kl_div"
+ANSWER_LOGPROB: Final = "answer_logprob"
+RECOVERED: Final = "recovered"
+ABLATED_LOGITS: Final = "ablated_logits"
+
+# Default keys for the corrupt side of a clean/corrupt paired run.
+CORRUPT_PROMPTS: Final = "corrupt_prompts"
+CORRUPT_LOGITS: Final = "corrupt_logits"
+CORRUPT_MASK: Final = "corrupt_mask"
+
+# Default keys for the cross-run patched forward pass (the Patch step).
+PATCHED_LOGITS: Final = "patched_logits"
+PATCHED_MASK: Final = "patched_mask"
+
+# Default keys for the direct-path patched forward pass (the PathPatch step).
+PATH_PATCHED_LOGITS: Final = "path_patched_logits"
+PATH_PATCHED_MASK: Final = "path_patched_mask"
+
+# Default keys for attention-pattern analysis and intervention.
+ATTENTION_PATTERN: Final = "attention_pattern"
+ATTN_ABLATED_LOGITS: Final = "attn_ablated_logits"
+ATTN_ABLATED_MASK: Final = "attn_ablated_mask"

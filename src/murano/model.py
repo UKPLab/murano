@@ -11,6 +11,7 @@ from torch import dtype as TorchDtype  # pyright: ignore[reportPrivateImportUsag
 from nnterp import StandardizedTransformer
 
 from murano import keys
+from murano._proxy import unwrap_traced
 from murano.logging import logger
 from murano.nodes import (
     RESID_MID,
@@ -33,20 +34,24 @@ _ATTN_OUT_PROJ_NAMES = ("o_proj", "out_proj", "c_proj", "dense", "wo")
 
 
 def _ensure_downloaded(model_id: str) -> str:
-    """Ensure the model is fully downloaded and return the local snapshot path.
+    """Ensure the model is available locally and return its snapshot path.
 
-    Tries offline first (no API calls) to avoid rate limits.
-    Falls back to online download if the model isn't cached yet.
+    A local directory is used as-is. Otherwise the Hugging Face cache is tried
+    offline first (no API calls, to avoid rate limits) and only falls back to a
+    network download when the snapshot is not already cached.
     """
     local_path = Path(model_id)
-    if local_path.exists():
+    if local_path.is_dir():
+        logger.info("Loading model from local path %s", local_path)
         return str(local_path)
 
     from huggingface_hub import snapshot_download
+    from huggingface_hub.errors import LocalEntryNotFoundError
 
     try:
         return snapshot_download(model_id, local_files_only=True)
-    except Exception:
+    except LocalEntryNotFoundError as exc:
+        logger.debug("%s not in local cache (%s); downloading", model_id, exc)
         return snapshot_download(model_id)
 
 
@@ -60,6 +65,16 @@ class MuranoModel:
         model_id: HuggingFace model identifier.
         device_map: Device placement strategy.
         dtype: Model weight dtype.
+        enable_attention_probs: If True, load with eager attention so nnterp can
+            expose the per-head softmax attention weights via
+            :attr:`attention_probabilities`. Off by default because eager
+            attention is slower and heavier than the fused SDPA/flash kernels;
+            turn it on only for attention-pattern analysis or intervention.
+        loader_kwargs: Extra keyword arguments forwarded to the nnterp loader
+            (e.g. ``attn_implementation="eager"``, ``check_renaming=False``).
+            GPT-J needs both: its fused SDPA path traces to symbolic tensors, and
+            nnterp's renaming-validation scan trips a data-dependent op under
+            fake tensors, so it loads with those two set.
 
     Example:
         model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
@@ -71,6 +86,8 @@ class MuranoModel:
         model_id: str,
         device_map: str = "auto",
         dtype: TorchDtype = bfloat16,
+        enable_attention_probs: bool = False,
+        **loader_kwargs: Any,
     ):
         self.model_id = model_id
 
@@ -90,6 +107,8 @@ class MuranoModel:
                 device_map=device_map,
                 dtype=dtype,
                 dispatch=True,
+                enable_attention_probs=enable_attention_probs,
+                **loader_kwargs,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to load model {model_id}: {e}") from e
@@ -102,12 +121,20 @@ class MuranoModel:
         self.n_layers = config.num_hidden_layers
         self.d_model = config.hidden_size
         self.n_heads = config.num_attention_heads
-        if self.d_model % self.n_heads != 0:
-            raise RuntimeError(
-                f"Model {model_id} has d_model={self.d_model} not divisible by "
-                f"n_heads={self.n_heads}; cannot derive head_dim."
-            )
-        self.head_dim = self.d_model // self.n_heads
+        # Prefer the config's explicit head_dim: on architectures like Gemma it
+        # is set independently and n_heads * head_dim != hidden_size, so deriving
+        # head_dim by division would be wrong. Fall back to the derived value
+        # (and its divisibility guard) only when the config omits it.
+        config_head_dim = getattr(config, "head_dim", None)
+        if config_head_dim:
+            self.head_dim = int(config_head_dim)
+        else:
+            if self.d_model % self.n_heads != 0:
+                raise RuntimeError(
+                    f"Model {model_id} has d_model={self.d_model} not divisible by "
+                    f"n_heads={self.n_heads}; cannot derive head_dim."
+                )
+            self.head_dim = self.d_model // self.n_heads
         # Bind nnsight's trace directly instead of wrapping it in a method.
         # nnsight inspects the caller's frame to locate the `with` block, so a
         # wrapper method would sit between the step's `with model.trace(...)`
@@ -166,11 +193,30 @@ class MuranoModel:
             f"none on this architecture."
         )
 
+    def raw_layer(self, idx: int):
+        """Return the raw torch module for decoder layer ``idx``.
+
+        The resolvers above return nnsight proxies for tracing; this returns the
+        module itself, for native ``torch`` hooks or weight access.
+        """
+        return self.layer(idx)._module  # pyright: ignore[reportAttributeAccessIssue]
+
+    def raw_module(self, layer_idx: int, module: str):
+        """Return the raw torch module named ``module`` at ``layer_idx``."""
+        return self.resolve_module(layer_idx, module)._module  # pyright: ignore[reportAttributeAccessIssue]
+
+    def raw_attn_out_proj(self, layer_idx: int, module: str):
+        """Return the raw torch module of the attention output projection."""
+        return self.attn_out_proj(layer_idx, module)._module  # pyright: ignore[reportAttributeAccessIssue]
+
     def project_on_vocab(self, hidden: Tensor) -> Tensor:
         """Project hidden states onto the vocabulary.
 
         Applies the standardized final norm and unembedding,
         ``lm_head(ln_final(hidden))``, matching the logit-lens computation.
+        ``hidden`` is cast to the unembedding's device and dtype first, so a
+        direction stored elsewhere (e.g. an fp32 SAE feature on CPU) projects
+        cleanly against a model on GPU.
 
         Args:
             hidden: Hidden states ``[..., d_model]``.
@@ -178,9 +224,113 @@ class MuranoModel:
         Returns:
             Vocabulary logits ``[..., vocab_size]``.
         """
-        return self._lm.lm_head(self._lm.ln_final(hidden))
+        head = self._lm.lm_head
+        hidden = hidden.to(device=head.weight.device, dtype=head.weight.dtype)
+        return head(self._lm.ln_final(hidden))
 
-    def forward_logits(self, tokens: Any) -> Tensor:
+    @property
+    def unembed_weight(self) -> Tensor:
+        """The unembedding (lm_head) weight ``[vocab, d_model]``.
+
+        The unembedding lives on the causal-LM wrapper, not the base module
+        returned by :attr:`hf_model`, so it is exposed here for attribution.
+        """
+        return self._lm.lm_head.weight  # pyright: ignore[reportReturnType]
+
+    @property
+    def final_norm(self):
+        """The standardized final-normalization module (before the unembedding).
+
+        Exposed via nnterp's standardized ``ln_final`` accessor, matching
+        :meth:`project_on_vocab`; used by attribution to freeze the norm scale.
+        """
+        return self._lm.ln_final
+
+    @property
+    def attn_probs_available(self) -> bool:
+        """Whether per-head attention weights can be read/written.
+
+        True only when the model was loaded with
+        ``enable_attention_probs=True`` and nnterp validated the pattern source
+        for this architecture.
+        """
+        return bool(self._lm.attn_probs_available)
+
+    @property
+    def attention_probabilities(self):
+        """nnterp accessor for the per-head softmax attention weights.
+
+        Inside a :attr:`trace`, ``model.attention_probabilities[layer]`` reads
+        the ``[batch, n_heads, query, key]`` pattern (call ``.save()`` to keep
+        it), and ``model.attention_probabilities[layer] = tensor`` overwrites it
+        so an intervention flows to the output. Requires
+        ``enable_attention_probs=True`` at load; see :meth:`require_attention_probs`.
+        """
+        return self._lm.attention_probabilities
+
+    def require_attention_probs(self) -> None:
+        """Raise if attention weights were not enabled at load.
+
+        Raises:
+            RuntimeError: If the model was loaded without
+                ``enable_attention_probs=True``, so no attention-pattern hook
+                exists to read or write.
+        """
+        if not self.attn_probs_available:
+            raise RuntimeError(
+                f"Attention patterns are unavailable for {self.model_id!r}: load "
+                f"with MuranoModel(..., enable_attention_probs=True) to read or "
+                f"intervene on per-head attention weights."
+            )
+
+    def forward_logits_attention(
+        self, tokens: Any, edits: dict[int, tuple[Tensor, Tensor]]
+    ) -> Tensor:
+        """Run a forward pass overwriting per-head attention weights, return logits.
+
+        The attention-pattern analogue of :meth:`forward_logits`: it edits the
+        per-head softmax weights (which :meth:`forward_logits` cannot reach)
+        through nnterp's settable :attr:`attention_probabilities` accessor, then
+        reads the model's output logits under that intervention.
+
+        Each layer's weights become ``pattern * (1 - mask) + replacement * mask``,
+        so only the masked heads and query positions change and every other head,
+        position, and layer keeps its clean pattern.
+
+        Args:
+            tokens: Tokenizer output (or anything :attr:`trace` accepts) to run.
+            edits: ``{layer: (replacement, mask)}``; both tensors must already sit
+                on :attr:`device` and broadcast to the ``[batch, n_heads, query,
+                key]`` pattern.
+
+        Returns:
+            Output logits ``[batch, seq, vocab_size]`` on CPU as float32.
+        """
+        self.require_attention_probs()
+        # Match the replacement/mask to the model's compute dtype and device: the
+        # attention weights are the model's native dtype (e.g. bf16), so blending
+        # float32 tensors in would raise a dtype mismatch in the value matmul.
+        param = next(self.hf_model.parameters())
+        with self.trace(tokens):
+            for layer, (replacement, mask) in edits.items():
+                pattern = self.attention_probabilities[layer]
+                mask = mask.to(device=param.device, dtype=param.dtype)
+                replacement = replacement.to(device=param.device, dtype=param.dtype)
+                self.attention_probabilities[layer] = (
+                    pattern * (1 - mask) + replacement * mask
+                )
+            saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
+        value = unwrap_traced(saved)
+        return value.detach().float().cpu()
+
+    def forward_logits(
+        self,
+        tokens: Any,
+        fn: Callable[[Tensor, Node], Tensor] | None = None,
+        layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
+        per_head: bool = False,
+    ) -> Tensor:
         """Run a forward pass and return the model's output logits ``[B, S, V]``.
 
         Returns the model's true unembedding output via nnterp's standardized
@@ -189,17 +339,88 @@ class MuranoModel:
         float32, and moved to CPU to match the other stores and to keep
         bf16/fp16 models safe for downstream cross-entropy and argmax.
 
+        With ``fn`` given, the pass is intervened: ``fn`` rewrites each target
+        module's activation before the logits are read, so an ablation or patch
+        flows through to the output (the forward-pass analogue of
+        :meth:`generate_with_hooks`). ``fn=None`` is the plain forward pass.
+
         Args:
             tokens: Tokenizer output (or anything :attr:`trace` accepts) to run.
+            fn: ``(activation, key) -> activation`` applied to each target
+                module's activation, keyed by a :class:`Node` at
+                ``(layer, module)``; ``None`` runs unmodified. The function is
+                expected to no-op on sites it does not target.
+            layers: Layer indices to hook, or ``"all"``. Only used when ``fn``
+                is given.
+            modules: Module name(s) to hook at each layer. Only used when ``fn``
+                is given.
+            per_head: If True, hook the attention output projection's input and
+                pass ``fn`` the per-head activation ``[B, S, n_heads, head_dim]``
+                (the concatenated head outputs), so ``fn`` can rewrite a single
+                head's slice. The rewritten tensor is reshaped back before the
+                projection runs. Requires ``tokens`` to expose ``input_ids`` for
+                the batch and sequence dimensions.
 
         Returns:
             Output logits ``[batch, seq, vocab_size]`` on CPU as float32.
         """
+        if fn is None:
+            with self.trace(tokens):
+                # Inside a trace, nnterp's `.logits` is an nnsight proxy exposing
+                # `.save()`; its stub types it as a plain Tensor, hence the ignore.
+                saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
+            value = unwrap_traced(saved)
+            return value.detach().float().cpu()
+
+        module_list = [modules] if isinstance(modules, str) else list(modules)
+        batch = seq = 0
+        if per_head:
+            try:
+                input_ids = tokens["input_ids"]
+            except (TypeError, KeyError) as exc:
+                raise ValueError(
+                    "per_head=True needs tokens to expose 'input_ids' for the "
+                    "batch and sequence dimensions."
+                ) from exc
+            batch, seq = int(input_ids.shape[0]), int(input_ids.shape[1])
+
         with self.trace(tokens):
-            # Inside a trace, nnterp's `.logits` is an nnsight proxy exposing
-            # `.save()`; its stub types it as a plain Tensor, hence the ignore.
+            for layer_idx in self._layer_indices(layers):
+                for mod_str in module_list:
+                    key = Node(layer_idx, mod_str)
+                    if per_head:
+                        # The o_proj input is the concatenated per-head outputs;
+                        # reshape to expose the head axis, let fn rewrite a head
+                        # slice, then fold back so the projection sees its normal
+                        # [batch, seq, n_heads*head_dim] input. nnsight's input
+                        # setter swaps the first positional arg (Envoy.input
+                        # postprocess), so assigning the folded tensor is enough.
+                        proj = self.attn_out_proj(layer_idx, mod_str)
+                        split = proj.input.reshape(
+                            batch, seq, self.n_heads, self.head_dim
+                        )
+                        proj.input = fn(split, key).reshape(  # pyright: ignore[reportAttributeAccessIssue]
+                            batch, seq, self.n_heads * self.head_dim
+                        )
+                    else:
+                        mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
+                        h = mod_proxy.output
+                        # Decoder-layer outputs are (hidden_states, ...) tuples,
+                        # while submodule outputs (mlp, self_attn) are plain
+                        # tensors; edit the hidden-states element either way. fn
+                        # returns the same object on sites it does not target, so
+                        # only write back when it actually changed the activation
+                        # and the loop never touches a non-target site.
+                        if isinstance(h, tuple):
+                            new = fn(h[0], key)
+                            if new is not h[0]:
+                                mod_proxy.output = (new, *h[1:])  # pyright: ignore[reportArgumentType]
+                        else:
+                            new = fn(h, key)
+                            if new is not h:
+                                mod_proxy.output = new  # pyright: ignore[reportArgumentType]
             saved = self._lm.logits.save()  # pyright: ignore[reportAttributeAccessIssue]
-        value = saved.value if hasattr(saved, "value") else saved
+        value = unwrap_traced(saved)
         return value.detach().float().cpu()
 
     @property
@@ -328,6 +549,47 @@ class MuranoModel:
                 ) from None
         return current
 
+    def _register_generation_intervention(
+        self,
+        fn: Callable[[Tensor, Node], Tensor],
+        layers: list[int] | str,
+        module_list: list[str],
+    ) -> list:
+        """Install forward hooks that apply ``fn`` on every generated token.
+
+        nnsight's own per-token trace idiom is version-specific (the loop form
+        errors on nnsight 0.5, the context-manager form is deprecated on 0.7). A
+        plain PyTorch forward hook fires on each real module forward, which during
+        generation is once per decoded token, on every supported nnsight version.
+        Applying the edit here rather than once inside the trace is what makes a
+        steer or ablation persist past the first generated token.
+
+        Returns:
+            The registered hook handles, for the caller to remove after
+            generation.
+        """
+        handles = []
+        for layer_idx in self._layer_indices(layers):
+            for mod_str in module_list:
+                # A native torch hook on the raw module is independent of
+                # nnsight's tracing layer.
+                module = self.raw_module(layer_idx, mod_str)
+                key = Node(layer_idx, mod_str)
+
+                def hook(module, inputs, output, key=key):
+                    # Decoder-layer outputs are (hidden_states, ...) tuples;
+                    # submodule outputs (mlp, self_attn) are plain tensors. Rewrite
+                    # the hidden state either way, and leave a site fn does not
+                    # target untouched.
+                    if isinstance(output, tuple):
+                        new = fn(output[0], key)
+                        return (new, *output[1:]) if new is not output[0] else output
+                    new = fn(output, key)
+                    return new if new is not output else output
+
+                handles.append(module.register_forward_hook(hook))
+        return handles
+
     def _generate_single(
         self,
         text: str,
@@ -347,24 +609,19 @@ class MuranoModel:
 
         module_list = [modules] if isinstance(modules, str) else modules
 
-        with self._lm.generate(tokens, **generation_kwargs):
-            if fn is not None:
-                for layer_idx in self._layer_indices(layers):
-                    for mod_str in module_list:
-                        mod_proxy = self._resolve_module(self.layer(layer_idx), mod_str)
-                        h = mod_proxy.output
-                        key = Node(layer_idx, mod_str)
-                        # Decoder-layer outputs are (hidden_states, ...) tuples,
-                        # while submodule outputs (mlp, self_attn) are plain
-                        # tensors. Edit the hidden-states element and write the
-                        # same structure back so the intervention works on either.
-                        if isinstance(h, tuple):
-                            mod_proxy.output = (fn(h[0], key), *h[1:])  # pyright: ignore[reportArgumentType]
-                        else:
-                            mod_proxy.output = fn(h, key)  # pyright: ignore[reportArgumentType]
-            output_ids = self._lm.generator.output.save()
+        handles = (
+            self._register_generation_intervention(fn, layers, module_list)
+            if fn is not None
+            else []
+        )
+        try:
+            with self._lm.generate(tokens, **generation_kwargs):
+                output_ids = self._lm.generator.output.save()
+        finally:
+            for handle in handles:
+                handle.remove()
 
-        out = output_ids.value if hasattr(output_ids, "value") else output_ids
+        out = unwrap_traced(output_ids)
         generated = out[0, input_len:]
         # nnsight returns a proxy; tokenizer.decode accepts it at runtime.
         return cast(str, self.tokenizer.decode(generated, skip_special_tokens=True))  # pyright: ignore[reportArgumentType]
@@ -382,7 +639,8 @@ class MuranoModel:
         Args:
             text: Prompt to generate from.
             fn: ``(activation, key) -> activation`` applied to each target
-                module's output during generation; ``None`` runs unmodified.
+                module's output on every generated token; ``None`` runs
+                unmodified.
             layers: Layer indices to hook, or ``"all"``.
             modules: Module name(s) to hook at each layer.
             gen_kwargs: Forwarded to the underlying generation call.
@@ -412,6 +670,7 @@ class MuranoModel:
         Args:
             text: Single string or sequence of strings to record from.
             layers: Layer indices to record at, or ``"all"`` for every layer.
+            modules: Module name(s) to record at each layer.
             position: Token position to record. One of ``"last"``, ``"first"``,
                 ``"mean"``, an integer index, or ``"none"`` to keep every
                 position.
@@ -479,6 +738,7 @@ class MuranoModel:
             positive: Texts in the positive class.
             negative: Texts in the negative class.
             layers: Layer indices to record at, or ``"all"`` for every layer.
+            modules: Module name(s) to record at each layer.
             position: Token position to record. One of ``"last"``, ``"first"``,
                 ``"mean"``, or an integer index.
             batch_size: Forward-pass batch size.
@@ -528,6 +788,7 @@ class MuranoModel:
                 direction`` is added to the residual stream at each target
                 layer. Pass either ``ablate`` or ``steer``, not both.
             layers: Layer indices to apply the intervention at, or ``"all"``.
+            modules: Module name(s) to apply the intervention at each layer.
             gen_kwargs: Forwarded to the underlying generation call. Defaults
                 to ``{"max_new_tokens": 256, "do_sample": False}``.
 

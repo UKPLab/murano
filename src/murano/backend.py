@@ -10,7 +10,9 @@ Note:
     ``trace``, ``layer``, ``resolve_module``, and ``attn_out_proj`` return
     nnsight-compatible proxy objects, and steps still rely on nnsight proxy
     semantics (``.output.save()``, ``.input.save()``, assigning to
-    ``mod_proxy.output``). A non-nnsight backend would have to reproduce those
+    ``mod_proxy.output``); the ``raw_*`` accessors instead return the underlying
+    ``torch.nn.Module`` for native hook registration and weight reads. A
+    non-nnsight backend would have to reproduce those
     proxy semantics, so this protocol is a prerequisite for backend
     independence, not backend independence itself.
 """
@@ -64,6 +66,22 @@ class ModelBackend(Protocol):
         """Return the attention output-projection proxy for per-head capture."""
         ...
 
+    def raw_layer(self, idx: int) -> Any:
+        """Return the raw ``torch.nn.Module`` for decoder layer ``idx``.
+
+        For native ``torch`` hook registration or weight access, where a step
+        needs the module itself rather than an nnsight proxy.
+        """
+        ...
+
+    def raw_module(self, layer_idx: int, module: str) -> Any:
+        """Return the raw ``torch.nn.Module`` named ``module`` at ``layer_idx``."""
+        ...
+
+    def raw_attn_out_proj(self, layer_idx: int, module: str) -> Any:
+        """Return the raw ``torch.nn.Module`` of the attention output projection."""
+        ...
+
     def trace(self, tokens: Any) -> AbstractContextManager[Any]:
         """Open a tracing context over ``tokens``."""
         ...
@@ -72,8 +90,30 @@ class ModelBackend(Protocol):
         """Project hidden states onto the vocabulary."""
         ...
 
-    def forward_logits(self, tokens: Any) -> Tensor:
-        """Run a forward pass and return output logits ``[B, S, V]``."""
+    @property
+    def unembed_weight(self) -> Tensor:
+        """The unembedding (lm_head) weight ``[vocab, d_model]``."""
+        ...
+
+    @property
+    def final_norm(self) -> Any:
+        """The standardized final-normalization module (before the unembedding)."""
+        ...
+
+    def forward_logits(
+        self,
+        tokens: Any,
+        fn: "Callable[[Tensor, Node], Tensor] | None" = None,
+        layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
+        per_head: bool = False,
+    ) -> Tensor:
+        """Run a forward pass and return output logits ``[B, S, V]``.
+
+        With ``fn`` given, rewrite each target module's activation before the
+        logits are read (the forward-pass analogue of ``generate_with_hooks``);
+        ``per_head`` exposes the per-head activation for attention heads.
+        """
         ...
 
     def generate_with_hooks(
@@ -85,6 +125,35 @@ class ModelBackend(Protocol):
         gen_kwargs: dict[str, Any] | None = None,
     ) -> str:
         """Generate from ``text``, optionally applying ``fn`` per layer/module."""
+        ...
+
+    @property
+    def attn_probs_available(self) -> bool:
+        """Whether per-head attention weights can be read and written."""
+        ...
+
+    @property
+    def attention_probabilities(self) -> Any:
+        """Accessor for per-head softmax attention weights.
+
+        Inside a :meth:`trace`, ``[layer]`` reads the ``[batch, n_heads, query,
+        key]`` pattern and ``[layer] = tensor`` overwrites it. Only usable when
+        the backend was loaded with attention weights enabled.
+        """
+        ...
+
+    def require_attention_probs(self) -> None:
+        """Raise if per-head attention weights are unavailable on this backend."""
+        ...
+
+    def forward_logits_attention(
+        self, tokens: Any, edits: "dict[int, tuple[Tensor, Tensor]]"
+    ) -> Tensor:
+        """Run a forward pass overwriting per-head attention weights, return logits.
+
+        Each layer's weights become ``pattern * (1 - mask) + replacement * mask``
+        for its ``{layer: (replacement, mask)}`` entry in ``edits``.
+        """
         ...
 
     def chat_template(self, messages: list[dict[str, Any]]) -> str:

@@ -1,0 +1,160 @@
+---
+layout: ../../layouts/ReproLayout.astro
+title: "The Geometry of Truth: a linear truth direction"
+description: Reproducing Marks & Tegmark (2023): true and false statements separate linearly in the residual stream, a mass-mean probe reads the truth direction, it generalizes across topics, and adding it flips the model's judgement, all with Murano recording, probing, and interventions.
+---
+
+<div class="mc-header">
+  <a href="/murano/reproductions" class="mc-back">← Back to gallery</a>
+
+  <div class="mc-badges">
+    <span class="badge badge--venue">arXiv 2023</span>
+    <span class="badge badge--tag">probing</span>
+    <span class="badge badge--tag">representations</span>
+    <span class="badge badge--tag">steering</span>
+  </div>
+
+  <h1 class="mc-title">
+    The Geometry of Truth: Emergent Linear Structure in Large Language Model Representations of True/False Datasets
+  </h1>
+
+  <p class="mc-authors">
+    Samuel Marks, Max Tegmark
+  </p>
+
+  <div class="mc-actions">
+    <a href="https://colab.research.google.com/github/UKPLab/murano/blob/main/notebooks/reproductions/marks2023_geometry_of_truth.ipynb" class="btn btn--primary" target="_blank" rel="noopener">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Try in Colab
+    </a>
+    <a href="https://arxiv.org/abs/2310.06824" class="btn btn--outline" target="_blank" rel="noopener">arXiv</a>
+    <a href="https://github.com/saprmarks/geometry-of-truth" class="btn btn--outline" target="_blank" rel="noopener">Original code</a>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<article class="mc-body">
+
+## TL;DR
+
+Whether a factual statement is true or false is written into a language model's residual stream as a single **linear direction**. It emerges in the middle layers, a mass-mean probe reads it off with near-perfect accuracy, the same direction generalizes to unrelated topics, and **adding** it to the residual stream during a forward pass causally pushes the model to call a false statement true. This reproduction rebuilds all four results with Murano's `Record`, `SteeringVector`, and `forward_logits`.
+
+## Abstract
+
+> Large Language Models (LLMs) have impressive capabilities, but are also prone to outputting falsehoods. Recent work has developed techniques for inferring whether a LLM is telling the truth by training probes on the LLM's internal activations. However, this line of work is controversial, with some authors pointing out failures of these probes to generalize in basic ways, among other conceptual issues. In this work, we curate high-quality datasets of true/false statements and use them to study in detail the structure of LLM representations of truth, drawing on three lines of evidence: 1. Visualizations of LLM true/false statement representations, which reveal clear linear structure. 2. Transfer experiments in which probes trained on one dataset generalize to different datasets. 3. Causal evidence obtained by surgically intervening in a LLM's forward pass to cause it to treat false statements as true and vice versa. Overall, we present evidence that at sufficient scale, LLMs linearly represent the truth or falsehood of factual statements. We also introduce a novel technique, mass-mean probing, which generalizes better and is more causally implicated in model outputs than other probing techniques.
+
+<hr class="divider" />
+
+## Reproducing with Murano
+
+This reproduction runs on **LLaMA-2-13B** (`meta-llama/Llama-2-13b-hf`), the paper's exact model. Extraction, probing, the mass-mean direction, and the intervention all run through Murano's existing steps (`Record`, `Probe`, `SteeringVector`, `forward_logits`); the only bespoke numerical code is the PCA helper `get_pcs` (Murano has no PCA step) and the paper's direction scaling, taken from the original repository so the numbers are comparable.
+
+### Step 1: Record last-token activations, and see the linear structure
+
+`Record(position="last")` captures the residual stream at the final token of each statement, at every layer, exactly the site the paper reads. A PCA of those activations already separates true from false.
+
+```python
+from murano import MuranoModel, Pipeline
+from murano.dataset import MuranoDataset
+from murano.steps.load import Load
+from murano.steps.record import Record
+
+model = MuranoModel("meta-llama/Llama-2-13b-hf")
+store = Pipeline([
+    Load(MuranoDataset(positive_texts=true_statements, negative_texts=false_statements)),
+    Record(model, layers="all", position="last"),
+]).run()["record"]
+X = store.positive[(layer, "residual")]   # [n, d_model]
+```
+
+### Step 2: Probing, and the mass-mean direction
+
+Murano's `Probe` step trains a per-layer logistic-regression probe by cross-validation; accuracy is near-perfect at a mid layer and rises through the middle of the network. The paper's own contribution, the mass-mean probe, has direction `mean(true) − mean(false)`, which is exactly what Murano's `SteeringVector` returns, so no separate probe class is needed.
+
+```python
+from murano.steps.probe import Probe
+from murano.steps.train import SteeringVector
+
+# logistic probe, per layer, via cross-validation
+probe = Probe(cv=5, refit=True)(Pipeline([
+    Load(LabeledDataset(texts=statements, labels=truth_labels)),
+    Record(model, layers="all", position="last"),
+]).run())["probe"]
+best_layer = probe.best_layer.layer
+
+# the mass-mean truth direction
+steering = Pipeline([
+    Load(MuranoDataset(positive_texts=true_statements, negative_texts=false_statements)),
+    Record(model, layers=[best_layer], position="last"),
+    SteeringVector(normalize=True),
+]).run()["steering"]
+truth_direction = steering.direction_per_layer[(best_layer, "residual")]
+# cosine(SteeringVector direction, mean(true) − mean(false)) = 1.00
+```
+
+### Step 3: The direction generalizes across topics
+
+Train a probe on one dataset (city facts), test it on an unrelated one (Spanish–English translations): accuracy stays high, reproducing the paper's transfer result.
+
+### Step 4: Adding the direction flips the judgement
+
+Following the paper exactly: train the mass-mean direction on `cities` + `neg_cities`, then **add** it (scaled by the class-mean separation) to the residual stream over layers 8-14, at the two tokens around the statement's period, while the model labels `sp_en_trans` statements with the paper's 4-shot prompt. Adding raises P(" TRUE") − P(" FALSE"); subtracting lowers it.
+
+```python
+def add_truth(activation, node):
+    activation[:, positions, :] += truth_direction   # or subtract
+    return activation
+
+logits = model.forward_logits(tokens, fn=add_truth, layers=intervene_layers, modules="residual")
+probs = logits[:, -1, :].softmax(-1)
+effect = (probs[:, true_id] - probs[:, false_id]).mean()
+```
+
+<p class="aside">
+  The Colab notebook runs the full experiment end-to-end: the PCA figure, the per-layer probe
+  curves, the generalization matrix across six datasets, and the causal intervention with its
+  add / none / subtract bars.
+</p>
+
+<hr class="divider" />
+
+## Key results
+
+| What | Marks & Tegmark (LLaMA-2-13B) | This notebook (LLaMA-2-13B) |
+| --- | --- | --- |
+| Truth separates linearly | clear in top PCs | true/false split along PC1 |
+| Probe accuracy (layer 14) | ~95–100% | logistic 1.00, mass-mean 0.97 |
+| Direction generalizes across topics | high transfer accuracy | cities → Spanish-English 0.90, cities → larger-than 0.95 |
+| Adding the direction | flips false → true | P(TRUE) − P(FALSE): −0.07 → +0.66 (add), −0.89 (subtract) |
+| SteeringVector vs mass-mean probe | — | cosine = 1.00 |
+
+<p class="aside">
+  Same model as the paper; this notebook subsamples the datasets and uses a single prompt set,
+  so absolute numbers differ slightly. The linear structure, the probe accuracy, the transfer,
+  and the causal direction of the intervention all match.
+</p>
+
+<hr class="divider" />
+
+## Citation
+
+```bibtex
+@article{DBLP:journals/corr/abs-2310-06824,
+  author       = {Samuel Marks and
+                  Max Tegmark},
+  title        = {The Geometry of Truth: Emergent Linear Structure in Large Language
+                  Model Representations of True/False Datasets},
+  journal      = {CoRR},
+  volume       = {abs/2310.06824},
+  year         = {2023},
+  url          = {https://doi.org/10.48550/arXiv.2310.06824},
+  doi          = {10.48550/ARXIV.2310.06824},
+  eprinttype   = {arXiv},
+  eprint       = {2310.06824},
+  timestamp    = {Tue, 24 Oct 2023 14:46:18 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-2310-06824.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+```
+</article>

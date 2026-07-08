@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+from murano.logging import logger
 
 if TYPE_CHECKING:
     from datasets import Dataset as _HFDataset
@@ -14,6 +16,10 @@ def _load_dataset_cached(name, config, split) -> "_HFDataset":
     Returns a single ``datasets.Dataset`` (never a DatasetDict or streaming variant).
     """
     import os
+
+    from murano._optional import require_optional
+
+    require_optional("data")
     from datasets import Dataset, load_dataset
 
     old = os.environ.get("HF_DATASETS_OFFLINE")
@@ -21,8 +27,8 @@ def _load_dataset_cached(name, config, split) -> "_HFDataset":
     try:
         os.environ["HF_DATASETS_OFFLINE"] = "1"
         ds = load_dataset(name, config, split=split)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Offline load of %s failed (%s); downloading", name, exc)
     finally:
         if old is None:
             os.environ.pop("HF_DATASETS_OFFLINE", None)
@@ -363,3 +369,119 @@ class LabeledDataset:
     def __repr__(self) -> str:
         n_classes = len(set(self.labels))
         return f"LabeledDataset(n={len(self.texts)}, classes={n_classes})"
+
+
+def _check_answer_length(answer: object, n_pairs: int, name: str) -> None:
+    """Validate a per-example answer collection matches the pair count.
+
+    A shared answer applies to every pair and needs no check: a token id, a
+    string, ``None``, a scalar tensor, or a length-1 collection that
+    ``LogitDiffStep`` broadcasts. A genuine per-example collection (list, tuple,
+    tensor, or array) must carry one entry per pair. Strings and non-sized
+    scalars are treated as shared without inspecting a length.
+
+    Raises:
+        ValueError: If ``answer`` is a per-example collection whose length is
+            neither 1 (broadcast) nor ``n_pairs``.
+    """
+    if isinstance(answer, (str, bytes)):
+        return
+    try:
+        length = len(answer)  # type: ignore[arg-type]
+    except TypeError:
+        return  # A scalar (int, 0-dim tensor) is shared across every pair.
+    if length not in (1, n_pairs):
+        raise ValueError(
+            f"{name} has {length} entries but there are {n_pairs} pairs; "
+            f"pass one answer per pair, a single shared answer, or a length-1 "
+            f"broadcast."
+        )
+
+
+class CleanCorruptDataset:
+    """Matched clean and corrupt prompt pairs for causal experiments.
+
+    Holds index-paired inputs: ``clean[i]`` and ``corrupt[i]`` are one matched
+    example (for instance a factual prompt and its counterfactual). The pair
+    optionally carries the answer tokens used to score it, so it feeds the
+    logit-difference and recovered metrics directly; leave them ``None`` for a
+    distribution-only comparison such as KL.
+
+    Token-level position alignment between the two halves is required only by the
+    consumers that patch or resample across them, which validate it themselves;
+    this container only checks that the two sides, and any per-example answer
+    list, have matching lengths.
+
+    Attributes:
+        clean: Clean prompts.
+        corrupt: Corrupt prompts, paired with ``clean`` by index.
+        correct: Correct-answer spec for scoring, in the forms
+            ``LogitDiffStep`` accepts (a token id, a string, a per-example list
+            of either, or a tensor); ``None`` if unset.
+        incorrect: Incorrect-answer spec, in the same forms as ``correct``.
+        raw_clean: Clean prompts before chat templating (None if no template).
+        raw_corrupt: Corrupt prompts before chat templating (None if no template).
+        metadata: Arbitrary pair-level metadata.
+
+    Raises:
+        ValueError: If ``clean`` and ``corrupt`` differ in length, or a
+            per-example answer list does not match the number of pairs.
+    """
+
+    def __init__(
+        self,
+        clean: list[str],
+        corrupt: list[str],
+        correct: Any = None,
+        incorrect: Any = None,
+        raw_clean: list[str] | None = None,
+        raw_corrupt: list[str] | None = None,
+        metadata: dict | None = None,
+    ):
+        if len(clean) != len(corrupt):
+            raise ValueError(
+                f"clean ({len(clean)}) and corrupt ({len(corrupt)}) must have the "
+                f"same number of prompts."
+            )
+        _check_answer_length(correct, len(clean), "correct")
+        _check_answer_length(incorrect, len(clean), "incorrect")
+        # Copy the prompt lists so later mutation of the caller's lists cannot
+        # desync the two sides after the length check, matching the sibling
+        # loaders (MuranoDataset.contrastive, LoadPaired).
+        self.clean = list(clean)
+        self.corrupt = list(corrupt)
+        self.correct = correct
+        self.incorrect = incorrect
+        self.raw_clean = raw_clean
+        self.raw_corrupt = raw_corrupt
+        self.metadata = metadata or {}
+
+    @classmethod
+    def from_pairs(
+        cls,
+        clean: list[str],
+        corrupt: list[str],
+        correct: Any = None,
+        incorrect: Any = None,
+    ) -> CleanCorruptDataset:
+        """Create a paired dataset from matched clean and corrupt lists.
+
+        Args:
+            clean: Clean prompts.
+            corrupt: Corrupt prompts, paired by index.
+            correct: Optional correct-answer spec (see the class docstring).
+            incorrect: Optional incorrect-answer spec.
+
+        Returns:
+            The paired dataset.
+        """
+        return cls(clean=clean, corrupt=corrupt, correct=correct, incorrect=incorrect)
+
+    def __len__(self) -> int:
+        return len(self.clean)
+
+    def __repr__(self) -> str:
+        return (
+            f"CleanCorruptDataset(pairs={len(self.clean)}, "
+            f"answers={self.correct is not None})"
+        )

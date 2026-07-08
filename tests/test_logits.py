@@ -33,6 +33,7 @@ class TestLogitsStep:
 
         logits = results["final_logits"]
         targets = results["target_ids"]
+        mask = results["attention_mask"]
         vocab = murano_model.tokenizer.vocab_size
 
         assert logits.ndim == 3
@@ -43,6 +44,9 @@ class TestLogitsStep:
 
         assert targets.shape == logits.shape[:2]
         assert targets.dtype == torch.long
+
+        assert mask.shape == logits.shape[:2]
+        assert mask.device.type == "cpu"
 
     def test_logits_are_raw_not_probabilities(self, murano_model):
         """final_logits must be the model's raw output, never softmaxed."""
@@ -64,14 +68,15 @@ class TestLogitsStep:
         results = step(_prompts_results(["hello"]))
         assert "my_logits" in results
         assert "my_targets" in results
-        assert step.writes == ["my_logits", "my_targets"]
+        assert step.writes == ["my_logits", "attention_mask", "my_targets"]
 
-    def test_targets_none_writes_logits_only(self, murano_model):
+    def test_targets_none_writes_logits_and_mask(self, murano_model):
         step = Logits(murano_model, targets=None)
-        assert step.writes == ["final_logits"]
+        assert step.writes == ["final_logits", "attention_mask"]
 
         results = step(_prompts_results(["hello world"]))
         assert "final_logits" in results
+        assert "attention_mask" in results
         assert "target_ids" not in results
 
     def test_invalid_targets_raises(self, murano_model):

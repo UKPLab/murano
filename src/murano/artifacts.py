@@ -63,7 +63,7 @@ class GenerationComparison:
 
 
 @dataclass
-class MetricResult:
+class MetricComparison:
     """Aggregate metric comparing baseline vs modified generations.
 
     Attributes:
@@ -86,4 +86,28 @@ class MetricResult:
     modified_scores: list[float] | None = None
     baseline_label: str = "clean"
     modified_label: str = "modified"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class MetricScore:
+    """Scalar result of a forward-pass evaluation metric.
+
+    Holds one comparable number, plus an optional per-example breakdown, so a
+    causal experiment ends in a value that can be compared across runs. Unlike
+    :class:`MetricComparison`, which is shaped for baseline-vs-modified generation
+    comparisons, this carries a single forward-pass score (logit difference,
+    KL divergence, answer log-probability, recovered effect).
+
+    Attributes:
+        metric_name: Identifier of the metric (e.g. ``"logit_diff"``).
+        value: Aggregate scalar score, typically the mean over examples.
+        per_example: Per-example scores, when the metric exposes them.
+        metadata: Arbitrary metric-level metadata (input keys, answer position,
+            direction, recovered-metric endpoints).
+    """
+
+    metric_name: str
+    value: float
+    per_example: list[float] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)

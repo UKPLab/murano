@@ -1,0 +1,162 @@
+---
+layout: ../../layouts/ReproLayout.astro
+title: "Function Vectors: a portable task representation"
+description: Reproducing Todd et al. (ICLR 2024): a small set of attention heads carry a compact, portable representation of an in-context task, summing them gives a function vector, and adding it to a zero-shot prompt makes GPT-J perform the task, all with Murano recording, causal mediation, and interventions.
+---
+
+<div class="mc-header">
+  <a href="/murano/reproductions" class="mc-back">← Back to gallery</a>
+
+  <div class="mc-badges">
+    <span class="badge badge--venue">ICLR 2024</span>
+    <span class="badge badge--tag">in-context learning</span>
+    <span class="badge badge--tag">causal mediation</span>
+    <span class="badge badge--tag">steering</span>
+  </div>
+
+  <h1 class="mc-title">
+    Function Vectors in Large Language Models
+  </h1>
+
+  <p class="mc-authors">
+    Eric Todd, Millicent L. Li, Arnab Sen Sharma, Aaron Mueller, Byron C. Wallace, David Bau
+  </p>
+
+  <div class="mc-actions">
+    <a href="https://colab.research.google.com/github/UKPLab/murano/blob/main/notebooks/reproductions/todd2024_function_vectors.ipynb" class="btn btn--primary" target="_blank" rel="noopener">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Try in Colab
+    </a>
+    <a href="https://arxiv.org/abs/2310.15213" class="btn btn--outline" target="_blank" rel="noopener">arXiv</a>
+    <a href="https://github.com/ericwtodd/function_vectors" class="btn btn--outline" target="_blank" rel="noopener">Original code</a>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<article class="mc-body">
+
+## TL;DR
+
+The task shown by an in-context-learning prompt (for example, mapping a word to its antonym) is carried by a small set of attention heads as a single **function vector (FV)**. Averaging those heads' outputs over many ICL prompts and summing them gives one `d_model` vector; **adding** it to the residual stream of a *zero-shot* prompt, with no demonstrations, makes the model perform the task anyway. This reproduction rebuilds the result on GPT-J-6B with Murano's `Record`, `Ablate`, and `forward_logits`: it finds the paper's causal-mediation heads, recovers most of the zero-shot to few-shot gap, and shows each FV is task-specific.
+
+## Abstract
+
+> We report the presence of a simple neural mechanism that represents an input-output function as a vector within autoregressive transformer language models (LMs). Using causal mediation analysis on a diverse range of in-context-learning (ICL) tasks, we find that a small number attention heads transport a compact representation of the demonstrated task, which we call a function vector (FV). FVs are robust to changes in context, i.e., they trigger execution of the task on inputs such as zero-shot and natural text settings that do not resemble the ICL contexts from which they are collected. We test FVs across a range of tasks, models, and layers and find strong causal effects across settings in middle layers. We investigate the internal structure of FVs and find while that they often contain information that encodes the output space of the function, this information alone is not sufficient to reconstruct an FV. Finally, we test semantic vector composition in FVs, and find that to some extent they can be summed to create vectors that trigger new complex tasks. Our findings show that compact, causal internal vector representations of function abstractions can be explicitly extracted from LLMs. Our code and data are available at https://functions.baulab.info.
+
+<hr class="divider" />
+
+## Reproducing with Murano
+
+This reproduction runs on **GPT-J-6B** (`EleutherAI/gpt-j-6b`), the paper's headline model. Recording per-head activations, the causal mediation, and the intervention all run through Murano's existing steps (`Record`, `Ablate`, `forward_logits`). GPT-J needs two non-default loader options under nnterp, forwarded straight through `MuranoModel`: eager attention, and `check_renaming=False`.
+
+### Step 1: Record each head's average ICL output
+
+`Record(..., per_head=True, position="last")` captures every attention head's output at the final token of a clean ICL prompt. Averaging over many such prompts for one task gives the paper's task-conditioned mean head activation (Eq. 2).
+
+```python
+from murano import keys
+from murano.dataset import MuranoDataset
+from murano.model import MuranoModel
+from murano.nodes import SELF_ATTN, Node
+from murano.steps.record import Record
+from murano.results import Results
+
+model = MuranoModel("EleutherAI/gpt-j-6b", dtype=torch.float16,
+                    attn_implementation="eager", check_renaming=False)
+
+ds = Results(); ds[keys.DATASET] = MuranoDataset(positive_texts=icl_prompts, negative_texts=[])
+store = Record(model, layers=layers, modules="self_attn", per_head=True, position="last")(ds)[keys.RECORD]
+mean_acts = {l: store.positive[Node(l, SELF_ATTN)].mean(dim=0) for l in layers}
+```
+
+### Step 2: Score each head by causal mediation
+
+The paper's corrupted prompt keeps the ICL format but **shuffles the demonstration labels**, so the task cannot be read off the demonstrations. `Ablate(method="mean")` patches one head's clean-task mean into that corrupted run, and the average indirect effect (AIE) is the rise in the correct answer's probability (Eq. 3). The heads with the largest AIE are the function-vector heads.
+
+```python
+from murano.artifacts import PromptBatch
+from murano.steps.ablate import Ablate
+from murano.steps.metrics import AnswerLogProbStep
+
+node = Node(layer, SELF_ATTN, head=head)
+r = Results(); r[keys.PROMPTS] = PromptBatch(prompts=shuffled_prompts)
+r = Ablate(model, node, method="mean", means={node: mean_acts[layer][head]}, positions=-1)(r)
+r = AnswerLogProbStep(correct=answer_ids, logits_key=keys.ABLATED_LOGITS, output_key="edited")(r)
+# AIE[layer, head] = mean over prompts of P(correct | patched) − P(correct | shuffled)
+```
+
+### Step 3: Sum the top heads into one function vector
+
+Each top head's mean activation is mapped through its slice of the output projection to get its write to the residual stream; the FV is the sum. Going through the projection module's own forward makes this exact whether it is an `nn.Linear` or a GPT-2 style transposed `Conv1D`.
+
+```python
+proj = model.raw_attn_out_proj(layer, "self_attn")
+x = torch.zeros(1, 1, model.n_heads * model.head_dim, ...)
+x[..., head * model.head_dim : (head + 1) * model.head_dim] = mean_acts[layer][head]
+fv += (proj(x) - proj(torch.zeros_like(x))).reshape(-1)   # this head's residual contribution
+```
+
+### Step 4: Add the FV to a zero-shot prompt
+
+A `forward_logits` hook adds the FV at the last token of a zero-shot prompt, at a single middle layer, unscaled, exactly as the paper injects it. Next-token accuracy jumps from the zero-shot baseline toward the few-shot ceiling.
+
+```python
+def add_fv(activation, key):
+    if activation.shape[1] == 1:      # leave single-token generation steps untouched
+        return activation
+    activation = activation.clone()
+    activation[:, -1, :] += fv.to(activation.dtype).to(activation.device)
+    return activation
+
+logits = model.forward_logits(tokens, fn=add_fv, layers=[best_layer], modules="residual")
+```
+
+<p class="aside">
+  The Colab notebook runs the full experiment end-to-end: the per-head AIE heatmap, the
+  zero-shot / ten-shot / zero-shot-plus-FV accuracies, a free-form generation example, and the
+  task-specificity matrix built from a second task's FV.
+</p>
+
+<hr class="divider" />
+
+## Key results
+
+| What | Todd et al. (GPT-J) | This reproduction |
+| --- | --- | --- |
+| Function-vector heads | causal mediation surfaces a small set in middle layers | 9.14, 8.1, 12.10 among the top-10 AIE heads |
+| Zero-shot → zero-shot + FV (antonym) | large recovery of the ICL gap | 0.12 → 0.88 at layer 9 (ten-shot is 1.00) |
+| Free-form steering | FV triggers the task off-distribution | `fast → fast` becomes `fast → slow` |
+| Task specificity | each FV triggers its own task | antonym FV 0.88 / 0.00, capital FV 0.12 / 0.88 |
+
+<p class="aside">
+  Same model as the paper; this notebook uses a handful of hand-listed word pairs per task and
+  averages over fewer prompts than the paper's larger task suite, so absolute numbers differ
+  slightly. The head identities, the causal recovery, and the task specificity all match.
+</p>
+
+<hr class="divider" />
+
+## Citation
+
+```bibtex
+@inproceedings{DBLP:conf/iclr/ToddLSMWB24,
+  author       = {Eric Todd and
+                  Millicent L. Li and
+                  Arnab Sen Sharma and
+                  Aaron Mueller and
+                  Byron C. Wallace and
+                  David Bau},
+  title        = {Function Vectors in Large Language Models},
+  booktitle    = {The Twelfth International Conference on Learning Representations,
+                  {ICLR} 2024, Vienna, Austria, May 7-11, 2024},
+  publisher    = {OpenReview.net},
+  year         = {2024},
+  url          = {https://openreview.net/forum?id=AwyxtyMwaG},
+  timestamp    = {Wed, 07 Aug 2024 17:11:53 +0200},
+  biburl       = {https://dblp.org/rec/conf/iclr/ToddLSMWB24.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+```
+
+</article>

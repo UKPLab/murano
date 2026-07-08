@@ -1,6 +1,7 @@
 """Plotting utilities for probing results.
 
-Requires matplotlib, seaborn, and scikit-learn.
+Requires the ``plot`` extra (matplotlib, seaborn); the confusion matrix also
+needs the ``probe`` extra (scikit-learn).
 """
 
 from __future__ import annotations
@@ -8,40 +9,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from murano._optional import require_optional
+from murano.plotting._common import _save, _setup
+
 if TYPE_CHECKING:
     from murano.steps.probe import ProbeResult
     from murano.steps.record import LabeledActivationStore
-
-
-def _require_plotting():
-    """Ensure plotting dependencies are installed."""
-    try:
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-
-        return plt, sns
-    except ImportError as e:
-        raise RuntimeError(
-            "Plotting utilities require additional dependencies. "
-            "Please install them via: pip install murano[plot]"
-        ) from e
-
-
-def _setup():
-    """Consistent seaborn style for all plots."""
-    _, sns = _require_plotting()
-
-    sns.set_theme(
-        style="whitegrid", context="notebook", palette="muted", font_scale=1.1
-    )
-    return sns
-
-
-def _save(fig, save_path):
-    """Save figure with consistent settings."""
-    if save_path:
-        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="white")
 
 
 def plot_probe_accuracy(
@@ -105,6 +78,8 @@ def plot_confusion_matrix(
         save_path: If provided, write the figure to this path.
     """
     import matplotlib.pyplot as plt
+
+    require_optional("probe")
     from sklearn.metrics import confusion_matrix as cm_func
 
     sns = _setup()

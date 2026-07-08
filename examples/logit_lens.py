@@ -8,6 +8,9 @@ Demonstrates:
 Cross-architecture: works on any model nnterp can standardize (Llama, GPT-2,
 Mistral, Qwen, OPT, etc.). The example below uses Llama-3.2-1B, but you can
 swap the model_id for any HuggingFace causal-LM.
+
+Requires the ``plot`` extra:
+    pip install murano-interp[plot]
 """
 
 from __future__ import annotations

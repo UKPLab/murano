@@ -75,6 +75,24 @@ The `uv-lock-check` pre-commit hook fails CI if `uv.lock` and `pyproject.toml` a
 - Add type hints to all functions
 - Include docstrings for public APIs
 
+## Adding a feature with its own dependency
+
+The base install stays lean: it carries only what every workflow needs. Anything
+feature-specific ships as an extra so users install per use case. To add a new
+application that needs a heavyweight library:
+
+1. Add an extra in `pyproject.toml` under `[project.optional-dependencies]`, and
+   include it in the `all` extra.
+2. Register the extra's top-level import names in `murano._optional.EXTRA_IMPORTS`
+   (the key must match the extra name).
+3. Import the library lazily at its point of use, calling
+   `require_optional("<extra>")` immediately before the import so a missing
+   dependency raises a clear, actionable error.
+4. Run `uv lock` and commit the updated `uv.lock`.
+
+No bespoke try/except guards: every optional import goes through
+`require_optional` so error messages stay uniform.
+
 ## Pull Request Process
 
 1. Update documentation as needed

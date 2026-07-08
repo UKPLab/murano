@@ -35,6 +35,13 @@ MODULES = [
     "murano.steps.evaluate",
     "murano.steps.load",
     "murano.steps.save",
+    "murano.steps.paired",
+    "murano.steps.logits",
+    "murano.steps.ablate",
+    "murano.steps.patch",
+    "murano.steps.path_patch",
+    "murano.steps.attention",
+    "murano.steps.logit_attribution",
 ]
 
 # Skip these names everywhere

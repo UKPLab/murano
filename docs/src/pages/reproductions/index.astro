@@ -6,6 +6,36 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 const reproductions = [
   {
+    slug: 'ioi',
+    title: 'Interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 Small',
+    venue: 'ICLR 2023',
+    authors: 'Wang, Variengien, Conmy, Shlegeris, Steinhardt',
+    description: 'Reverse-engineers how GPT-2 small identifies the indirect object, localizing the name-mover, negative name-mover, and S-inhibition heads. Reproduced with Murano path patching, attention analysis, and OV circuits.',
+    tags: ['circuits', 'attention', 'path patching'],
+    paper: 'https://arxiv.org/abs/2211.00593',
+    code: 'https://github.com/redwoodresearch/Easy-Transformer',
+  },
+  {
+    slug: 'geometry_of_truth',
+    title: 'The Geometry of Truth: Emergent Linear Structure in LLM Representations of True/False Datasets',
+    venue: 'arXiv 2023',
+    authors: 'Marks, Tegmark',
+    description: 'Shows that the truth of a factual statement is encoded as a single linear direction in the residual stream: true and false statements separate, a mass-mean probe reads the direction, it generalizes across topics, and adding it flips the model\'s judgement. Reproduced with Murano recording, probing, and interventions.',
+    tags: ['probing', 'representations', 'steering'],
+    paper: 'https://arxiv.org/abs/2310.06824',
+    code: 'https://github.com/saprmarks/geometry-of-truth',
+  },
+  {
+    slug: 'function_vectors',
+    title: 'Function Vectors in Large Language Models',
+    venue: 'ICLR 2024',
+    authors: 'Todd, Li, Sen Sharma, Mueller, Wallace, Bau',
+    description: 'Shows that a small set of attention heads carry a compact, portable representation of an in-context task: summing their outputs gives a function vector, and adding it to a zero-shot prompt makes GPT-J perform the task. Reproduced with Murano recording, causal mediation, and interventions.',
+    tags: ['in-context learning', 'causal mediation', 'steering'],
+    paper: 'https://arxiv.org/abs/2310.15213',
+    code: 'https://github.com/ericwtodd/function_vectors',
+  },
+  {
     slug: 'tmlr2026',
     title: 'Shape Happens: Automatic Feature Manifold Discovery in LLMs via Supervised Multi-Dimensional Scaling',
     venue: 'TMLR 2026',
