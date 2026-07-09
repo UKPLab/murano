@@ -90,16 +90,17 @@ clf = results["probe"].classifiers[results["probe"].best_layer]
 
 ## Plotting
 
-Use the `ProbePlot` step to visualize accuracy across layers:
+Use the generic `Plot` step to visualize accuracy across layers. It renders a
+plot for whichever results are present, so it picks up the probe automatically:
 
 ```python
-from murano.steps import ProbePlot
+from murano.steps import Plot
 
 results = Pipeline([
     Load(dataset),
     Record(model, layers="all", position="last"),
     Probe(cv=5),
-    ProbePlot(),
+    Plot(),
 ]).run()
 ```
 

@@ -22,7 +22,7 @@ from importlib.util import find_spec
 EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "probe": ("sklearn",),
     "data": ("datasets",),
-    "plot": ("matplotlib", "seaborn", "plotly"),
+    "plot": ("plotly",),
     "sae": ("sae_lens",),
     "notebook": ("ipykernel", "nltk"),
 }

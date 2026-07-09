@@ -92,9 +92,11 @@ data = [
     "datasets>=4.0.0",
 ]
 plot = [
-    "matplotlib>=3.10",
-    "seaborn>=0.13",
     "plotly>=6.7.0",
+    # kaleido<1 ships a self-contained Chromium, so PNG/SVG export works on
+    # headless nodes (Slurm, CI) out of the box. kaleido>=1 needs a system
+    # Chrome that such nodes usually lack; revisit when plotly drops <1 support.
+    "kaleido<1",
 ]
 sae = [
     "sae-lens>=6.7.0",
