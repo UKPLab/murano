@@ -22,10 +22,15 @@ LOGIT_LENS: Final = "logit_lens"
 LOGIT_ATTRIBUTION: Final = "logit_attribution"
 SAE_RECORD: Final = "sae_record"
 FEATURE_EXAMPLES: Final = "feature_examples"
+SELECTION: Final = "selection"
 METRIC: Final = "metric"
-EVAL: Final = "eval"
 WEIGHT_ABLATION: Final = "weight_ablation"
 OUTPUT_DIR: Final = "output_dir"
+
+# Default base directory (relative to the current working directory) for saved
+# artifacts, shared by the Save step, Results.save, and the Plot step so they
+# all write into one predictable tree.
+DEFAULT_OUTPUT_DIR: Final = "murano_outputs"
 
 # Default keys for the configurable metric steps (callers may override these).
 FINAL_LOGITS: Final = "final_logits"

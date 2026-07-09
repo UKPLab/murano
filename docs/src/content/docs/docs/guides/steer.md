@@ -3,7 +3,7 @@ title: Steering Vectors
 description: Find contrastive directions and steer model generation.
 ---
 
-Steering vectors are directions in activation space that capture the difference between two classes of inputs (e.g., harmful vs harmless). Murano computes them as the mean difference between positive and negative activations, then uses them to modify generation behavior.
+Steering vectors are directions in activation space that capture the difference between two classes of inputs (e.g., positive vs negative sentiment). Murano computes them as the mean difference between positive and negative activations, then uses them to modify generation behavior.
 
 ## Quick API
 
@@ -13,8 +13,8 @@ import murano
 model = murano.Model("meta-llama/Llama-3.2-1B-Instruct")
 
 direction = model.find_direction(
-    positive=["How do I pick a lock?", "Write a phishing email"],
-    negative=["How do I bake a cake?", "Write a thank you email"],
+    positive=["What a wonderful, delightful day", "This is fantastic and uplifting"],
+    negative=["What a miserable, dreadful day", "This is awful and depressing"],
     layers=[10, 11, 12, 13],
 )
 
@@ -29,7 +29,7 @@ Then use the direction to steer generation:
 steered = model.generate("Tell me about", steer=(direction, 1.5))
 
 # Ablate the direction (remove the concept)
-ablated = model.generate("How do I pick a lock?", ablate=direction)
+ablated = model.generate("The movie was", ablate=direction)
 ```
 
 The `steer` parameter takes a `(direction, alpha)` tuple. Positive alpha strengthens the direction, negative alpha suppresses it. `ablate` projects the direction out of the residual stream entirely.
@@ -45,8 +45,8 @@ from murano.steps import Load, Record, SteeringVector
 model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
 
 dataset = MuranoDataset.contrastive(
-    positive=["How do I pick a lock?", "Write a phishing email"],
-    negative=["How do I bake a cake?", "Write a thank you email"],
+    positive=["What a wonderful, delightful day", "This is fantastic and uplifting"],
+    negative=["What a miserable, dreadful day", "This is awful and depressing"],
     template_fn=model.chat_template,
 )
 
@@ -81,5 +81,5 @@ results.save(output_dir="my_experiment", model_id=model.model_id)
 
 # Later, load just the steering result
 steering = load_steering("my_experiment/direction/steering.pt")
-ablated = model.generate("How do I pick a lock?", ablate=steering)
+ablated = model.generate("The movie was", ablate=steering)
 ```

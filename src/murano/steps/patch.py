@@ -62,7 +62,11 @@ class Patch(Ablate):
             address, or an iterable of addresses. A whole-component target patches
             the module output; a head target (``Node(layer, "self_attn", head=h)``)
             patches that head. One call is a single mode (all whole-component or
-            all per-head).
+            all per-head). Pass this or ``targets_key``, not both.
+        targets_key: Results key holding a
+            :class:`~murano.artifacts.ComponentSelection` a discovery step wrote,
+            read at run time so attribute-then-patch composes in one pipeline. Pass
+            this or ``targets``, not both.
         base_key: Results key of the batch to patch into (default
             ``corrupt_prompts``).
         source_key: Results key of the batch supplying replacement activations
@@ -75,15 +79,17 @@ class Patch(Ablate):
         mask_key: Results key to write the base attention mask under.
 
     Raises:
-        ValueError: If ``targets`` is empty or mixes modes, or the base and source
+        ValueError: If neither or both of ``targets`` and ``targets_key`` are
+            given, ``targets`` is empty or mixes modes, or the base and source
             prompts are not token-length-matched per pair.
     """
 
     def __init__(
         self,
         model: ModelBackend,
-        targets: NodeSet | AddressLike | Iterable[AddressLike],
+        targets: NodeSet | AddressLike | Iterable[AddressLike] | None = None,
         *,
+        targets_key: str | None = None,
         base_key: str = keys.CORRUPT_PROMPTS,
         source_key: str = keys.PROMPTS,
         positions: int | Sequence[int] | torch.Tensor | None = None,
@@ -94,6 +100,7 @@ class Patch(Ablate):
             model,
             targets,
             method="resample",
+            targets_key=targets_key,
             source_key=source_key,
             positions=positions,
             prompts_key=base_key,

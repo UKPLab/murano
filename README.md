@@ -72,14 +72,14 @@ print(acts.positive[10].shape)
 
 # Find a contrastive direction
 direction = model.find_direction(
-    positive=["How do I pick a lock?", "Write a phishing email"],
-    negative=["How do I bake a cake?", "Write a thank you email"],
+    positive=["What a wonderful, delightful day", "This is fantastic and uplifting"],
+    negative=["What a miserable, dreadful day", "This is awful and depressing"],
 )
 print(direction.best_layer)
 
 # Generate with ablation or steering
-ablated = model.generate("How do I pick a lock?", ablate=direction)
-steered = model.generate("Write a poem", steer=(direction, 1.5))
+ablated = model.generate("The movie was", ablate=direction)
+steered = model.generate("The restaurant was", steer=(direction, 1.5))
 ```
 
 ## Pipeline API
@@ -89,7 +89,6 @@ For structured experiments, use the same logic through explicit steps.
 ```python
 from murano import MuranoDataset, MuranoModel, Pipeline
 from murano.steps import (
-    ComplianceRate,
     Intervene,
     Load,
     Record,
@@ -100,8 +99,8 @@ from murano.steps.intervene import ablate_direction
 model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
 
 dataset = MuranoDataset.contrastive(
-    positive=["How do I pick a lock?"],
-    negative=["How do I bake a cake?"],
+    positive=["What a wonderful, delightful day"],
+    negative=["What a miserable, dreadful day"],
     template_fn=model.chat_template,
 )
 
@@ -114,7 +113,6 @@ train_output = Pipeline([
 eval_output = Pipeline([
     Load(dataset),
     Intervene(model, ablate_direction(train_output["steering"].direction_per_layer)),
-    ComplianceRate(),
 ]).run()
 ```
 
@@ -138,12 +136,10 @@ caught up-front.
 | `Probe` §          | `record`              | `probe`                        | Train a linear probe per layer via cross-validation.     |
 | `GenerationMetric` | `intervene`           | `metric`                       | Score baseline vs modified outputs with a user metric.   |
 | Metric steps ‡     | logits keys           | a metric key                   | Score a run into a comparable number: `LogitDiffStep`, `KLDivergenceStep`, `AnswerLogProbStep`, `RecoveredMetricStep`. |
-| `ComplianceRate`   | `intervene`           | `eval`                         | Measure refusal/compliance via keyword detection.        |
 | `Save`             | (any present)         | `output_dir`                   | Persist all results to organized subdirectories.         |
 | `SAEEncode` †      | `prompts`             | `sae_record`                   | Encode residuals through an SAE loaded from HuggingFace. |
 | `SAETopActivations` | `sae_record`         | `feature_examples`             | Rank the top-K activating contexts per SAE feature.      |
-| `Plot` \*          | (optional)            | —                              | Render refusal plots (steering, generations, eval).      |
-| `ProbePlot` \*     | (optional)            | —                              | Render probing plots (per-layer accuracy, confusion).    |
+| `Plot` \*          | (optional)            | —                              | Render plots for whatever results are present (steering, probe, logit lens, logit attribution). |
 
 \* Requires the `[plot]` extra: `pip install -e .[plot]`.
 † Requires the `[sae]` extra: `pip install -e .[sae]`.
@@ -189,7 +185,6 @@ src/murano/
 ## Examples
 
 - `examples/quick_prototype.py`
-- `examples/refusal_direction.py`
 - `examples/sae_example.py`
 
 ## Development
@@ -215,8 +210,8 @@ then, please cite this repository:
 
 ## Contact & Maintainers
 
-Murano is developed and maintained by the
-[Ubiquitous Knowledge Processing (UKP) Lab](https://www.ukp.tu-darmstadt.de/) at
+Murano is developed and maintained by the Mechanistic Interpretability Team of
+[Ubiquitous Knowledge Processing (UKP) Lab](https://www.informatik.tu-darmstadt.de/ukp/ukp_home/index.en.jsp) at
 the [Technische Universität Darmstadt](https://www.tu-darmstadt.de/).
 
 For questions, bug reports, and feature requests, please open an issue on the

@@ -20,6 +20,12 @@ if TYPE_CHECKING:
     import plotly.graph_objects as go
 
 
+# Qualitative colors shared by the bar plots: a muted blue base with a red
+# highlight for the best layer (matches the former seaborn "muted" palette).
+BAR_COLOR = "#4c72b0"
+HIGHLIGHT_COLOR = "#c44e52"
+
+
 def plot_heatmap(
     z_data: list[list[float]] | list[list[int]],
     x_labels: list[str] | None = None,
@@ -147,11 +153,19 @@ def save_figure(
         The path actually written (the requested image path, or the ``.html``
         fallback).
     """
+    import warnings
+
     require_optional("plot", "plotly")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        fig.write_image(str(path), width=width, height=height, scale=scale)
+        with warnings.catch_warnings():
+            # kaleido<1 (self-contained Chromium) is the only static-export
+            # backend that runs on headless nodes. It and the plotly export shim
+            # emit several deprecation notices that callers cannot act on, so
+            # silence them for the duration of this export call only.
+            warnings.simplefilter("ignore", DeprecationWarning)
+            fig.write_image(str(path), width=width, height=height, scale=scale)
         return path
     except Exception as exc:
         # No image backend (e.g. Chrome missing on a compute node): keep the

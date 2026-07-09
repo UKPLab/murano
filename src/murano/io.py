@@ -420,6 +420,45 @@ def load_logit_attribution(path: str | Path) -> Any:
     )
 
 
+def save_component_selection(selection: Any, path: Path) -> None:
+    """Save a ComponentSelection to a JSON file.
+
+    Nodes and score keys are stored by their string address; the loader coerces
+    them back to Node objects.
+
+    Args:
+        selection: ComponentSelection to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "nodes": [str(node) for node in selection.nodes],
+        "scores": {str(k): v for k, v in selection.scores.items()},
+        "metadata": selection.metadata,
+    }
+    _write_json(path, data)
+    logger.info("Saved component selection to %s", path)
+
+
+def load_component_selection(path: str | Path) -> Any:
+    """Load a ComponentSelection from a file written by :func:`save_component_selection`.
+
+    Args:
+        path: Path to the selection.json file.
+
+    Returns:
+        ComponentSelection with string addresses coerced back to Node keys.
+    """
+    from murano.artifacts import ComponentSelection
+
+    data = json.loads(Path(path).read_text())
+    return ComponentSelection(
+        nodes=data["nodes"],
+        scores=data.get("scores", {}),
+        metadata=data.get("metadata", {}),
+    )
+
+
 def save_activation_store(activation_store: Any, path: Path) -> None:
     """Save an ActivationStore to a .pt file.
 
@@ -738,6 +777,7 @@ def register_artifact_serializer(
 
 
 def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
+    from murano.artifacts import ComponentSelection
     from murano.steps.attention import AttentionResult
     from murano.steps.logit_attribution import LogitAttributionResult
     from murano.steps.logit_lens import LogitLensResult
@@ -814,9 +854,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         _results: Any,
         metadata: dict[str, Any],
     ) -> None:
-        filename = "eval.json" if key == keys.EVAL else f"{key}.json"
-        folder = "evaluation" if key == keys.EVAL else "metrics"
-        save_metric_comparison(metric, out / folder / filename)
+        save_metric_comparison(metric, out / "metrics" / f"{key}.json")
         metadata[key] = {
             "metric_name": metric.metric_name,
             "baseline_label": metric.baseline_label,
@@ -825,12 +863,6 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "modified_score": metric.modified_score,
             "metadata": metric.metadata,
         }
-        if key == keys.EVAL:
-            metadata["evaluation"] = {
-                "metric_name": metric.metric_name,
-                "baseline_score": metric.baseline_score,
-                "modified_score": metric.modified_score,
-            }
 
     def serialize_metric_score(
         key: str,
@@ -904,6 +936,20 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "target": attribution.target,
             "total": attribution.total,
             "completeness_error": attribution.completeness_error,
+        }
+
+    def serialize_component_selection(
+        key: str,
+        selection: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "selection.json" if key == keys.SELECTION else f"{key}.json"
+        save_component_selection(selection, out / "selection" / filename)
+        metadata[key] = {
+            "nodes": [str(node) for node in selection.nodes],
+            "metadata": selection.metadata,
         }
 
     def serialize_activation_store(
@@ -1010,6 +1056,9 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     register_artifact_serializer(
         registry, LogitAttributionResult, serialize_logit_attribution
     )
+    register_artifact_serializer(
+        registry, ComponentSelection, serialize_component_selection
+    )
     register_artifact_serializer(registry, ActivationStore, serialize_activation_store)
     register_artifact_serializer(
         registry, LabeledActivationStore, serialize_labeled_activation_store
@@ -1034,7 +1083,7 @@ def _find_serializer(
 
 def save_results(
     results: Any,
-    output_dir: str = "murano_outputs",
+    output_dir: str = keys.DEFAULT_OUTPUT_DIR,
     model_id: str = "",
     run_name: str | None = None,
 ) -> Path:
@@ -1044,9 +1093,8 @@ def save_results(
         output_dir/
         ├── direction/           # steering vectors
         │   └── steering.pt
-        ├── evaluation/          # generations + metrics
-        │   ├── generations.json
-        │   └── eval.json
+        ├── evaluation/          # generations
+        │   └── generations.json
         ├── logit_lens/          # logit-lens probabilities + decoded words
         │   └── logit_lens.pt
         ├── attention/           # captured per-head attention weights

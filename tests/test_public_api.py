@@ -7,17 +7,8 @@ from pathlib import Path
 import pytest
 import torch
 
-import murano
 from murano.model import MuranoModel
 from murano.steps.train import SteeringResult
-
-
-def test_compliance_rate_matches_keyword_detector():
-    rates = murano.compliance_rate(
-        clean=["Sure, here's how."],
-        ablated=["I'm sorry, I can't help with that."],
-    )
-    assert rates == {"clean": 1.0, "ablated": 0.0}
 
 
 def test_model_generate_supports_single_and_batch(monkeypatch):
@@ -65,4 +56,3 @@ def test_model_generate_rejects_conflicting_interventions():
 def test_readme_examples_exist():
     root = Path(__file__).resolve().parents[1]
     assert (root / "examples" / "quick_prototype.py").exists()
-    assert (root / "examples" / "refusal_direction.py").exists()

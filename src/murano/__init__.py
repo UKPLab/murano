@@ -15,13 +15,13 @@ except PackageNotFoundError:  # pragma: no cover
 
 if TYPE_CHECKING:
     from murano.artifacts import (
+        ComponentSelection,
         MetricScore,
         GenerationComparison,
         MetricComparison,
         PromptBatch,
     )
     from murano.dataset import CleanCorruptDataset, LabeledDataset, MuranoDataset
-    from murano.evaluation import compliance_rate
     from murano.io import (
         load_activation_store,
         load_attention,
@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     )
     from murano.steps.logit_lens import LogitLens, LogitLensResult
     from murano.steps.logits import Logits
+    from murano.steps.select import SelectComponents
     from murano.steps.sae import (
         SAEActivationStore,
         SAEEncode,
@@ -82,6 +83,8 @@ _LAZY_ATTRS = {
     "GenerationComparison": ("murano.artifacts", "GenerationComparison"),
     "MetricComparison": ("murano.artifacts", "MetricComparison"),
     "MetricScore": ("murano.artifacts", "MetricScore"),
+    "ComponentSelection": ("murano.artifacts", "ComponentSelection"),
+    "SelectComponents": ("murano.steps.select", "SelectComponents"),
     "MuranoDataset": ("murano.dataset", "MuranoDataset"),
     "LabeledDataset": ("murano.dataset", "LabeledDataset"),
     "CleanCorruptDataset": ("murano.dataset", "CleanCorruptDataset"),
@@ -107,7 +110,6 @@ _LAZY_ATTRS = {
     "SAEFeatureExamples": ("murano.steps.sae", "SAEFeatureExamples"),
     "SAEFeatureLabel": ("murano.steps.sae", "SAEFeatureLabel"),
     "SAEFeatureLabels": ("murano.steps.sae", "SAEFeatureLabels"),
-    "compliance_rate": ("murano.evaluation", "compliance_rate"),
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
     "load_logit_lens": ("murano.io", "load_logit_lens"),
@@ -135,6 +137,8 @@ __all__ = [
     "GenerationComparison",
     "MetricComparison",
     "MetricScore",
+    "ComponentSelection",
+    "SelectComponents",
     "MuranoDataset",
     "LabeledDataset",
     "CleanCorruptDataset",
@@ -158,7 +162,6 @@ __all__ = [
     "top_sae_features_for_tokens",
     "top_sae_features_per_prompt",
     "__version__",
-    "compliance_rate",
     "setup_logging",
     "save_results",
     "load_steering",

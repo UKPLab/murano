@@ -1,9 +1,9 @@
 """Weight-level ablation: projects out directions from model weights.
 
-Implements the approach from Arditi et al. 2024: instead of hooking activations
-during generation, directly modify weight matrices using an orthogonal projection
-P = I - dd^T. This removes the direction from ALL computations (not just the
-residual stream at specific hook points), yielding stronger ablation.
+Instead of hooking activations during generation, directly modify weight
+matrices using an orthogonal projection P = I - dd^T. This removes the direction
+from ALL computations (not just the residual stream at specific hook points),
+yielding stronger ablation.
 
 Read matrices (input from residual stream):  W_new = W @ P
 Write matrices (output to residual stream): W_new = P @ W
@@ -255,8 +255,8 @@ class WeightAblation(Step):
     Writes to results:
         results['weight_ablation']: WeightAblationResult
         results[intervene_key]: InterveneResult, published under the shared
-            'intervene' slot so downstream evaluation and refusal steps consume
-            it exactly as they consume the activation-level Intervene step.
+            'intervene' slot so downstream steps consume it exactly as they
+            consume the activation-level Intervene step.
 
     Args:
         model: MuranoModel to generate with.

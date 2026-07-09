@@ -19,10 +19,13 @@ from __future__ import annotations
 import pytest
 import torch
 
-from murano import Pipeline, keys
+from murano import Node, Pipeline, keys
 from murano.dataset import MuranoDataset
+from murano.results import Results
 from murano.steps.intervene import Intervene, InterveneResult, steer_direction
 from murano.steps.load import Load
+from murano.steps.record import Record
+from murano.steps.train import SteeringResult, SteeringVector
 
 FIXTURES = ["murano_model", "gpt2_model"]
 
@@ -165,3 +168,221 @@ def test_steer_direction_is_usable_during_generation(murano_model):
     )
 
     assert isinstance(out, str)
+
+
+# ── Results-driven interventions (direction_key) ──────────────────────
+
+
+def _contrastive():
+    """Return a small contrastive dataset for deriving a steering direction."""
+    return MuranoDataset(
+        positive_texts=["good great wonderful", "nice lovely fine"],
+        negative_texts=["bad awful terrible", "poor nasty grim"],
+    )
+
+
+class TestDirectionKeyComposition:
+    """Intervene reads its direction from Results, so deriving a direction and
+    applying it is one pipeline rather than two with a manual hand-off."""
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    @pytest.mark.parametrize("mode", ["steer", "ablate"])
+    def test_derive_then_apply_in_one_pipeline(self, fixture, mode, request):
+        model = request.getfixturevalue(fixture)
+        out = Pipeline(
+            [
+                Load(_contrastive()),
+                Record(model, layers="all", position="mean"),
+                SteeringVector(normalize=True),
+                Intervene(
+                    model,
+                    direction_key=keys.STEERING,
+                    mode=mode,
+                    alpha=4.0,
+                    gen_kwargs={"max_new_tokens": 3, "do_sample": False},
+                ),
+            ]
+        ).run()
+        assert keys.STEERING in out  # the direction was derived in the same run
+        intervene: InterveneResult = out[keys.INTERVENE]
+        assert (
+            0 < len(intervene.clean_generations) == len(intervene.modified_generations)
+        )
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_resolve_fn_applies_the_results_direction(self, fixture, request):
+        # Weight-independent: a direction placed in Results is turned into an
+        # intervention that perturbs the activation at its node.
+        model = request.getfixturevalue(fixture)
+        node = Node(0, "residual")
+        steering = SteeringResult(
+            direction_per_layer={node: torch.ones(model.d_model)},
+            separation_scores={node: 1.0},
+            best_layer=node,
+        )
+        step = Intervene(model, direction_key=keys.STEERING, mode="steer", alpha=5.0)
+        results = Results()
+        results[keys.STEERING] = steering
+        fn = step._resolve_fn(results)
+
+        activation = torch.zeros(1, 1, model.d_model)
+        assert not torch.allclose(fn(activation, node), activation)
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_missing_direction_fails_preflight(self, fixture, request):
+        # The direction key joins the step's reads, so a pipeline that forgets to
+        # produce it fails validation up front instead of silently not steering.
+        model = request.getfixturevalue(fixture)
+        pipe = Pipeline(
+            [
+                Load(MuranoDataset(positive_texts=["x"], negative_texts=[])),
+                Intervene(model, direction_key=keys.STEERING, mode="steer"),
+            ]
+        )
+        with pytest.raises(KeyError):
+            pipe.validate()
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_full_arc_validates(self, fixture, request):
+        model = request.getfixturevalue(fixture)
+        produced = Pipeline(
+            [
+                Load(_contrastive()),
+                Record(model, layers="all", position="mean"),
+                SteeringVector(),
+                Intervene(model, direction_key=keys.STEERING),
+            ]
+        ).validate()
+        assert keys.INTERVENE in produced
+
+
+class TestDirectionLayers:
+    """direction_layers chooses which recorded directions the steer applies, so a
+    single best layer (or an explicit subset) replaces the over-steering
+    every-layer default without changing how the direction was derived."""
+
+    def _steering(self, model) -> SteeringResult:
+        # Three recorded layers with layer 1 the best-separating one, so "best"
+        # and the explicit-list paths select a different subset than "all".
+        directions = {
+            Node(layer, "residual"): torch.ones(model.d_model) for layer in range(3)
+        }
+        return SteeringResult(
+            direction_per_layer=directions,
+            separation_scores={
+                Node(0, "residual"): 0.1,
+                Node(1, "residual"): 0.9,
+                Node(2, "residual"): 0.2,
+            },
+            best_layer=Node(1, "residual"),
+        )
+
+    def test_all_selects_every_recorded_layer(self, murano_model):
+        step = Intervene(murano_model, direction_key=keys.STEERING, mode="steer")
+        selected = step._select_directions(self._steering(murano_model))
+        assert {node.layer for node in selected} == {0, 1, 2}
+
+    def test_best_selects_only_the_best_layer(self, murano_model):
+        step = Intervene(
+            murano_model,
+            direction_key=keys.STEERING,
+            mode="steer",
+            direction_layers="best",
+        )
+        selected = step._select_directions(self._steering(murano_model))
+        assert list(selected) == [Node(1, "residual")]
+
+    def test_explicit_list_selects_named_layers(self, murano_model):
+        step = Intervene(
+            murano_model,
+            direction_key=keys.STEERING,
+            mode="steer",
+            direction_layers=[0, 2],
+        )
+        selected = step._select_directions(self._steering(murano_model))
+        assert {node.layer for node in selected} == {0, 2}
+
+    def test_best_only_perturbs_at_the_best_layer(self, murano_model):
+        # The built fn is identity at any layer whose direction was dropped, so a
+        # best-only steer touches only the best layer's activation.
+        model = murano_model
+        step = Intervene(
+            model,
+            direction_key=keys.STEERING,
+            mode="steer",
+            alpha=5.0,
+            direction_layers="best",
+        )
+        results = Results()
+        results[keys.STEERING] = self._steering(model)
+        fn = step._resolve_fn(results)
+
+        activation = torch.zeros(1, 1, model.d_model)
+        assert not torch.allclose(fn(activation, Node(1, "residual")), activation)
+        assert torch.allclose(fn(activation, Node(0, "residual")), activation)
+
+    def test_best_runs_in_one_pipeline(self, murano_model):
+        model = murano_model
+        out = Pipeline(
+            [
+                Load(_contrastive()),
+                Record(model, layers="all", position="mean"),
+                SteeringVector(normalize=True),
+                Intervene(
+                    model,
+                    direction_key=keys.STEERING,
+                    mode="steer",
+                    alpha=4.0,
+                    direction_layers="best",
+                    gen_kwargs={"max_new_tokens": 3, "do_sample": False},
+                ),
+            ]
+        ).run()
+        assert keys.INTERVENE in out
+
+    def test_rejects_unknown_string(self, murano_model):
+        with pytest.raises(ValueError, match="'all' or 'best'"):
+            Intervene(
+                murano_model, direction_key=keys.STEERING, direction_layers="worst"
+            )
+
+    def test_rejects_with_fn_path(self, murano_model):
+        with pytest.raises(ValueError, match="direction_layers only applies"):
+            Intervene(murano_model, fn=lambda a, k: a, direction_layers="best")
+
+    def test_empty_selection_raises(self, murano_model):
+        step = Intervene(
+            murano_model, direction_key=keys.STEERING, direction_layers=[9]
+        )
+        with pytest.raises(ValueError, match="selected no recorded layer"):
+            step._select_directions(self._steering(murano_model))
+
+    def test_best_without_best_layer_raises(self, murano_model):
+        # A bare direction mapping (no SteeringResult) has no best_layer, so "best"
+        # cannot resolve and says so.
+        step = Intervene(
+            murano_model, direction_key=keys.STEERING, direction_layers="best"
+        )
+        with pytest.raises(ValueError, match="needs a SteeringResult"):
+            step._select_directions({Node(0, "residual"): torch.ones(4)})
+
+
+class TestInterveneConstructorGuards:
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_requires_exactly_one_source(self, fixture, request):
+        model = request.getfixturevalue(fixture)
+        with pytest.raises(ValueError):
+            Intervene(model)
+        with pytest.raises(ValueError):
+            Intervene(model, fn=lambda a, k: a, direction_key=keys.STEERING)
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_rejects_unknown_mode(self, fixture, request):
+        model = request.getfixturevalue(fixture)
+        with pytest.raises(ValueError):
+            Intervene(model, direction_key=keys.STEERING, mode="flip")
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_fn_path_reads_only_prompts(self, fixture, request):
+        model = request.getfixturevalue(fixture)
+        assert Intervene(model, fn=lambda a, k: a).reads == [keys.PROMPTS]

@@ -33,7 +33,7 @@ from torch import as_tensor, equal, long  # pyright: ignore[reportPrivateImportU
 from torch import randperm, tensor, zeros  # pyright: ignore[reportPrivateImportUsage]
 
 from murano import keys
-from murano.artifacts import PromptBatch
+from murano.artifacts import ComponentSelection, PromptBatch
 from murano.logging import logger
 from murano.nodes import (
     RESID_MID,
@@ -272,7 +272,11 @@ class Ablate(Step):
             an iterable of addresses. A whole-component target ablates the module
             output; a head target (``Node(layer, "self_attn", head=h)``) ablates
             that head. One call is a single mode (all whole-component or all
-            per-head).
+            per-head). Pass this or ``targets_key``, not both.
+        targets_key: Results key holding a
+            :class:`~murano.artifacts.ComponentSelection` a discovery step wrote,
+            read at run time so attribute-then-ablate composes in one pipeline.
+            Pass this or ``targets``, not both.
         method: ``"zero"``, ``"mean"``, or ``"resample"``.
         mean_over: For ``method="mean"``, whether the mean pools over batch and
             positions (``"all"``) or is taken per position (``"position"``).
@@ -306,10 +310,10 @@ class Ablate(Step):
         mask_key: Results key to write the attention mask under.
 
     Raises:
-        ValueError: If ``method``/``mean_over`` is unknown, ``targets`` is
-            empty or mixes modes, a method-specific argument is misused, or a
-            precomputed ``means`` table does not cover every target with a
-            right-sized vector.
+        ValueError: If neither or both of ``targets`` and ``targets_key`` are
+            given, ``method``/``mean_over`` is unknown, ``targets`` is empty or
+            mixes modes, a method-specific argument is misused, or a precomputed
+            ``means`` table does not cover every target with a right-sized vector.
         NotImplementedError: If per-head capture is requested for a module whose
             architecture's attention output projection is not recognized.
     """
@@ -320,9 +324,10 @@ class Ablate(Step):
     def __init__(
         self,
         model: ModelBackend,
-        targets: NodeSet | AddressLike | Iterable[AddressLike],
+        targets: NodeSet | AddressLike | Iterable[AddressLike] | None = None,
         method: Literal["zero", "mean", "resample"] = "zero",
         *,
+        targets_key: str | None = None,
         mean_over: Literal["all", "position"] = "all",
         means: dict[AddressLike, torch.Tensor] | None = None,
         source: Sequence[str] | None = None,
@@ -334,6 +339,16 @@ class Ablate(Step):
         logits_key: str = keys.ABLATED_LOGITS,
         mask_key: str = keys.ATTENTION_MASK,
     ):
+        if (targets is None) == (targets_key is None):
+            raise ValueError(
+                "Pass exactly one of targets= (addresses) or targets_key= (a "
+                "ComponentSelection a discovery step wrote to Results)."
+            )
+        if means is not None and targets_key is not None:
+            raise ValueError(
+                "means= needs the targets known up front, so pass explicit "
+                "targets=, not targets_key=."
+            )
         if method not in _METHODS:
             raise ValueError(f"method must be one of {_METHODS}, got {method!r}")
         if mean_over not in _MEAN_OVER:
@@ -368,7 +383,13 @@ class Ablate(Step):
                 "apply when source=/source_key= supplies the replacement batch."
             )
 
-        self.sites, self.per_head = _group_targets(_coerce_targets(targets))
+        # With targets_key the sites are resolved from Results in __call__; hold
+        # valid-but-empty placeholders so the type stays a plain dict/bool.
+        if targets is not None:
+            self.sites, self.per_head = _group_targets(_coerce_targets(targets))
+        else:
+            self.sites, self.per_head = {}, False
+        self.targets_key = targets_key
 
         self.model = model
         self.method = method
@@ -385,11 +406,17 @@ class Ablate(Step):
         self.logits_key = logits_key
         self.mask_key = mask_key
         # Read the batch to run from prompts_key; a source_key, when given, names
-        # a second batch already in results whose activations are resampled in.
-        self.reads = [prompts_key] + ([source_key] if source_key is not None else [])
+        # a second batch already in results whose activations are resampled in; a
+        # targets_key, when given, names the ComponentSelection to ablate.
+        self.reads = (
+            [prompts_key]
+            + ([source_key] if source_key is not None else [])
+            + ([targets_key] if targets_key is not None else [])
+        )
         self.read_types = {
             prompts_key: PromptBatch,
             **({source_key: PromptBatch} if source_key is not None else {}),
+            **({targets_key: ComponentSelection} if targets_key is not None else {}),
         }
         self.writes = [logits_key, mask_key]
         self.write_types = {logits_key: torch.Tensor, mask_key: torch.Tensor}
@@ -434,6 +461,13 @@ class Ablate(Step):
                 )
 
     def __call__(self, results: Results) -> Results:
+        if self.targets_key is not None:
+            # Resolve the targets a discovery step wrote before running, so
+            # attribute-then-ablate is one pipeline. The mode (per-head vs
+            # whole-component) is inferred here, the same as for explicit targets.
+            self.sites, self.per_head = _group_targets(
+                _coerce_targets(results[self.targets_key])
+            )
         prompt_batch: PromptBatch = results[self.prompts_key]
         prompts = prompt_batch.prompts
         tokens = self.model.tokenizer(
@@ -558,6 +592,10 @@ class Ablate(Step):
 
         captured: dict[Site, torch.Tensor] = {}
         for module, layers in layers_by_module.items():
+            # nnsight requires the per-layer saves in one trace to follow execution
+            # (ascending) order; self.sites keeps target-insertion order, which for
+            # a ranked ComponentSelection is not ascending, so sort here.
+            layers = sorted(layers)
             saved = {}
             with self.model.trace(tokens):
                 for layer in layers:

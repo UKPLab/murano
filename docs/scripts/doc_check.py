@@ -25,7 +25,6 @@ MODULES = [
     "murano.dataset",
     "murano.artifacts",
     "murano.results",
-    "murano.evaluation",
     "murano.io",
     "murano.steps.base",
     "murano.steps.record",

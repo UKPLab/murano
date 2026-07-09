@@ -1,9 +1,7 @@
 """Plotting utilities for Murano results."""
 
-from murano.plotting.refusal import (
+from murano.plotting.steering import (
     plot_separation_scores,
-    plot_compliance_comparison,
-    plot_refusal_heatmap,
     plot_direction_cosine_similarity,
 )
 from murano.plotting.logit_lens import plot_logit_lens
@@ -22,8 +20,6 @@ from murano.plotting.sae import (
 
 __all__ = [
     "plot_separation_scores",
-    "plot_compliance_comparison",
-    "plot_refusal_heatmap",
     "plot_direction_cosine_similarity",
     "plot_heatmap",
     "plot_line_chart",

@@ -1,92 +1,82 @@
 """Plotting utilities for probing results.
 
-Requires the ``plot`` extra (matplotlib, seaborn); the confusion matrix also
-needs the ``probe`` extra (scikit-learn).
+Requires the ``plot`` extra (plotly); the confusion matrix also needs the
+``probe`` extra (scikit-learn).
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from murano._optional import require_optional
-from murano.plotting._common import _save, _setup
+from murano.plotting.plotly_utils import BAR_COLOR, HIGHLIGHT_COLOR
 
 if TYPE_CHECKING:
+    import plotly.graph_objects as go
+
     from murano.steps.probe import ProbeResult
     from murano.steps.record import LabeledActivationStore
 
 
-def plot_probe_accuracy(
-    probe: ProbeResult,
-    save_path: str | Path | None = None,
-) -> None:
+def plot_probe_accuracy(probe: ProbeResult) -> go.Figure:
     """Plot per-layer probe accuracy with cross-validation error bars.
 
-    Highlights the best-scoring layer in a distinct colour.
+    Highlights the best-scoring layer in a distinct color.
 
     Args:
         probe: ProbeResult containing per-layer accuracy and CV fold scores.
-        save_path: If provided, write the figure to this path.
-    """
-    import matplotlib.pyplot as plt
 
-    sns = _setup()
+    Returns:
+        An interactive Plotly bar chart, one bar per layer.
+    """
+    require_optional("plot", "plotly")
+    import plotly.graph_objects as go
 
     layers = sorted(probe.accuracy_per_layer.keys())
     means = [probe.accuracy_per_layer[layer] for layer in layers]
-    stds = [probe.cv_scores[layer].std() for layer in layers]
-    palette = [
-        sns.color_palette("muted")[3]
-        if layer == probe.best_layer
-        else sns.color_palette("muted")[0]
-        for layer in layers
+    stds = [float(probe.cv_scores[layer].std()) for layer in layers]
+    colors = [
+        HIGHLIGHT_COLOR if layer == probe.best_layer else BAR_COLOR for layer in layers
     ]
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(
-        [str(layer) for layer in layers],
-        means,
-        yerr=stds,
-        capsize=3,
-        color=palette,
-        edgecolor="white",
+    fig = go.Figure(
+        go.Bar(
+            x=[str(layer) for layer in layers],
+            y=means,
+            marker_color=colors,
+            error_y={"type": "data", "array": stds, "visible": True},
+        )
     )
-    ax.set_xlabel("Layer")
-    ax.set_ylabel("Accuracy")
-    ax.set_title("Probe Accuracy by Layer")
-    ax.set_ylim(0, 1.05)
-
-    plt.tight_layout()
-    _save(fig, save_path)
-    plt.close(fig)
+    fig.update_layout(
+        title="Probe Accuracy by Layer",
+        xaxis_title="Layer",
+        yaxis_title="Accuracy",
+        yaxis={"range": [0, 1.05]},
+    )
+    return fig
 
 
 def plot_confusion_matrix(
-    probe: ProbeResult,
-    store: LabeledActivationStore,
-    save_path: str | Path | None = None,
-) -> None:
+    probe: ProbeResult, store: LabeledActivationStore
+) -> go.Figure | None:
     """Plot a confusion matrix at the best layer using the refitted classifier.
-
-    No-op if ``probe.classifiers`` does not contain the best layer (e.g.
-    when the Probe step ran without ``refit=True``).
 
     Args:
         probe: ProbeResult with refitted classifiers.
         store: LabeledActivationStore containing activations and labels.
-        save_path: If provided, write the figure to this path.
+
+    Returns:
+        An interactive Plotly heatmap, or None when the best layer has no
+        refitted classifier (e.g. the Probe step ran without ``refit=True``).
     """
-    import matplotlib.pyplot as plt
-
+    require_optional("plot", "plotly")
     require_optional("probe")
+    import plotly.graph_objects as go
     from sklearn.metrics import confusion_matrix as cm_func
-
-    sns = _setup()
 
     best = probe.best_layer
     if best not in probe.classifiers:
-        return
+        return None
 
     clf = probe.classifiers[best]
     X = store.activations[best].float().numpy()
@@ -96,23 +86,20 @@ def plot_confusion_matrix(
     labels = probe.label_names or [str(i) for i in sorted(set(y_true))]
     matrix = cm_func(y_true, y_pred)
 
-    fig, ax = plt.subplots(figsize=(6, 5))
-    sns.heatmap(
-        matrix,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        xticklabels=labels,
-        yticklabels=labels,
-        square=True,
-        linewidths=0,
-        linecolor="none",
-        ax=ax,
+    fig = go.Figure(
+        go.Heatmap(
+            z=matrix.tolist(),
+            x=labels,
+            y=labels,
+            text=matrix.tolist(),
+            texttemplate="%{text}",
+            colorscale="Blues",
+        )
     )
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("True")
-    ax.set_title(f"Confusion Matrix (Layer {best})")
-
-    plt.tight_layout()
-    _save(fig, save_path)
-    plt.close(fig)
+    fig.update_layout(
+        title=f"Confusion Matrix (Layer {best})",
+        xaxis_title="Predicted",
+        yaxis_title="True",
+        yaxis={"autorange": "reversed"},
+    )
+    return fig

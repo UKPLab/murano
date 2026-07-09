@@ -11,6 +11,7 @@ from murano.steps.intervene import Intervene
 from murano.steps.ablate import Ablate
 from murano.steps.patch import Patch
 from murano.steps.path_patch import PathPatch
+from murano.steps.select import SelectComponents
 from murano.steps.attention import (
     AblateAttention,
     AttentionResult,
@@ -20,8 +21,7 @@ from murano.steps.attention import (
 from murano.steps.weight_ablation import WeightAblation
 from murano.steps.evaluate import GenerationMetric
 from murano.steps.probe import Probe
-from murano.steps.refusal import ComplianceRate, Plot
-from murano.steps.probing import ProbePlot
+from murano.steps.plot import Plot
 from murano.steps.logit_lens import LogitLens, LogitLensResult
 from murano.steps.logit_attribution import LogitAttribution, LogitAttributionResult
 from murano.steps.logits import Logits
@@ -59,6 +59,7 @@ __all__ = [
     "Ablate",
     "Patch",
     "PathPatch",
+    "SelectComponents",
     "RecordAttention",
     "AblateAttention",
     "AttentionResult",
@@ -66,9 +67,7 @@ __all__ = [
     "WeightAblation",
     "GenerationMetric",
     "Probe",
-    "ComplianceRate",
     "Plot",
-    "ProbePlot",
     "LogitLens",
     "LogitLensResult",
     "LogitAttribution",

@@ -19,7 +19,6 @@ def test_core_key_values():
     assert keys.SAE_RECORD == "sae_record"
     assert keys.FEATURE_EXAMPLES == "feature_examples"
     assert keys.METRIC == "metric"
-    assert keys.EVAL == "eval"
     assert keys.WEIGHT_ABLATION == "weight_ablation"
     assert keys.OUTPUT_DIR == "output_dir"
 

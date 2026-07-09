@@ -14,8 +14,8 @@ from murano.steps import Load, Record, SteeringVector
 model = MuranoModel("meta-llama/Llama-3.2-1B-Instruct")
 
 dataset = MuranoDataset.contrastive(
-    positive=["How do I pick a lock?"],
-    negative=["How do I bake a cake?"],
+    positive=["What a wonderful, delightful day"],
+    negative=["What a miserable, dreadful day"],
     template_fn=model.chat_template,
 )
 
@@ -32,7 +32,7 @@ results = Pipeline([
 2. `Pipeline.run()` calls each step in order: `step(results) -> results`
 3. Steps that inherit from `Step` get automatic validation before execution
 
-The data flow for a refusal-direction experiment:
+The data flow for a steering-direction experiment:
 
 ```
 Load(dataset)
@@ -46,9 +46,6 @@ SteeringVector()
 
 Intervene(model, fn)
   reads: prompts    writes: intervene
-
-ComplianceRate()
-  reads: intervene  writes: eval
 ```
 
 ## Validation
@@ -75,7 +72,6 @@ Many experiments need a train phase and an eval phase with different data. Run t
 ```python
 from murano.steps import Intervene
 from murano.steps.intervene import ablate_direction
-from murano.steps.refusal import ComplianceRate
 
 # Phase 1: Train
 train_results = Pipeline([
@@ -91,11 +87,11 @@ eval_results = Pipeline([
         model,
         ablate_direction(train_results["steering"].direction_per_layer),
     ),
-    ComplianceRate(),
 ]).run()
 
-print("Clean:", eval_results["eval"].baseline_score)
-print("Ablated:", eval_results["eval"].modified_score)
+comparison = eval_results["intervene"]
+print("Clean:", comparison.clean_generations)
+print("Ablated:", comparison.modified_generations)
 ```
 
 ## Saving results
@@ -118,6 +114,8 @@ results = pipeline.run()
 results.save(output_dir="my_experiment", model_id=model.model_id)
 ```
 
+Both default `output_dir` to `murano_outputs/` in the current directory, and the `Plot` step writes there too, so a run's artifacts and plots share one tree. Results go directly into `output_dir`, so re-running overwrites the previous run; pass `run_name="..."` to keep runs side by side under `murano_outputs/<run_name>/`.
+
 The output structure:
 
 ```
@@ -125,8 +123,7 @@ my_experiment/
 ├── direction/
 │   └── steering.pt
 ├── evaluation/
-│   ├── generations.json
-│   └── eval.json
+│   └── generations.json
 ├── probe/
 │   └── probe.json
 └── metadata.json
@@ -143,7 +140,6 @@ my_experiment/
 | `WeightAblation` | `prompts`, `steering` | `intervene`, `weight_ablation` | Ablates via weight projection |
 | `Probe` | `record` | `probe` | Linear probe per layer |
 | `GenerationMetric` | `intervene` | `metric` | Custom evaluation metric |
-| `ComplianceRate` | `intervene` | `eval` | Refusal compliance scoring |
 | `Save` | — | `output_dir` | Saves all results to disk |
 
 ## Writing custom steps

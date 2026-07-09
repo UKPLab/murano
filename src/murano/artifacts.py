@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from murano.nodes import Node, NodeDict
+
 
 @dataclass
 class PromptBatch:
@@ -63,11 +65,50 @@ class GenerationComparison:
 
 
 @dataclass
+class ComponentSelection:
+    """An ordered, scored set of component addresses chosen by a discovery step.
+
+    A discovery step (for example ranking heads by direct logit attribution)
+    writes this so a downstream :class:`~murano.steps.patch.Patch` or
+    :class:`~murano.steps.path_patch.PathPatch` can read its targets at run time,
+    letting attribute-then-patch compose in a single pipeline. It iterates over
+    its :attr:`nodes` (best first), so it drops straight into the same target
+    coercion the patch steps use for a hand-written address list.
+
+    Attributes:
+        nodes: Selected component addresses, best first.
+        scores: ``{Node: float}`` score behind each selected node (the ranking
+            value that put it in the selection).
+        metadata: Provenance (source key, ranking criterion, cutoff).
+    """
+
+    nodes: list[Node]
+    scores: dict[Node, float] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.nodes = [Node.coerce(node) for node in self.nodes]
+        self.scores = NodeDict(self.scores)
+
+    def __iter__(self):
+        return iter(self.nodes)
+
+    def __len__(self) -> int:
+        return len(self.nodes)
+
+    def __contains__(self, node: object) -> bool:
+        try:
+            return Node.coerce(node) in self.nodes  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return False
+
+
+@dataclass
 class MetricComparison:
     """Aggregate metric comparing baseline vs modified generations.
 
     Attributes:
-        metric_name: Identifier of the metric (e.g., ``"compliance_rate"``).
+        metric_name: Identifier of the metric (e.g., ``"logit_diff"``).
         baseline_score: Aggregate score on the baseline generations.
         modified_score: Aggregate score on the modified generations.
         baseline_scores: Per-item scores on the baseline generations, when
