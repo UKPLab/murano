@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from murano.keys import DEFAULT_OUTPUT_DIR
+
 
 class Results:
     """Dict-like container for pipeline step outputs.
@@ -60,7 +62,7 @@ class Results:
 
     def save(
         self,
-        output_dir: str = "murano_outputs",
+        output_dir: str = DEFAULT_OUTPUT_DIR,
         run_name: str | None = None,
         model_id: str = "",
     ):

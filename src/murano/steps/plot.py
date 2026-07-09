@@ -53,7 +53,8 @@ class Plot(Step):
     ``plot_sae_token_activations``, ...) directly instead.
 
     Args:
-        output_dir: Root output directory. If None, uses results['output_dir'].
+        output_dir: Root output directory. If None, uses results['output_dir']
+            when a preceding Save set it, otherwise ``murano_outputs``.
         show: Display each figure inline when run in a notebook. Defaults to True.
         save_format: File format for saved figures. ``"png"`` (default) writes a
             static image via kaleido and falls back to a self-contained
@@ -94,7 +95,7 @@ class Plot(Step):
         root = (
             Path(self.output_dir)
             if self.output_dir
-            else Path(results.get(keys.OUTPUT_DIR, "."))
+            else Path(results.get(keys.OUTPUT_DIR, keys.DEFAULT_OUTPUT_DIR))
         )
         plots_dir = root / "plots"
         plots_dir.mkdir(parents=True, exist_ok=True)

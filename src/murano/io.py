@@ -1083,7 +1083,7 @@ def _find_serializer(
 
 def save_results(
     results: Any,
-    output_dir: str = "murano_outputs",
+    output_dir: str = keys.DEFAULT_OUTPUT_DIR,
     model_id: str = "",
     run_name: str | None = None,
 ) -> Path:

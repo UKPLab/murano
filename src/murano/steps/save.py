@@ -26,23 +26,34 @@ class Save(Step):
         results['output_dir']: Path to the output directory.
 
     Args:
-        output_dir: Base directory for outputs.
+        output_dir: Base directory for outputs. Defaults to ``murano_outputs``
+            in the current working directory.
         model_id: Model identifier for metadata.
+        run_name: Optional subdirectory inside ``output_dir`` for this run. By
+            default results are written directly into ``output_dir`` and a
+            re-run overwrites them; set ``run_name`` to keep runs separate.
     """
 
     reads = []
     writes = [keys.OUTPUT_DIR]
     write_types = {keys.OUTPUT_DIR: Path}
 
-    def __init__(self, output_dir: str = "murano_outputs", model_id: str = ""):
+    def __init__(
+        self,
+        output_dir: str = keys.DEFAULT_OUTPUT_DIR,
+        model_id: str = "",
+        run_name: str | None = None,
+    ):
         self.output_dir = output_dir
         self.model_id = model_id
+        self.run_name = run_name
 
     def __call__(self, results: Results) -> Results:
         out_dir = save_results(
             results,
             output_dir=self.output_dir,
             model_id=self.model_id,
+            run_name=self.run_name,
         )
         results[keys.OUTPUT_DIR] = out_dir
         return results
