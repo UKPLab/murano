@@ -60,11 +60,11 @@ def test_logit_attribution_nan_round_trips(tmp_path):
     assert loaded.other_contribution == 0.5
 
 
-# ── plotting smoke tests (matplotlib/seaborn) ──────────────────────────
+# ── plotting smoke tests ──────────────────────────────────────────────
 
 
-def test_plot_probe_accuracy_writes_png(tmp_path):
-    pytest.importorskip("seaborn")
+def test_plot_probe_accuracy_returns_figure():
+    pytest.importorskip("plotly")
     import numpy as np
 
     from murano.nodes import Node
@@ -80,16 +80,16 @@ def test_plot_probe_accuracy_writes_png(tmp_path):
         best_layer=Node(0, "residual"),
         label_names=["neg", "pos"],
     )
-    out = tmp_path / "probe.png"
-    plot_probe_accuracy(probe, save_path=out)
-    assert out.exists()
+    fig = plot_probe_accuracy(probe)
+    assert fig.data[0].type == "bar"
+    assert list(fig.data[0].y) == [0.9, 0.8]
 
 
-# ── Plot / ProbePlot steps ─────────────────────────────────────────────
+# ── Plot step ─────────────────────────────────────────────────────────
 
 
 def test_plot_step_writes_files(tmp_path):
-    pytest.importorskip("seaborn")
+    pytest.importorskip("plotly")
     from murano import keys
     from murano.results import Results
     from murano.steps.plot import Plot
@@ -105,18 +105,18 @@ def test_plot_step_writes_files(tmp_path):
         best_layer=(0, "residual"),
     )
     Plot(output_dir=str(tmp_path))(results)
-    assert (tmp_path / "plots" / "separation_scores.png").exists()
+    assert list((tmp_path / "plots").glob("separation_scores.*"))
 
 
-def test_probe_plot_step_writes_files(tmp_path):
-    pytest.importorskip("seaborn")
+def test_plot_step_probe_writes_files(tmp_path):
+    pytest.importorskip("plotly")
     import numpy as np
 
     from murano import keys
     from murano.nodes import Node
     from murano.results import Results
+    from murano.steps.plot import Plot
     from murano.steps.probe import ProbeResult
-    from murano.steps.probing.plot import ProbePlot
 
     results = Results()
     results[keys.PROBE] = ProbeResult(
@@ -125,5 +125,69 @@ def test_probe_plot_step_writes_files(tmp_path):
         best_layer=Node(0, "residual"),
         label_names=["neg", "pos"],
     )
-    ProbePlot(output_dir=str(tmp_path))(results)
-    assert (tmp_path / "plots" / "probe_accuracy.png").exists()
+    Plot(output_dir=str(tmp_path))(results)
+    assert list((tmp_path / "plots").glob("probe_accuracy.*"))
+
+
+def test_plot_step_logit_lens_writes_files(tmp_path):
+    pytest.importorskip("plotly")
+    from murano import keys
+    from murano.nodes import Node
+    from murano.results import Results
+    from murano.steps.logit_lens import LogitLensResult
+    from murano.steps.plot import Plot
+
+    results = Results()
+    results[keys.LOGIT_LENS] = LogitLensResult(
+        all_probs=torch.zeros(2, 1, 2, 3),
+        max_probs=torch.rand(2, 1, 2),
+        predicted_tokens=torch.zeros(2, 1, 2, dtype=torch.long),
+        predicted_words=[[["a", "b"]], [["c", "d"]]],
+        input_words=[["x", "y"]],
+        attention_mask=torch.ones(1, 2),
+        addresses=[Node(0, "residual"), Node(1, "residual")],
+    )
+    Plot(output_dir=str(tmp_path))(results)
+    # save_figure writes .png with kaleido, else falls back to .html.
+    assert list((tmp_path / "plots").glob("logit_lens.*"))
+
+
+def test_plot_step_logit_attribution_writes_files(tmp_path):
+    pytest.importorskip("plotly")
+    from murano import keys
+    from murano.nodes import Node
+    from murano.results import Results
+    from murano.steps.logit_attribution import LogitAttributionResult
+    from murano.steps.plot import Plot
+
+    results = Results()
+    results[keys.LOGIT_ATTRIBUTION] = LogitAttributionResult(
+        contributions={Node(0, "mlp"): 0.3, Node(1, "mlp"): -0.2},
+        embed_contribution=0.1,
+        other_contribution=0.05,
+        target="logit",
+        total=0.25,
+        completeness_error=0.0,
+    )
+    Plot(output_dir=str(tmp_path))(results)
+    assert list((tmp_path / "plots").glob("logit_attribution.*"))
+
+
+def test_plot_step_html_format_writes_html(tmp_path):
+    pytest.importorskip("plotly")
+    from murano import keys
+    from murano.results import Results
+    from murano.steps.plot import Plot
+    from murano.steps.train import SteeringResult
+
+    results = Results()
+    results[keys.STEERING] = SteeringResult(
+        direction_per_layer={
+            (0, "residual"): torch.ones(4),
+            (1, "residual"): torch.ones(4),
+        },
+        separation_scores={(0, "residual"): 1.0, (1, "residual"): 0.5},
+        best_layer=(0, "residual"),
+    )
+    Plot(output_dir=str(tmp_path), save_format="html")(results)
+    assert (tmp_path / "plots" / "separation_scores.html").exists()

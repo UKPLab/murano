@@ -41,7 +41,6 @@ MODULES = [
     ("murano.steps.attention", "steps/attention"),
     ("murano.steps.weight_ablation", "steps/weight_ablation"),
     ("murano.steps.plot", "steps/plot"),
-    ("murano.steps.probing.plot", "steps/probing/plot"),
     ("murano.steps.logit_lens", "steps/logit_lens"),
     ("murano.steps.logit_attribution", "steps/logit_attribution"),
     ("murano.steps.sae", "steps/sae"),

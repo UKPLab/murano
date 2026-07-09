@@ -139,8 +139,7 @@ caught up-front.
 | `Save`             | (any present)         | `output_dir`                   | Persist all results to organized subdirectories.         |
 | `SAEEncode` †      | `prompts`             | `sae_record`                   | Encode residuals through an SAE loaded from HuggingFace. |
 | `SAETopActivations` | `sae_record`         | `feature_examples`             | Rank the top-K activating contexts per SAE feature.      |
-| `Plot` \*          | (optional)            | —                              | Render steering plots (separation scores, direction similarity). |
-| `ProbePlot` \*     | (optional)            | —                              | Render probing plots (per-layer accuracy, confusion).    |
+| `Plot` \*          | (optional)            | —                              | Render plots for whatever results are present (steering, probe, logit lens, logit attribution). |
 
 \* Requires the `[plot]` extra: `pip install -e .[plot]`.
 † Requires the `[sae]` extra: `pip install -e .[sae]`.
