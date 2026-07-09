@@ -581,6 +581,14 @@ class TestResults:
         assert (out_dir / "evaluation" / "generations.json").exists()
         assert (out_dir / "metrics" / "metric.json").exists()
 
+    def test_save_step_passes_run_name(self, tmp_path):
+        from murano.steps.save import Save
+
+        r = Results()
+        Save(output_dir=str(tmp_path), run_name="run1")(r)
+        assert (tmp_path / "run1" / "metadata.json").exists()
+        assert r["output_dir"] == tmp_path / "run1"
+
 
 # ── Probing Fixtures ──────────────────────────────────────────────────
 

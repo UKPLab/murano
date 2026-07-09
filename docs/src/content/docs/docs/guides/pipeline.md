@@ -114,6 +114,8 @@ results = pipeline.run()
 results.save(output_dir="my_experiment", model_id=model.model_id)
 ```
 
+Both default `output_dir` to `murano_outputs/` in the current directory, and the `Plot` step writes there too, so a run's artifacts and plots share one tree. Results go directly into `output_dir`, so re-running overwrites the previous run; pass `run_name="..."` to keep runs side by side under `murano_outputs/<run_name>/`.
+
 The output structure:
 
 ```

@@ -191,3 +191,28 @@ def test_plot_step_html_format_writes_html(tmp_path):
     )
     Plot(output_dir=str(tmp_path), save_format="html")(results)
     assert (tmp_path / "plots" / "separation_scores.html").exists()
+
+
+def test_plot_step_defaults_to_shared_output_root(tmp_path, monkeypatch):
+    pytest.importorskip("plotly")
+    from murano import keys
+    from murano.results import Results
+    from murano.steps.plot import Plot
+    from murano.steps.train import SteeringResult
+
+    monkeypatch.chdir(tmp_path)
+    results = Results()
+    results[keys.STEERING] = SteeringResult(
+        direction_per_layer={
+            (0, "residual"): torch.ones(4),
+            (1, "residual"): torch.ones(4),
+        },
+        separation_scores={(0, "residual"): 1.0, (1, "residual"): 0.5},
+        best_layer=(0, "residual"),
+    )
+    # No output_dir and no results['output_dir']: writes under the shared
+    # murano_outputs/ root, not a bare ./plots/ in the CWD.
+    Plot(save_format="html")(results)
+    plots = tmp_path / keys.DEFAULT_OUTPUT_DIR / "plots"
+    assert (plots / "separation_scores.html").exists()
+    assert not (tmp_path / "plots").exists()
