@@ -54,6 +54,18 @@ class TestPlotHeatmap:
         )
         assert fig.to_dict()["layout"]["title"]["text"] == "Logit Lens Probabilities"
 
+    def test_zmid_defaults_to_unset(self, heatmap_data):
+        fig = plot_heatmap(z_data=heatmap_data["z_data"])
+        assert fig.data[0].zmid is None
+
+    def test_zmid_centers_a_diverging_scale(self):
+        # An asymmetric signed range would otherwise shade zero as if it had a
+        # sign; anchoring the midpoint keeps the neutral color meaning zero.
+        fig = plot_heatmap(
+            z_data=[[-0.5, 0.0], [0.1, 0.25]], color_scale="RdBu", zmid=0
+        )
+        assert fig.data[0].zmid == 0
+
     def test_x_axis_labels(self, heatmap_data):
         fig_dict = plot_heatmap(
             z_data=heatmap_data["z_data"],

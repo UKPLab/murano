@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SelectComponents` step and `ComponentSelection` artifact: rank an attribution result (for example `LogitAttribution`) by magnitude, signed value, or most-negative, keep the top `top_k` or everything past a `threshold`, and write the chosen addresses for a downstream step to read. `Patch` / `PathPatch` / `Ablate` accept a `targets_key` / `senders_key` naming that selection, so attribute-then-patch runs as one pipeline instead of two with a hand-copied node list.
 - `Intervene` gains `direction_layers` (`"all"`, `"best"`, or an explicit layer list) for the `direction_key` steering path, so a one-pipeline steer can apply only the best-separating layer's direction instead of every recorded layer, which keeps deep models coherent.
+- `Sweep` step and `SweepResult` artifact: run a step chain once per item and harvest one or more metric keys. Every component study has this shape ("patch each head and measure what it restores", "zero each head and measure the damage", "steer at each layer"), and every notebook was hand-rolling it as a closure over the model, the task, and a baseline `Results`. `Sweep` forks the incoming `Results` per item, so the shared prefix runs once and the swept steps' writes stay out of the pipeline, and it derives its own read contract from the chain, so a missing upstream key fails pre-flight validation. A sweep over `Node` addresses publishes the same `{Node: float}` map an attribution does, so it feeds `SelectComponents` and `plot_head_matrix` with no adapter: attribute, sweep, select and path-patch now compose in one pipeline.
+- `plot_sweep` in `murano.plotting`, auto-dispatched by `Plot`: a sweep over attention heads renders as the layer-by-head heatmap, anything else as one bar per item. The color scale diverges only when the values actually straddle zero.
+- `AnswerRankStep`: how many tokens outscore the correct answer at the answer position. Rank 0 means the model would emit it greedily. Like its sibling metric steps it resolves the answer position from the attention mask, so it stays correct under either padding side.
+- `Logits` accepts `fn`, `layers`, `modules` and `per_head`, forwarding them to the backend's `forward_logits`, which already took them. It is the forward-pass analogue of `Intervene`: a twelve-layer steering sweep now costs twelve forward passes instead of twelve decodes.
+- `SAEModel.decoder`: the whole decoder matrix, for callers projecting every feature through the unembedding. Previously reachable only as `sae_model._sae.W_dec`.
+- `murano.tasks`: the two toy tasks the tutorials share, defined once and tested. `ioi()` builds the indirect-object-identification task as a `CleanCorruptDataset`; `sentiment()` returns contrastive sentences; `positive_word_rate()` is the crude scorer the steering notebooks use.
+- `plot_activation_projection` in `murano.plotting`: reduce one component's activations with any scikit-learn-style reducer (PCA, LDA, t-SNE, UMAP) and scatter them by class. It accepts both a contrastive `ActivationStore` and a `LabeledActivationStore`, so a single `Record` can feed both `Probe` and the plot.
+- `zmid` on `plot_heatmap` and `plot_head_matrix`, anchoring a diverging colorscale at zero so a signed statistic no longer shades zero as if it had a sign.
+- `notebooks/getting_started.ipynb`, plus fourteen runnable notebooks under `notebooks/applications/`: steering, probing, logit lens, logit attribution, attention, ablation, activation patching, circuit discovery, metrics, custom pipeline, weight ablation, and the three sparse-autoencoder notebooks. All fifteen share one template, enforced by `tests/test_notebook_structure.py`, which also rejects a step constructed inside a loop (that is a hand-rolled `Sweep`) and a pipeline built inside a function.
+- The notebooks now render on the documentation site, generated from the executed `.ipynb` files by `docs/scripts/gen_notebook_docs.py` at deploy time.
+
+### Changed
+
+- The SAE notebooks move from `notebooks/sae/` into `notebooks/applications/` as `sae_features`, `sae_steering` and `sae_enrichment`, on the shared template. `sae_enrichment` replaces a 150-line bespoke ranking heuristic with the standardized mean difference between classes, which is four lines and surfaces the same sentiment features, along with the negation and junk features that ranking alone cannot tell apart.
+
+### Fixed
+
+- `Intervene`'s docstring recommended `direction_layers="best"` while the code defaulted to `"all"`, and never stated the default. It now documents the default and explains the trade-off: the best-*separating* layer is not necessarily an effective place to intervene, because a concept is often most separable in an early layer whose contribution later layers overwrite.
+- `sae_steer`'s docstring quoted `alpha=200` as if it were a usable default. `alpha` is an absolute magnitude added at every decoded token, so it means nothing without the residual norm at the steering site, which spans tens to thousands across models. The docstring now says so, and points at `notebooks/applications/sae_steering.ipynb`, which measures that norm and finds no strength that both invokes the concept and preserves the text. The notebook's old `alpha=2000` output predates the fix that made generation-time interventions apply on every decoded token.
+- `tests/test_notebook_structure.py` compared function *names* across notebooks, so `patch_head` and `recovered_fraction`, the same seventeen lines twice, lived in two notebooks unnoticed. It now compares normalized syntax trees.
+
+### Removed
+
+- The `examples/` directory. Its scripts became notebooks under `notebooks/`, and the one reusable class it held (`PlotterLens`) moved into the library as `murano.plotting.plot_activation_projection`.
+- `.coveragerc`, which duplicated the `[tool.coverage]` configuration in `pyproject.toml` and took precedence over it.
 
 ## [0.1.0a2] - 2026-07-08
 

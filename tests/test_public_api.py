@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 import torch
 
@@ -51,8 +49,3 @@ def test_model_generate_rejects_conflicting_interventions():
     model = object.__new__(MuranoModel)
     with pytest.raises(ValueError, match="either 'ablate' or 'steer'"):
         model.generate("prompt", ablate={}, steer=({}, 1.0))
-
-
-def test_readme_examples_exist():
-    root = Path(__file__).resolve().parents[1]
-    assert (root / "examples" / "quick_prototype.py").exists()

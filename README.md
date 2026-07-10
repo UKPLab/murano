@@ -131,11 +131,12 @@ caught up-front.
 | `SteeringVector`   | `record`              | `steering`                     | Find a contrastive steering direction (mean diff).       |
 | `Intervene`        | `prompts`             | `intervene`                    | Generate baseline + intervened outputs side-by-side.     |
 | `WeightAblation`   | `prompts`, `steering` | `intervene`, `weight_ablation` | Project a direction out of model weights, then generate. |
-| `Logits` ‡         | `prompts`             | `final_logits`, `attention_mask`, `target_ids` | Run a forward pass and expose output logits plus next-token targets. |
+| `Logits` ‡         | `prompts`             | `final_logits`, `attention_mask`, `target_ids` | Run a forward pass and expose output logits plus next-token targets. With `fn=`, apply an intervention during that pass. |
 | `Ablate` ‡         | `prompts`             | `ablated_logits`, `attention_mask` | Zero, mean, or resample a component and return the logits. |
+| `Sweep` ‡          | (the swept chain's)   | `sweep`                        | Run a step chain once per item and harvest a metric into a `SweepResult`. |
 | `Probe` §          | `record`              | `probe`                        | Train a linear probe per layer via cross-validation.     |
 | `GenerationMetric` | `intervene`           | `metric`                       | Score baseline vs modified outputs with a user metric.   |
-| Metric steps ‡     | logits keys           | a metric key                   | Score a run into a comparable number: `LogitDiffStep`, `KLDivergenceStep`, `AnswerLogProbStep`, `RecoveredMetricStep`. |
+| Metric steps ‡     | logits keys           | a metric key                   | Score a run into a comparable number: `LogitDiffStep`, `KLDivergenceStep`, `AnswerLogProbStep`, `AnswerRankStep`, `RecoveredMetricStep`. |
 | `Save`             | (any present)         | `output_dir`                   | Persist all results to organized subdirectories.         |
 | `SAEEncode` †      | `prompts`             | `sae_record`                   | Encode residuals through an SAE loaded from HuggingFace. |
 | `SAETopActivations` | `sae_record`         | `feature_examples`             | Rank the top-K activating contexts per SAE feature.      |
@@ -182,10 +183,20 @@ src/murano/
   plotting/
 ```
 
-## Examples
+## Notebooks
 
-- `examples/quick_prototype.py`
-- `examples/sae_example.py`
+Start with [`notebooks/getting_started.ipynb`](notebooks/getting_started.ipynb),
+then pick the application you need:
+
+- [`notebooks/applications/`](notebooks/applications/) — one self-contained
+  notebook per application: steering, probing, logit lens, logit attribution,
+  attention, ablation, activation patching, circuit discovery, metrics, custom
+  pipelines, weight ablation, and sparse autoencoders.
+- [`notebooks/reproductions/`](notebooks/reproductions/) — published results
+  reproduced with Murano.
+
+Every notebook is executed before it is committed, and all of them render on the
+[documentation site](https://ukplab.github.io/murano/docs/notebooks/getting_started/).
 
 ## Development
 

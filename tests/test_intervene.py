@@ -258,8 +258,8 @@ class TestDirectionKeyComposition:
 
 class TestDirectionLayers:
     """direction_layers chooses which recorded directions the steer applies, so a
-    single best layer (or an explicit subset) replaces the over-steering
-    every-layer default without changing how the direction was derived."""
+    single best layer (or an explicit subset) can replace the every-layer default
+    without changing how the direction was derived."""
 
     def _steering(self, model) -> SteeringResult:
         # Three recorded layers with layer 1 the best-separating one, so "best"
@@ -386,3 +386,50 @@ class TestInterveneConstructorGuards:
     def test_fn_path_reads_only_prompts(self, fixture, request):
         model = request.getfixturevalue(fixture)
         assert Intervene(model, fn=lambda a, k: a).reads == [keys.PROMPTS]
+
+
+class TestTwoPhaseArc:
+    """A direction trained in one pipeline and applied in a second.
+
+    ``direction_key`` composes derive-and-apply into a single pipeline, but the
+    train-here/evaluate-there split is its own documented pattern: the two
+    phases hold different data, so the direction crosses the boundary as a
+    prebuilt fn rather than through Results.
+    """
+
+    def test_direction_trained_in_one_pipeline_steers_in_another(self, murano_model):
+        train = Pipeline(
+            [
+                Load(
+                    MuranoDataset(
+                        positive_texts=["hello world", "good world"],
+                        negative_texts=["bad world", "bad prompt"],
+                    )
+                ),
+                Record(murano_model, layers=[0], position="last", batch_size=2),
+                SteeringVector(normalize=True),
+            ]
+        ).run()
+        steering: SteeringResult = train[keys.STEERING]
+        assert steering.direction_per_layer[(0, "residual")].shape == (
+            murano_model.d_model,
+        )
+
+        evaluated = Pipeline(
+            [
+                Load(
+                    MuranoDataset(positive_texts=["hello", "good"], negative_texts=[])
+                ),
+                Intervene(
+                    murano_model,
+                    fn=steer_direction(steering.direction_per_layer, alpha=2.0),
+                    layers=[0],
+                    gen_kwargs={"max_new_tokens": 1, "do_sample": False},
+                ),
+            ]
+        ).run()
+        result: InterveneResult = evaluated[keys.INTERVENE]
+
+        assert len(result.clean_generations) == len(result.modified_generations) == 2
+        assert all(isinstance(text, str) for text in result.clean_generations)
+        assert all(isinstance(text, str) for text in result.modified_generations)

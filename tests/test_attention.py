@@ -474,6 +474,16 @@ class TestPlotting:
         assert plot_attention_pattern(result, 0, 0) is not None
         assert plot_head_matrix(result.entropy(), layers=result.layers) is not None
 
+    def test_plot_head_matrix_forwards_zmid(self, murano_model_attn):
+        pytest.importorskip("plotly")
+        from murano.plotting.attention import plot_head_matrix
+
+        result = RecordAttention(murano_model_attn, layers=[0])(_loaded())[
+            keys.ATTENTION_PATTERN
+        ]
+        fig = plot_head_matrix(result.entropy(), color_scale="RdBu", zmid=0)
+        assert fig.data[0].zmid == 0
+
 
 # ── Pipeline ──────────────────────────────────────────────────────────
 

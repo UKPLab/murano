@@ -56,6 +56,10 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Notebooks',
+					autogenerate: { directory: 'docs/notebooks' },
+				},
+				{
 					label: 'Reproductions',
 					items: [
 						{ label: 'Overview', slug: 'docs/reproductions/overview' },

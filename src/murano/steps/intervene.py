@@ -120,11 +120,20 @@ class Intervene(Step):
       compose in a single pipeline.
 
     With ``direction_key``, ``direction_layers`` chooses which of the recorded
-    per-layer directions to apply. A ``SteeringResult`` carries one direction per
-    recorded layer; adding all of them at once over-steers deep models into
-    degenerate text, so ``"best"`` (the single best-separating layer) or an
-    explicit layer list keeps the flagship one-pipeline steer coherent, while
-    ``"all"`` preserves the every-layer behavior.
+    per-layer directions to apply, and defaults to ``"all"``. A ``SteeringResult``
+    carries one direction per recorded layer, and no setting is right everywhere:
+
+    - ``"all"`` applies every recorded direction. On a deep model, or at a large
+      ``alpha``, that can swamp the residual stream and drive generation into
+      degenerate text.
+    - ``"best"`` applies only ``SteeringResult.best_layer``, the layer whose
+      activations *separate* the classes best. Separability is not efficacy: a
+      concept is often most separable in an early layer, whose contribution later
+      layers overwrite, so steering there can change nothing at all.
+    - An explicit layer list gives full control.
+
+    Which setting works is empirical. Vary ``alpha`` alongside it and read the
+    generations.
 
     Reads from results:
         results['prompts']: PromptBatch
@@ -145,7 +154,7 @@ class Intervene(Step):
         direction_layers: With ``direction_key``, which recorded directions to
             apply: ``"all"`` every layer, ``"best"`` only the best-separating
             layer (``SteeringResult.best_layer``), or an explicit list of layer
-            indices. Only valid with ``direction_key``.
+            indices. Defaults to ``"all"``. Only valid with ``direction_key``.
         layers: Layers to apply the intervention at, or ``"all"``.
         modules: Module name(s) to apply the intervention at each layer.
         gen_kwargs: Keyword arguments forwarded to generation.

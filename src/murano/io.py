@@ -459,6 +459,58 @@ def load_component_selection(path: str | Path) -> Any:
     )
 
 
+def save_sweep_result(sweep: Any, path: Path) -> None:
+    """Save a SweepResult to a JSON file.
+
+    Swept items are stored by their string form, alongside the flag that says
+    whether they were Node addresses, so the loader can rebuild a component
+    sweep's Node keys and leave any other sweep's labels as plain strings.
+
+    Args:
+        sweep: SweepResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "primary": sweep.primary,
+        "columns": {
+            key: {str(item): value for item, value in column.items()}
+            for key, column in sweep.columns.items()
+        },
+        "component_sweep": sweep.contributions is not None,
+        "metadata": sweep.metadata,
+    }
+    _write_json(path, data)
+    logger.info("Saved sweep result to %s", path)
+
+
+def load_sweep_result(path: str | Path) -> Any:
+    """Load a SweepResult from a file written by :func:`save_sweep_result`.
+
+    Args:
+        path: Path to the sweep.json file.
+
+    Returns:
+        SweepResult. A component sweep's item keys are coerced back to Node
+        objects; every other sweep keeps its string labels, because the original
+        item type (an int layer index, an ablation method name) is not recoverable
+        from the label and the scores do not depend on it.
+    """
+    from murano.artifacts import SweepResult
+    from murano.nodes import Node
+
+    data = json.loads(Path(path).read_text())
+    to_item = Node.coerce if data.get("component_sweep") else (lambda label: label)
+    return SweepResult(
+        columns={
+            key: {to_item(label): value for label, value in column.items()}
+            for key, column in data["columns"].items()
+        },
+        primary=data["primary"],
+        metadata=data.get("metadata", {}),
+    )
+
+
 def save_activation_store(activation_store: Any, path: Path) -> None:
     """Save an ActivationStore to a .pt file.
 
@@ -777,7 +829,7 @@ def register_artifact_serializer(
 
 
 def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
-    from murano.artifacts import ComponentSelection
+    from murano.artifacts import ComponentSelection, SweepResult
     from murano.steps.attention import AttentionResult
     from murano.steps.logit_attribution import LogitAttributionResult
     from murano.steps.logit_lens import LogitLensResult
@@ -952,6 +1004,21 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "metadata": selection.metadata,
         }
 
+    def serialize_sweep_result(
+        key: str,
+        sweep: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "sweep.json" if key == keys.SWEEP else f"{key}.json"
+        save_sweep_result(sweep, out / "sweep" / filename)
+        metadata[key] = {
+            "primary": sweep.primary,
+            "read": list(sweep.columns),
+            "n_items": len(sweep.scores),
+        }
+
     def serialize_activation_store(
         key: str,
         store: Any,
@@ -1059,6 +1126,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     register_artifact_serializer(
         registry, ComponentSelection, serialize_component_selection
     )
+    register_artifact_serializer(registry, SweepResult, serialize_sweep_result)
     register_artifact_serializer(registry, ActivationStore, serialize_activation_store)
     register_artifact_serializer(
         registry, LabeledActivationStore, serialize_labeled_activation_store

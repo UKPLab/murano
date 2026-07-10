@@ -140,7 +140,9 @@ sketch*
 murano/sketch*
 .vscode*
 .draft/
-examples/artifacts
+
+# Default destination of the Save and Plot steps, written by the notebooks.
+murano_outputs/
 
 # OS files
 .DS_Store

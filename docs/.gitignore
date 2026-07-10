@@ -3,3 +3,5 @@ node_modules/
 .astro/
 src/content/docs/docs/reference/
 doc_report.md
+src/content/docs/docs/notebooks/
+public/notebook-figures/

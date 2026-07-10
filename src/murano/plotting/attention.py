@@ -80,6 +80,7 @@ def plot_head_matrix(
     layers: list[int] | None = None,
     value_label: str = "",
     color_scale: str = "Viridis",
+    zmid: float | None = None,
 ) -> go.Figure:
     """Render a layer-by-head heatmap of a per-head statistic.
 
@@ -90,6 +91,9 @@ def plot_head_matrix(
         layers: Layer indices for the y-axis labels; defaults to ``0..n-1``.
         value_label: Label for the colorbar (the statistic being shown).
         color_scale: Plotly colorscale name.
+        zmid: Value anchored to the middle of the colorscale. Pass ``0`` for a
+            signed statistic on a diverging scale, so a head with no effect is
+            drawn in the neutral color.
 
     Returns:
         A ``plotly.graph_objects.Figure`` heatmap with layers on the y-axis
@@ -107,6 +111,7 @@ def plot_head_matrix(
         title=title,
         color_scale=color_scale,
         colorbar_title=value_label,
+        zmid=zmid,
     )
     fig.update_layout(xaxis_title="Head", yaxis_title="Layer")
     fig.update_yaxes(autorange="reversed")
