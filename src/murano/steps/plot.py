@@ -46,11 +46,15 @@ class Plot(Step):
             logit_lens
         results['logit_attribution']: LogitAttributionResult
             logit_attribution
+        results['sweep']: SweepResult
+            sweep, drawn as a layer-by-head heatmap when the sweep ranged over
+            attention heads and as one bar per item otherwise
 
-    Attention and SAE plots are not auto-dispatched: they need an explicit head
-    or feature selection with no sensible default, so call the
-    ``murano.plotting`` functions (``plot_attention_pattern``,
-    ``plot_sae_token_activations``, ...) directly instead.
+    Attention, SAE, and activation-projection plots are not auto-dispatched:
+    they need an explicit head, feature, or reducer choice with no sensible
+    default, so call the ``murano.plotting`` functions
+    (``plot_attention_pattern``, ``plot_sae_token_activations``,
+    ``plot_activation_projection``, ...) directly instead.
 
     Args:
         output_dir: Root output directory. If None, uses results['output_dir']
@@ -144,6 +148,11 @@ class Plot(Step):
                 plots_dir,
                 "logit_attribution",
             )
+
+        if keys.SWEEP in results:
+            from murano.plotting import plot_sweep
+
+            self._emit(plot_sweep(results[keys.SWEEP]), plots_dir, "sweep")
 
         logger.info("Plots saved to %s", plots_dir)
         return results

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         GenerationComparison,
         MetricComparison,
         PromptBatch,
+        SweepResult,
     )
     from murano.dataset import CleanCorruptDataset, LabeledDataset, MuranoDataset
     from murano.io import (
@@ -84,6 +85,7 @@ _LAZY_ATTRS = {
     "MetricComparison": ("murano.artifacts", "MetricComparison"),
     "MetricScore": ("murano.artifacts", "MetricScore"),
     "ComponentSelection": ("murano.artifacts", "ComponentSelection"),
+    "SweepResult": ("murano.artifacts", "SweepResult"),
     "SelectComponents": ("murano.steps.select", "SelectComponents"),
     "MuranoDataset": ("murano.dataset", "MuranoDataset"),
     "LabeledDataset": ("murano.dataset", "LabeledDataset"),
@@ -138,6 +140,7 @@ __all__ = [
     "MetricComparison",
     "MetricScore",
     "ComponentSelection",
+    "SweepResult",
     "SelectComponents",
     "MuranoDataset",
     "LabeledDataset",

@@ -571,6 +571,91 @@ class AnswerLogProbStep(Step):
         return results
 
 
+class AnswerRankStep(Step):
+    """Rank of the correct answer token among the whole vocabulary.
+
+    Counts how many tokens the model scores strictly above the correct answer at
+    the answer position. Rank 0 means the model would emit the answer greedily.
+    Unlike :class:`LogitDiffStep`, the rank ignores *how far* ahead the answer is,
+    which makes it a blunt but very readable check: it bottoms out at 0 long
+    before the logit difference stops moving.
+
+    Ties are resolved optimistically (a tied token does not count against the
+    answer), so the reported rank is the best position the answer could occupy.
+    When the answer spec names a token set, each token's rank is computed and the
+    mean reported, matching how :class:`AnswerLogProbStep` averages a set.
+
+    Reads from results:
+        results[logits_key]: Tensor [B, S, V].
+        results[mask_key]: optional Tensor [B, S] for the answer position.
+
+    Writes to results:
+        results[output_key]: MetricScore.
+
+    Args:
+        correct: Correct-answer token spec (id, string, per-example sequence, or
+            tensor), as in :class:`LogitDiffStep`.
+        logits_key: Results key holding the logits.
+        mask_key: Results key holding the attention mask.
+        output_key: Results key to write the MetricScore under.
+        positions: Optional explicit answer position(s); overrides the mask.
+        model: Model backend, required only to tokenize string answers.
+    """
+
+    reads: list[str] = []
+    writes: list[str] = []
+
+    def __init__(
+        self,
+        correct: int | str | Sequence[int] | Sequence[str] | torch.Tensor,
+        logits_key: str = keys.FINAL_LOGITS,
+        mask_key: str = keys.ATTENTION_MASK,
+        output_key: str = keys.ANSWER_RANK,
+        positions: int | Sequence[int] | torch.Tensor | None = None,
+        model: ModelBackend | None = None,
+    ):
+        self.correct = correct
+        self.logits_key = logits_key
+        self.mask_key = mask_key
+        self.output_key = output_key
+        self.positions = positions
+        self.model = model
+        self.reads = [logits_key]
+        self.writes = [output_key]
+        self.read_types = {logits_key: torch.Tensor}
+        self.write_types = {output_key: MetricScore}
+
+    def __call__(self, results: Results) -> Results:
+        logits: torch.Tensor = results[self.logits_key]
+        batch_size, _, vocab_size = logits.shape
+        positions = _answer_positions(
+            logits, results.get(self.mask_key), self.positions
+        )
+        ids = _answer_token_ids(self.correct, batch_size, self.model, logits.device)
+        _check_token_ids(ids, vocab_size, "correct")
+
+        answer_logits = _answer_logits(logits, positions)
+        token_set = ids.unsqueeze(1) if ids.ndim == 1 else ids
+        answer_scores = answer_logits.gather(1, token_set)
+        # Strictly greater, so a tied token does not push the answer's rank up.
+        outranking = answer_logits.unsqueeze(1) > answer_scores.unsqueeze(2)
+        ranks = outranking.sum(dim=2).float().mean(dim=1)
+
+        value = float(ranks.mean().item())
+        results[self.output_key] = MetricScore(
+            metric_name="answer_rank",
+            value=value,
+            per_example=ranks.tolist(),
+            metadata={
+                "logits_key": self.logits_key,
+                "vocab_size": int(vocab_size),
+                "positions": positions.tolist(),
+            },
+        )
+        logger.info("answer_rank: %.4f", value)
+        return results
+
+
 class RecoveredMetricStep(Step):
     """Normalized recovered effect from clean, corrupted, and patched scores.
 

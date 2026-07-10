@@ -510,6 +510,21 @@ class SAEModel:
         self._ensure_loaded()
         return self._sae.cfg.metadata
 
+    @property
+    def decoder(self) -> Tensor:
+        """The decoder matrix ``[n_features, d_model]``: one direction per feature.
+
+        The whole bank at once, for callers that project every feature through the
+        unembedding (see
+        :func:`~murano.plotting.plot_sae_feature_logit_effects`). For a single
+        feature prefer :meth:`feature_direction`.
+
+        Returns:
+            Detached copy of the decoder weight, on the SAE's device.
+        """
+        self._ensure_loaded()
+        return self._sae.W_dec.detach().clone()
+
     def encode(self, residual: Tensor) -> Tensor:
         """Encode residual ``[N, seq, d_model]`` to SAE codes ``[N, seq, n_features]``."""
         self._ensure_loaded()
@@ -551,12 +566,23 @@ def sae_steer(
     absolute magnitude added; positive enhances the feature, negative
     suppresses it.
 
+    ``alpha`` is therefore scale-dependent, and it has no default worth quoting:
+    the edit is applied at every decoded token, so what matters is its size
+    relative to the residual stream at the steering site, which ranges from tens
+    to thousands across models. Measure that norm and start near a tenth of it.
+    Pushing much past it swamps the residual stream and the model repeats one
+    token; see ``notebooks/applications/sae_steering.ipynb``, where no strength
+    both invokes the concept and preserves the text. Adding a fixed magnitude is
+    only one way to steer a feature; clamping the feature's own activation
+    (*Scaling Monosemanticity*) leaves the rest of the residual stream intact and
+    is not implemented here.
+
     The returned step generates a clean (unsteered) and a steered response for
     each prompt and writes an :class:`~murano.steps.intervene.InterveneResult`::
 
         results = Pipeline([
             LoadPrompts(prompts),
-            sae_steer(model, encode.sae_model, feature_id, alpha=200),
+            sae_steer(model, encode.sae_model, feature_id, alpha=alpha),
         ]).run()
         comparison = results["intervene"]    # clean vs steered
 
@@ -564,7 +590,9 @@ def sae_steer(
         model: Model to generate with (must match the SAE's base model).
         sae_model: Loaded SAE providing the feature direction and hook point.
         feature_id: SAE feature index in ``[0, n_features)``.
-        alpha: Steering strength; positive enhances, negative suppresses.
+        alpha: Steering strength, as an absolute magnitude added to the residual
+            stream; positive enhances, negative suppresses. Calibrate against the
+            residual norm at the steering site.
         gen_kwargs: Generation kwargs forwarded to the model. Defaults to
             ``{"max_new_tokens": 256, "do_sample": False}``.
 

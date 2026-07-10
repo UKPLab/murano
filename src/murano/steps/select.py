@@ -1,19 +1,19 @@
-"""SelectComponents step: rank an attribution result and pick the top components.
+"""SelectComponents step: rank a per-component readout and pick the top components.
 
 Turns a per-component importance readout into a concrete target set. It reads a
-:class:`~murano.steps.logit_attribution.LogitAttributionResult` (its
-``contributions`` map each head and MLP to a signed contribution), ranks the
-components, keeps the strongest, and writes a
-:class:`~murano.artifacts.ComponentSelection`. A downstream
+:class:`~murano.steps.logit_attribution.LogitAttributionResult` or a component
+:class:`~murano.artifacts.SweepResult` (both map each head and MLP to a signed
+score through ``contributions``), ranks the components, keeps the strongest, and
+writes a :class:`~murano.artifacts.ComponentSelection`. A downstream
 :class:`~murano.steps.patch.Patch` or :class:`~murano.steps.path_patch.PathPatch`
-reads that selection at run time, so "attribute the important heads, then patch
-them" runs as one pipeline instead of two with a hand-copied node list in between.
+reads that selection at run time, so "score the important heads, then patch them"
+runs as one pipeline instead of two with a hand-copied node list in between.
 """
 
 from __future__ import annotations
 
 from murano import keys
-from murano.artifacts import ComponentSelection
+from murano.artifacts import ComponentSelection, SweepResult
 from murano.logging import logger
 from murano.nodes import Node, NodeDict, canonical_module
 from murano.results import Results
@@ -23,26 +23,39 @@ from murano.steps.logit_attribution import LogitAttributionResult
 _BY = ("abs", "signed", "negative")
 
 
-def _extract_scores(source: object) -> NodeDict:
-    """Return a component's ``{Node: float}`` scores from an attribution result.
+def _extract_scores(source: object, source_key: str) -> NodeDict:
+    """Return the ``{Node: float}`` scores of a per-component readout.
 
     Accepts anything exposing a ``contributions`` mapping (a
-    :class:`LogitAttributionResult`), or a bare ``{Node: float}`` mapping so a
-    caller can rank scores it computed itself.
+    :class:`LogitAttributionResult`, or a :class:`~murano.artifacts.SweepResult`
+    whose items are all Nodes), or a bare ``{Node: float}`` mapping so a caller
+    can rank scores it computed itself.
+
+    Args:
+        source: The readout to rank.
+        source_key: Results key it came from, named in the error messages.
 
     Raises:
-        TypeError: If ``source`` exposes neither a ``contributions`` map nor a
-            mapping interface.
+        TypeError: If ``source`` is a sweep over something other than Node
+            addresses, or exposes neither a ``contributions`` map nor a mapping
+            interface.
     """
     contributions = getattr(source, "contributions", None)
     if contributions is not None:
         return NodeDict(contributions)
+    if isinstance(source, SweepResult):
+        raise TypeError(
+            f"SelectComponents ranks components, but the sweep under "
+            f"'{source_key}' swept {source.metadata.get('items', [])[:3]}, which "
+            f"are not Node addresses. Sweep over a NodeSet to select from the "
+            f"result."
+        )
     if hasattr(source, "items"):
         return NodeDict(source)
     raise TypeError(
         f"SelectComponents needs a result with per-component scores (a "
-        f"LogitAttributionResult, or a {{Node: float}} mapping); got "
-        f"{type(source).__name__}."
+        f"LogitAttributionResult, a component SweepResult, or a {{Node: float}} "
+        f"mapping); got {type(source).__name__} under '{source_key}'."
     )
 
 
@@ -57,14 +70,15 @@ class SelectComponents(Step):
     single mode, all heads or all whole-components).
 
     Reads from results:
-        results[source_key]: LogitAttributionResult (default ``logit_attribution``).
+        results[source_key]: LogitAttributionResult or component SweepResult
+            (default ``logit_attribution``).
 
     Writes to results:
         results[output_key]: ComponentSelection (default ``selection``).
 
     Args:
-        source_key: Results key of the attribution result to rank (default
-            ``logit_attribution``).
+        source_key: Results key of the per-component readout to rank (default
+            ``logit_attribution``); pass ``keys.SWEEP`` to rank a component sweep.
         top_k: Keep the ``top_k`` highest-ranked components. Pass this or
             ``threshold``, not both.
         threshold: Keep every component whose score passes the cutoff: ``by="abs"``
@@ -112,12 +126,12 @@ class SelectComponents(Step):
             self.modules = {canonical_module(name) for name in names}
         self.output_key = output_key
         self.reads = [source_key]
-        self.read_types = {source_key: LogitAttributionResult}
+        self.read_types = {source_key: (LogitAttributionResult, SweepResult)}
         self.writes = [output_key]
         self.write_types = {output_key: ComponentSelection}
 
     def __call__(self, results: Results) -> Results:
-        scores = _extract_scores(results[self.source_key])
+        scores = _extract_scores(results[self.source_key], self.source_key)
         pool = {
             node: value
             for node, value in scores.items()

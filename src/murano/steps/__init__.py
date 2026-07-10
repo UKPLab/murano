@@ -12,6 +12,7 @@ from murano.steps.ablate import Ablate
 from murano.steps.patch import Patch
 from murano.steps.path_patch import PathPatch
 from murano.steps.select import SelectComponents
+from murano.steps.sweep import Sweep
 from murano.steps.attention import (
     AblateAttention,
     AttentionResult,
@@ -44,6 +45,7 @@ from murano.steps.metrics import (
     LogitDiffStep,
     KLDivergenceStep,
     AnswerLogProbStep,
+    AnswerRankStep,
     RecoveredMetricStep,
 )
 
@@ -60,6 +62,7 @@ __all__ = [
     "Patch",
     "PathPatch",
     "SelectComponents",
+    "Sweep",
     "RecordAttention",
     "AblateAttention",
     "AttentionResult",
@@ -89,5 +92,6 @@ __all__ = [
     "LogitDiffStep",
     "KLDivergenceStep",
     "AnswerLogProbStep",
+    "AnswerRankStep",
     "RecoveredMetricStep",
 ]

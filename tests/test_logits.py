@@ -192,3 +192,59 @@ class TestModelLogitsQuickApi:
 def _prompts_results(prompts) -> Results:
     """Run LoadPrompts so a step can be exercised outside a full Pipeline."""
     return LoadPrompts(prompts)(Results())
+
+
+# ── Intervened forward pass ───────────────────────────────────────────
+
+
+class TestInterventionPassthrough:
+    """``Logits(fn=...)`` is the forward-pass analogue of ``Intervene``."""
+
+    def test_no_fn_leaves_the_logits_unmodified(self, murano_model):
+        plain = Logits(murano_model)(_prompts_results(["hello world"]))["final_logits"]
+        explicit = Logits(murano_model, fn=None, layers=[0])(
+            _prompts_results(["hello world"])
+        )["final_logits"]
+        assert torch.equal(plain, explicit)
+
+    def test_fn_changes_the_logits(self, murano_model):
+        plain = Logits(murano_model)(_prompts_results(["hello world"]))["final_logits"]
+        zeroed = Logits(
+            murano_model, fn=lambda activation, _node: activation * 0.0, layers=[0]
+        )(_prompts_results(["hello world"]))["final_logits"]
+        assert not torch.equal(plain, zeroed)
+
+    def test_matches_the_backend_primitive(self, murano_model):
+        prompts = ["hello world", "good"]
+
+        def halve(activation, _node):
+            return activation * 0.5
+
+        via_step = Logits(murano_model, fn=halve, layers=[0], targets=None)(
+            _prompts_results(prompts)
+        )["final_logits"]
+        via_backend = murano_model.forward_logits(
+            _tokenize(murano_model, prompts), fn=halve, layers=[0], modules="residual"
+        )
+        assert torch.equal(via_step, via_backend)
+
+    def test_layers_selects_where_the_edit_lands(self, murano_model):
+        # An additive edit, not a zeroing one: the fixture is a bias-free Llama,
+        # so zeroing any layer's residual annihilates every layer after it and
+        # zeroing layer 0 or layer 1 both yield all-zero logits.
+        def shift(activation, _node):
+            return activation + 1.0
+
+        first = Logits(murano_model, fn=shift, layers=[0])(
+            _prompts_results(["hello world"])
+        )["final_logits"]
+        second = Logits(murano_model, fn=shift, layers=[1])(
+            _prompts_results(["hello world"])
+        )["final_logits"]
+        assert not torch.equal(first, second)
+
+    def test_still_writes_the_mask_and_targets(self, murano_model):
+        out = Logits(murano_model, fn=lambda activation, _node: activation)(
+            _prompts_results(["hello world"])
+        )
+        assert "attention_mask" in out and "target_ids" in out

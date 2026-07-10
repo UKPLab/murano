@@ -18,6 +18,7 @@ from murano.results import Results
 from murano.steps.logits import Logits
 from murano.steps.metrics import (
     AnswerLogProbStep,
+    AnswerRankStep,
     KLDivergenceStep,
     LogitDiffStep,
     RecoveredMetricStep,
@@ -205,6 +206,71 @@ class TestAnswerLogProbStep:
         logits = torch.zeros(3, 2, 10)
         with pytest.raises(ValueError, match="entries but the batch"):
             AnswerLogProbStep(correct=[5, 3])(_results(logits))
+
+
+# ── AnswerRankStep ────────────────────────────────────────────────────
+
+
+class TestAnswerRankStep:
+    def test_counts_the_tokens_scoring_above_the_answer(self):
+        logits = torch.zeros(1, 1, 5)
+        logits[0, 0] = torch.tensor([3.0, 1.0, 4.0, 0.0, 2.0])
+        # Token 1 is beaten by tokens 0, 2 and 4.
+        out = AnswerRankStep(correct=[1])(_results(logits))
+        assert out["answer_rank"].per_example == [3.0]
+
+    def test_rank_zero_when_the_answer_is_the_argmax(self):
+        logits = torch.zeros(1, 1, 4)
+        logits[0, 0] = torch.tensor([0.0, 9.0, 1.0, 2.0])
+        assert AnswerRankStep(correct=[1])(_results(logits))["answer_rank"].value == 0.0
+
+    def test_ties_do_not_count_against_the_answer(self):
+        logits = torch.zeros(1, 1, 4)  # every token ties
+        assert AnswerRankStep(correct=[2])(_results(logits))["answer_rank"].value == 0.0
+
+    def test_averages_over_the_batch(self):
+        logits = torch.zeros(2, 1, 3)
+        logits[0, 0] = torch.tensor([0.0, 1.0, 2.0])  # answer 0 -> rank 2
+        logits[1, 0] = torch.tensor([2.0, 1.0, 0.0])  # answer 0 -> rank 0
+        out = AnswerRankStep(correct=[0, 0])(_results(logits))
+        assert out["answer_rank"].per_example == [2.0, 0.0]
+        assert out["answer_rank"].value == pytest.approx(1.0)
+
+    def test_token_set_averages_each_token_rank(self):
+        logits = torch.zeros(1, 1, 4)
+        logits[0, 0] = torch.tensor([3.0, 2.0, 1.0, 0.0])
+        # Token 1 has rank 1 and token 3 has rank 3; the set reports their mean.
+        out = AnswerRankStep(correct=torch.tensor([[1, 3]]))(_results(logits))
+        assert out["answer_rank"].per_example == [2.0]
+
+    def test_reads_the_answer_position_from_the_mask(self):
+        """A naive ``logits[:, -1]`` would score a padding position here."""
+        logits = torch.zeros(1, 2, 3)
+        logits[0, 0] = torch.tensor([5.0, 0.0, 0.0])  # real token: answer 0 wins
+        logits[0, 1] = torch.tensor([0.0, 9.0, 9.0])  # padding: answer 0 loses
+        mask = torch.tensor([[1, 0]])
+        out = AnswerRankStep(correct=[0])(_results(logits, mask))
+        assert out["answer_rank"].value == 0.0
+
+    def test_explicit_positions_override_the_mask(self):
+        logits = torch.zeros(1, 2, 3)
+        logits[0, 0] = torch.tensor([5.0, 0.0, 0.0])
+        logits[0, 1] = torch.tensor([0.0, 9.0, 9.0])
+        mask = torch.tensor([[1, 0]])
+        out = AnswerRankStep(correct=[0], positions=1)(_results(logits, mask))
+        assert out["answer_rank"].value == 2.0
+
+    def test_out_of_range_token_raises(self):
+        with pytest.raises(ValueError, match=r"must be in \[0, 3\)"):
+            AnswerRankStep(correct=[7])(_results(torch.zeros(1, 1, 3)))
+
+    def test_writes_a_metric_score(self):
+        score = AnswerRankStep(correct=[0])(_results(torch.zeros(2, 1, 4)))[
+            "answer_rank"
+        ]
+        assert isinstance(score, MetricScore)
+        assert score.metric_name == "answer_rank"
+        assert score.metadata["vocab_size"] == 4
 
 
 # ── RecoveredMetricStep ───────────────────────────────────────────────

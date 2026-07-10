@@ -58,13 +58,12 @@ packages = ["src/murano"]
 
 [tool.hatch.build.targets.sdist]
 # Ship only what is needed to build and understand the package; keep the docs
-# site (and its node_modules), notebooks, and tutorials out of the PyPI source
+# site (and its node_modules) and the notebooks out of the PyPI source
 # distribution. exclude takes precedence, so this also drops the nested
 # node_modules that the docs .gitignore hides but the sdist builder does not.
 exclude = [
     "/docs",
     "/notebooks",
-    "/tutorials",
     "**/node_modules",
 ]
 
@@ -120,7 +119,7 @@ style = "pep440"
 bump = true
 
 [tool.coverage.run]
-source = ["examples", "src"]
+source = ["src"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",

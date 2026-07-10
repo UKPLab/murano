@@ -10,13 +10,14 @@ the generic LM metrics stay correct without slicing.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Callable, cast
 
 from torch import Tensor, full, long  # pyright: ignore[reportPrivateImportUsage]
 
 from murano import keys
 from murano.artifacts import PromptBatch
 from murano.logging import logger
+from murano.nodes import Node
 from murano.results import Results
 from murano.steps.base import Step
 
@@ -31,6 +32,13 @@ class Logits(Step):
     ``forward_logits`` primitive and stores the raw ``[B, S, V]`` logits. When
     ``targets`` is set (the default), it also writes left-shifted next-token
     target IDs so ``CrossEntropyLossStep``/``AccuracyStep`` can run directly.
+
+    With ``fn`` given, the pass is intervened: ``fn`` rewrites each hooked
+    module's activation before the logits are read. This is the forward-pass
+    analogue of :class:`~murano.steps.intervene.Intervene`, which applies the same
+    edit during generation. Reach for it to *measure* an intervention with a
+    metric rather than read it off a completion: a twelve-layer steering sweep
+    costs twelve forward passes instead of twelve decodes.
 
     Reads from results:
         results[prompts_key]: PromptBatch (default ``prompts``). Set this to run
@@ -57,6 +65,15 @@ class Logits(Step):
         targets: Target-generation mode. ``"next_token"`` writes left-shifted
             next-token targets; ``None`` writes logits only, for callers that
             supply their own task targets (e.g. logit-diff).
+        fn: ``(activation, node) -> activation``, applied to each hooked module's
+            activation before the logits are read; for example
+            ``steer_direction(direction, alpha=4)`` or ``ablate_direction(...)``.
+            ``None`` (the default) runs the plain forward pass, in which case
+            ``layers``, ``modules``, and ``per_head`` are ignored.
+        layers: Layer indices to hook, or ``"all"``.
+        modules: Module name(s) to hook at each layer.
+        per_head: Hook the attention output projection's input and hand ``fn`` the
+            per-head activation, so it can rewrite one head's slice.
 
     Raises:
         ValueError: If ``targets`` is neither ``"next_token"`` nor ``None``.
@@ -73,6 +90,10 @@ class Logits(Step):
         targets_key: str = keys.TARGET_IDS,
         mask_key: str = keys.ATTENTION_MASK,
         targets: str | None = "next_token",
+        fn: Callable[[Tensor, Node], Tensor] | None = None,
+        layers: list[int] | str = "all",
+        modules: str | list[str] = "residual",
+        per_head: bool = False,
     ):
         if targets not in ("next_token", None):
             raise ValueError(f"targets must be 'next_token' or None, got {targets!r}")
@@ -82,6 +103,10 @@ class Logits(Step):
         self.targets_key = targets_key
         self.mask_key = mask_key
         self.targets = targets
+        self.fn = fn
+        self.layers = layers
+        self.modules = modules
+        self.per_head = per_head
         self.reads = [prompts_key]
         self.read_types = {prompts_key: PromptBatch}
         # The mask is independent of targets; only advertise target_ids when we
@@ -97,7 +122,9 @@ class Logits(Step):
     def __call__(self, results: Results) -> Results:
         prompt_batch: PromptBatch = results[self.prompts_key]
         prompts = prompt_batch.prompts
-        logger.info("Logits: %d prompts", len(prompts))
+        logger.info(
+            "Logits: %d prompts%s", len(prompts), " (intervened)" if self.fn else ""
+        )
 
         tokens = self.model.tokenizer(
             prompts,
@@ -107,7 +134,13 @@ class Logits(Step):
             return_token_type_ids=False,
         )
         attention_mask = cast(Tensor, tokens["attention_mask"])
-        results[self.logits_key] = self.model.forward_logits(tokens)
+        results[self.logits_key] = self.model.forward_logits(
+            tokens,
+            fn=self.fn,
+            layers=self.layers,
+            modules=self.modules,
+            per_head=self.per_head,
+        )
         results[self.mask_key] = attention_mask.detach().cpu()
         if self.targets:
             results[self.targets_key] = self._next_token_targets(

@@ -25,6 +25,22 @@ if TYPE_CHECKING:
 BAR_COLOR = "#4c72b0"
 HIGHLIGHT_COLOR = "#c44e52"
 
+# The same muted palette, for plots that color by class rather than by rank.
+# BAR_COLOR and HIGHLIGHT_COLOR lead it, so a two-class plot lands on the same
+# blue/red pairing the bar charts use; further classes cycle through the rest.
+CATEGORY_COLORS = (
+    BAR_COLOR,
+    HIGHLIGHT_COLOR,
+    "#55a868",
+    "#dd8452",
+    "#8172b3",
+    "#937860",
+    "#da8bc3",
+    "#8c8c8c",
+    "#ccb974",
+    "#64b5cd",
+)
+
 
 def plot_heatmap(
     z_data: list[list[float]] | list[list[int]],
@@ -35,6 +51,7 @@ def plot_heatmap(
     hover_data: list[list[str]] | None = None,
     colorbar_title: str = "",
     square: bool = False,
+    zmid: float | None = None,
 ) -> go.Figure:
     """Create a heatmap figure.
 
@@ -50,6 +67,10 @@ def plot_heatmap(
         colorbar_title: Label for the colorbar (the value legend); blank hides it.
         square: If True, force square cells (equal x and y scale), for a matrix
             whose axes share a unit such as an attention pattern.
+        zmid: Value anchored to the middle of the colorscale. Pass ``0`` with a
+            diverging scale so that the neutral color means zero; otherwise an
+            asymmetric range silently shifts the midpoint and shades zero as if
+            it had a sign.
 
     Returns:
         A ``plotly.graph_objects.Figure`` with a single heatmap trace.
@@ -66,6 +87,7 @@ def plot_heatmap(
             x=x_labels,
             y=y_labels,
             colorscale=color_scale,
+            zmid=zmid,
             colorbar=dict(title=dict(text=colorbar_title, side="right")),
             customdata=hover_data,
             hovertemplate=(
