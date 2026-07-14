@@ -92,15 +92,35 @@ class TestLogitLensStep:
         assert isinstance(result, LogitLensResult)
         n_layers = model.n_layers
         n_inputs = 2
+        # The full-vocab tensor is off by default (it OOMs on real models); the
+        # reduced fields carry the standard logit-lens signal.
+        assert result.all_probs is None
+        assert result.max_probs.ndim == 3
+        assert result.max_probs.shape[0] == n_layers
+        assert result.max_probs.shape[1] == n_inputs
+        assert result.predicted_tokens.shape == result.max_probs.shape
+        assert result.addresses == [Node(i, RESID_POST) for i in range(n_layers)]
+        assert len(result.input_words) == n_inputs
+        assert len(result.predicted_words) == n_layers
+
+    def test_store_full_probs_keeps_full_vocab_tensor(self, model):
+        pipe = Pipeline(
+            [
+                LoadPrompts(["hello world", "good world"]),
+                LogitLens(model, store_full_probs=True),
+            ]
+        )
+        result = pipe.run()["logit_lens"]
+        n_layers, n_inputs = model.n_layers, 2
         assert result.all_probs.ndim == 4
         assert result.all_probs.shape[0] == n_layers
         assert result.all_probs.shape[1] == n_inputs
         assert result.all_probs.shape[3] == model.tokenizer.vocab_size
         assert result.max_probs.shape == result.all_probs.shape[:-1]
-        assert result.predicted_tokens.shape == result.all_probs.shape[:-1]
-        assert result.addresses == [Node(i, RESID_POST) for i in range(n_layers)]
-        assert len(result.input_words) == n_inputs
-        assert len(result.predicted_words) == n_layers
+        # The reduced fields must equal the reduction of the full tensor.
+        mp, pt = result.all_probs.max(dim=-1)
+        assert torch.allclose(result.max_probs, mp, atol=1e-6)
+        assert torch.equal(result.predicted_tokens, pt)
 
     def test_layers_subset(self, model):
         pipe = Pipeline(
@@ -111,7 +131,7 @@ class TestLogitLensStep:
         )
         results = pipe.run()
         result = results["logit_lens"]
-        assert result.all_probs.shape[0] == 1
+        assert result.max_probs.shape[0] == 1
         assert result.addresses == [Node(0, RESID_POST)]
 
     def test_invalid_layers_string_raises(self, model):
@@ -122,13 +142,32 @@ class TestLogitLensStep:
         pipe = Pipeline(
             [
                 LoadPrompts(["hello world"]),
-                LogitLens(model),
+                LogitLens(model, store_full_probs=True),
             ]
         )
         results = pipe.run()
         all_probs = results["logit_lens"].all_probs
         sums = all_probs.sum(dim=-1)
         assert torch.allclose(sums, torch.ones_like(sums), atol=1e-4)
+
+    def test_last_layer_lens_matches_model_logits(self, model):
+        """Ground truth: the last-layer lens is the model's real output.
+
+        ``project_on_vocab`` applies the model's own final norm and unembedding,
+        so the logit lens at the final ``resid_post`` must reproduce the model's
+        true next-token distribution. This catches a wrong norm, a wrong layer,
+        or a wrong projection, which a shape/sum-to-one check cannot.
+        """
+        prompts = ["hello world", "good world"]
+        result = Pipeline(
+            [LoadPrompts(prompts), LogitLens(model)]
+        ).run()["logit_lens"]
+
+        true_logits = model.logits(prompts)  # [B, S, V], the model's real output
+        true_pred = true_logits.argmax(dim=-1)  # [B, S]
+        # predicted_tokens is [n_layers, B, S]; the last layer is the model output.
+        last_layer_pred = result.predicted_tokens[-1]  # [B, S]
+        assert torch.equal(last_layer_pred, true_pred)
 
 
 class TestLogitLensSave:
@@ -138,7 +177,7 @@ class TestLogitLensSave:
         pipe = Pipeline(
             [
                 LoadPrompts(["hello world", "good world"]),
-                LogitLens(model, layers=[0, 1]),
+                LogitLens(model, layers=[0, 1], store_full_probs=True),
                 Save(output_dir=str(tmp_path)),
             ]
         )
@@ -183,7 +222,7 @@ class TestLogitLensSave:
         results = Pipeline(
             [
                 LoadPrompts(["hello world", "good world"]),
-                LogitLens(model, layers=[0, 1]),
+                LogitLens(model, layers=[0, 1], store_full_probs=True),
                 Save(output_dir=str(tmp_path)),
             ]
         ).run()

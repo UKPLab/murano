@@ -253,3 +253,65 @@ class TestPlot:
         fig = plot_logit_attribution(result, top_k=5)
         assert fig.data
         assert len(fig.data[0].y) <= 5
+
+
+# ── Gemma-family RMSNorm (1 + weight) regression ──────────────────────
+
+
+class TestLogitAttributionGemmaNorm:
+    """Gemma RMSNorm scales by (1 + weight); the frozen-norm DLA must match.
+
+    Without the unit-offset correction the reconstruction misses the identity
+    term and completeness_error blows up (seen as ~18 on real gemma-2-2b). This
+    builds a tiny Gemma-2 and asserts completeness holds.
+    """
+
+    @pytest.fixture(scope="class")
+    def gemma_model(self, tmp_path_factory):
+        from pathlib import Path
+
+        from tokenizers import Tokenizer
+        from tokenizers.models import WordLevel
+        from tokenizers.pre_tokenizers import Whitespace
+        from transformers import (
+            Gemma2Config,
+            Gemma2ForCausalLM,
+            PreTrainedTokenizerFast,
+        )
+
+        from murano.model import MuranoModel
+
+        vocab = {
+            "<pad>": 0, "<s>": 1, "</s>": 2, "<unk>": 3,
+            "hello": 4, "world": 5, "good": 6, "bad": 7,
+        }
+        path = Path(tmp_path_factory.mktemp("tiny_gemma2"))
+        tok = Tokenizer(WordLevel(vocab=dict(vocab), unk_token="<unk>"))
+        tok.pre_tokenizer = Whitespace()
+        PreTrainedTokenizerFast(
+            tokenizer_object=tok, unk_token="<unk>", pad_token="<pad>",
+            bos_token="<s>", eos_token="</s>", model_max_length=64,
+        ).save_pretrained(path)
+        config = Gemma2Config(
+            vocab_size=len(vocab), hidden_size=32, intermediate_size=64,
+            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
+            head_dim=8, max_position_embeddings=64, sliding_window=64,
+            pad_token_id=0, bos_token_id=1, eos_token_id=2,
+        )
+        torch.manual_seed(0)
+        Gemma2ForCausalLM(config).save_pretrained(path)
+        return MuranoModel(str(path), device_map="cpu", dtype=torch.float32)
+
+    def test_completeness_holds_on_gemma(self, gemma_model):
+        result = _run(gemma_model, correct=4, incorrect=5)
+        assert result.metadata["norm"] == "rmsnorm"
+        # With the (1 + weight) correction this is ~machine-epsilon; without it,
+        # it is large (order 1-20).
+        assert result.completeness_error < 1e-2, (
+            f"gemma DLA completeness_error={result.completeness_error} — the "
+            f"frozen norm is not reconstructing Gemma's (1 + weight) RMSNorm"
+        )
+
+    def test_unit_offset_norm_detected(self, gemma_model):
+        step = LogitAttribution(gemma_model, correct=4)
+        assert step._uses_unit_offset_norm(gemma_model.final_norm) is True

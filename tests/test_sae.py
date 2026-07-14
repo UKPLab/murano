@@ -544,6 +544,103 @@ class TestSAEEncodeContract:
         assert store.tokens.shape[1] == 4
 
 
+class _IdentitySAE(_FakeSAE):
+    """A fake SAE whose encode is the identity, so the captured residual is
+    readable straight off ``store.activations``.
+
+    Lets a test assert the *value* SAEEncode captured for each hook kind, which
+    the zero-returning ``_FakeSAE`` hides. Requires ``d_sae == d_model``.
+    """
+
+    def __init__(self, d_model: int, hook_name: str, hook_layer: int):
+        super().__init__(
+            d_sae=d_model, d_model=d_model, hook_name=hook_name, hook_layer=hook_layer
+        )
+
+    def encode(self, residual: torch.Tensor) -> torch.Tensor:
+        return residual.clone()
+
+
+class TestSAEEncodeCaptureValues:
+    """SAEEncode captures the right residual for each hook kind (value-level)."""
+
+    def _expected_residual(self, model, prompts, layer, kind):
+        """Independently trace the residual SAEEncode should capture for ``kind``."""
+        from murano._proxy import unwrap_traced
+
+        # Single prompt, so no padding: token ids match SAEEncode's tokenization
+        # regardless of padding side.
+        tokens = model.tokenizer(
+            prompts, return_tensors="pt", return_token_type_ids=False
+        )
+        saved = {}
+        with model.trace(tokens):
+            if kind == "resid_post":
+                saved["v"] = model.layer(layer).output.save()
+            elif kind == "resid_pre":
+                saved["v"] = model.layer(layer).input.save()
+            else:  # mlp_out
+                saved["v"] = model.resolve_module(layer, "mlp").output.save()
+        value = unwrap_traced(saved["v"])
+        if isinstance(value, tuple):
+            value = value[0]
+        return value.detach().float().cpu()
+
+    @pytest.mark.parametrize(
+        "kind,hook_name",
+        [
+            ("resid_post", "blocks.1.hook_resid_post"),
+            ("resid_pre", "blocks.1.hook_resid_pre"),
+            ("mlp_out", "blocks.1.hook_mlp_out"),
+        ],
+    )
+    def test_captured_residual_matches_independent_trace(self, model, kind, hook_name):
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        prompts = ["hello world good"]
+        d_model = model._lm.lm_head.in_features
+
+        results = Results()
+        results["prompts"] = PromptBatch(prompts=prompts)
+        step = SAEEncode(model, release="test/repo", sae_id="test/id")
+        step.sae_model._sae = _IdentitySAE(
+            d_model=d_model, hook_name=hook_name, hook_layer=1
+        )
+        store = step(results)["sae_record"]
+
+        # Under the identity encode, activations == the residual SAEEncode fed in.
+        expected = self._expected_residual(model, prompts, layer=1, kind=kind)
+        assert store.activations.shape == expected.shape
+        assert torch.allclose(store.activations, expected, atol=1e-5), (
+            f"{kind}: SAEEncode captured a different residual than a direct trace "
+            f"of {hook_name}"
+        )
+
+    def test_resid_pre_differs_from_resid_post(self, model):
+        """A guard that the hook-kind mapping is not collapsing to one site."""
+        from murano.artifacts import PromptBatch
+        from murano.results import Results
+
+        d_model = model._lm.lm_head.in_features
+
+        def encode_kind(hook_name):
+            step = SAEEncode(model, release="r", sae_id="i")
+            step.sae_model._sae = _IdentitySAE(
+                d_model=d_model, hook_name=hook_name, hook_layer=1
+            )
+            res = Results()
+            res["prompts"] = PromptBatch(prompts=["hello world good"])
+            return step(res)["sae_record"].activations
+
+        pre = encode_kind("blocks.1.hook_resid_pre")
+        post = encode_kind("blocks.1.hook_resid_post")
+        assert not torch.allclose(pre, post), (
+            "resid_pre and resid_post captured the same tensor; the hook-kind "
+            "selection is not distinguishing the sites."
+        )
+
+
 class TestSAETopActivations:
     """Synthetic activations, deterministic top-K behavior."""
 
