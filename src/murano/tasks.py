@@ -34,8 +34,10 @@ __all__ = [
 
 IOI_TEMPLATE: Final = "When {a} and {b} went to the store, {giver} gave a drink to"
 
-# Each pair is (indirect object, subject). Both names are single tokens with a
-# leading space in GPT-2's vocabulary, so the answer is one token either way.
+# Each pair is (indirect object, subject), chosen so both names tokenize to a
+# single token with a leading space in GPT-2's vocabulary (the metric scores the
+# first token of a multi-token answer, so single-token names keep the logit
+# difference exact).
 _IOI_NAMES: Final = [
     ("Mary", "John"),
     ("Alice", "Bob"),

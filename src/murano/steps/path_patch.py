@@ -2,12 +2,15 @@
 
 Activation patching (:class:`~murano.steps.patch.Patch`) replaces one site and lets
 the change propagate through every downstream route, so it measures a component's
-*total* effect. Path patching measures the *direct* effect: it injects the sender's
-activation from a second run but freezes every other component at its base value, so
-the perturbation can only reach the receiver along the direct residual path. This is
-the primitive behind circuit localization (name movers, s-inhibition, backup name
-movers in Wang et al.'s IOI work); the algorithm is the one from Goldowsky-Dill et
-al., "Localizing Model Behavior with Path Patching".
+*total* effect. Path patching isolates the sender path: it injects the sender's
+activation from a second run while freezing every other attention head at its base
+value (and, when ``freeze_mlps=True``, the MLPs too). With the MLPs frozen the
+perturbation can only reach the receiver along the direct residual path; with the
+default ``freeze_mlps=False`` the MLPs recompute and mediate it, so the measured
+quantity is the attention-mediated effect. This is the primitive behind circuit
+localization (name movers, s-inhibition, backup name movers in Wang et al.'s IOI
+work); the algorithm is the one from Goldowsky-Dill et al., "Localizing Model
+Behavior with Path Patching".
 
 For senders ``S`` and receiver ``R``, with ``base`` = the run to measure and
 ``source`` = the run supplying the sender activations:
@@ -177,10 +180,22 @@ class PathPatch(Step):
     """Path-patch senders into a receiver and write the resulting logits.
 
     Runs the base prompts while injecting the source prompts' sender activations
-    along only the direct path to the receiver (every other component frozen), then
-    stores the logits so a metric step can score the direct effect. With the
-    defaults (base = clean ``prompts``, source = corrupt ``corrupt_prompts``) this
-    reads how much of the behaviour the direct sender path carries.
+    and freezing every attention head at its base value, then stores the logits so
+    a metric step can score the sender path. With the defaults (base = clean
+    ``prompts``, source = corrupt ``corrupt_prompts``) this reads how much of the
+    behaviour the sender path carries.
+
+    By default (``freeze_mlps=False``) the MLPs recompute, so they mediate the
+    sender's perturbation and the measured quantity is the attention-mediated
+    effect, not the pure direct residual path. Set ``freeze_mlps=True`` to freeze
+    the MLPs too, leaving only the direct sender-to-receiver residual path.
+
+    Note the default direction is the reverse of :class:`~murano.steps.patch.Patch`:
+    ``Patch`` defaults to denoising (base = corrupt, source = clean) while
+    ``PathPatch`` defaults to noising (base = clean ``prompts``, source = corrupt
+    ``corrupt_prompts``). So with :class:`~murano.steps.metrics.RecoveredMetricStep`
+    the recovered fraction reads oppositely: swap ``base_key`` / ``source_key`` (or
+    read the raw metric) if you want the denoising convention.
 
     Reads from results:
         results[base_key]: PromptBatch (default ``prompts``), the run to measure.

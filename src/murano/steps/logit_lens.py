@@ -30,7 +30,11 @@ class LogitLensResult:
     """Per-layer next-token probability distributions.
 
     Attributes:
-        all_probs: Tensor [n_layers, n_inputs, seq, vocab] of softmax outputs.
+        all_probs: Tensor [n_layers, n_inputs, seq, vocab] of softmax outputs, or
+            ``None``. Kept only when the step ran with ``store_full_probs=True``;
+            it is ``n_layers * n_inputs * seq * vocab`` floats, which is tens to
+            hundreds of gigabytes on a real model, so it is off by default. The
+            reduced fields below (and the standard heatmap) do not need it.
         max_probs: Tensor [n_layers, n_inputs, seq] of argmax probabilities.
         predicted_tokens: Tensor [n_layers, n_inputs, seq] of argmax token IDs.
         predicted_words: Decoded tokens, shape [n_layers][n_inputs][seq].
@@ -42,7 +46,7 @@ class LogitLensResult:
             output, so these are ``resid_post`` nodes.
     """
 
-    all_probs: Tensor
+    all_probs: Tensor | None
     max_probs: Tensor
     predicted_tokens: Tensor
     predicted_words: list[list[list[str]]]
@@ -70,6 +74,13 @@ class LogitLens(Step):
     Args:
         model: MuranoModel to record from.
         layers: Layer indices to record, or ``"all"`` for every layer.
+        store_full_probs: Keep the full ``[n_layers, n_inputs, seq, vocab]``
+            softmax on the result. Off by default: that tensor is tens to
+            hundreds of gigabytes on a real model (every layer, position, and
+            vocabulary entry), and the reduced ``max_probs`` / ``predicted_tokens``
+            / ``predicted_words`` fields (and the standard heatmap) do not need
+            it. Turn it on only for a targeted, small run that inspects the full
+            distribution.
 
     Raises:
         ValueError: If ``layers`` is a string other than ``"all"``.
@@ -84,8 +95,10 @@ class LogitLens(Step):
         self,
         model: ModelBackend,
         layers: list[int] | str = "all",
+        store_full_probs: bool = False,
     ):
         self.model = model
+        self.store_full_probs = store_full_probs
         if isinstance(layers, str):
             if layers != "all":
                 raise ValueError(f"layers as string must be 'all', got {layers!r}")
@@ -113,6 +126,13 @@ class LogitLens(Step):
             for layer in self.layers:
                 saved[layer] = self.model.layer(layer).output.save()
 
+        # Reduce each layer's [n_inputs, seq, vocab] softmax to the argmax
+        # probability and token as we go, so the full-vocab tensor for a layer is
+        # transient. Keeping every layer's full distribution (the old behavior) is
+        # n_layers * n_inputs * seq * vocab floats: tens to hundreds of GB on a
+        # real model. Retain it only when the caller opts in via store_full_probs.
+        layer_max: list[Tensor] = []
+        layer_pred: list[Tensor] = []
         layer_probs: list[Tensor] = []
         with no_grad():
             for layer in self.layers:
@@ -124,12 +144,17 @@ class LogitLens(Step):
                 if isinstance(output, tuple):
                     output = output[0]
                 # output: [n_inputs, seq, d_model]; project to vocab.
-                logits = self.model.project_on_vocab(output)
-                layer_probs.append(softmax(logits, dim=-1).detach().cpu())
+                probs = softmax(self.model.project_on_vocab(output), dim=-1).detach().cpu()
+                mp, pt = probs.max(dim=-1)
+                layer_max.append(mp)
+                layer_pred.append(pt)
+                if self.store_full_probs:
+                    layer_probs.append(probs)
 
-        # all_probs: [n_layers, n_inputs, seq, vocab]
-        all_probs = stack(layer_probs, dim=0)
-        max_probs, predicted_tokens = all_probs.max(dim=-1)
+        # max_probs / predicted_tokens: [n_layers, n_inputs, seq]
+        max_probs = stack(layer_max, dim=0)
+        predicted_tokens = stack(layer_pred, dim=0)
+        all_probs = stack(layer_probs, dim=0) if self.store_full_probs else None
 
         input_words = [
             [self.model.tokenizer.decode([int(t)]) for t in seq.tolist()]

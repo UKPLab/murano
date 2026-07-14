@@ -88,7 +88,11 @@ def plot_head_matrix(
         matrix: A ``[n_layers, n_heads]`` tensor or nested list, e.g. the output
             of ``AttentionResult.entropy()``.
         title: Plot title.
-        layers: Layer indices for the y-axis labels; defaults to ``0..n-1``.
+        layers: Layer indices for the y-axis labels; defaults to ``0..n-1``. When
+            the matrix came from an ``AttentionResult`` captured on a subset of
+            layers (e.g. ``RecordAttention(layers=[3, 7, 9])``), pass
+            ``layers=result.layers`` so the row labels name the real layers rather
+            than a contiguous ``0..n-1``.
         value_label: Label for the colorbar (the statistic being shown).
         color_scale: Plotly colorscale name.
         zmid: Value anchored to the middle of the colorscale. Pass ``0`` for a

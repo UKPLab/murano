@@ -188,8 +188,10 @@ def _answer_positions(
     Resolution order: an explicit ``positions`` wins (negative indices count
     from the end); otherwise the last real token is read from
     ``attention_mask`` (correct for either padding side); otherwise the final
-    column is used, which is valid for the left padding Murano's tokenizers
-    default to.
+    column is used, which is the last real token only when the batch is
+    unpadded (a single prompt, or equal-length prompts). Murano does not set a
+    tokenizer padding side, so pass ``attention_mask`` for any padded batch
+    rather than relying on the final-column fallback.
 
     Args:
         logits: Output logits ``[B, S, V]``.

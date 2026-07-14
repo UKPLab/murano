@@ -348,6 +348,54 @@ class Node:
 AddressLike: TypeAlias = int | tuple[int, str] | str | Node
 
 
+def unreachable_addresses(
+    addresses: "Iterable[Node]",
+    layers: "list[int] | str",
+    modules: "str | list[str]",
+) -> "list[Node]":
+    """Return the addresses that fall on no hooked ``(layer, module)`` site.
+
+    An intervention direction keyed at an address that is never hooked silently
+    does nothing (e.g. a ``resid_post`` key while ``modules="mlp"``). Callers use
+    this to fail loudly when *every* address is unreachable, and to warn when only
+    some are. Module names are canonicalized, so ``"residual"`` matches a
+    ``resid_post`` address.
+
+    Args:
+        addresses: The intervention addresses (:class:`Node` objects).
+        layers: Hooked layer indices, or ``"all"``.
+        modules: Hooked module name(s).
+
+    Returns:
+        The subset of ``addresses`` that no hooked site would touch (empty when
+        all are reachable).
+    """
+    addrs = list(addresses)
+    module_list = [modules] if isinstance(modules, str) else list(modules)
+    hooked_modules = {Node(0, mod).module for mod in module_list}
+    if isinstance(layers, str):
+        # "all" hooks every layer, so a matching module is sufficient.
+        return [node for node in addrs if node.module not in hooked_modules]
+    hooked = {Node(layer, mod) for layer in layers for mod in module_list}
+    return [node for node in addrs if node not in hooked]
+
+
+def addresses_reachable(
+    addresses: "Iterable[Node]",
+    layers: "list[int] | str",
+    modules: "str | list[str]",
+) -> bool:
+    """Whether at least one address falls on a hooked ``(layer, module)`` site.
+
+    An empty ``addresses`` is a deliberate no-op and returns ``True``. See
+    :func:`unreachable_addresses` for the per-address detail callers warn on.
+    """
+    addrs = list(addresses)
+    if not addrs:
+        return True
+    return len(unreachable_addresses(addrs, layers, modules)) < len(addrs)
+
+
 def _parse_int(value: str, name: str, raw: str) -> int:
     """Parse ``value`` as an int, naming ``name`` and ``raw`` on failure.
 
@@ -613,5 +661,7 @@ __all__ = [
     "NodeDict",
     "NodeSet",
     "Side",
+    "addresses_reachable",
     "canonical_module",
+    "unreachable_addresses",
 ]

@@ -1,4 +1,12 @@
-"""I/O utilities: saving and loading Murano results."""
+"""I/O utilities: saving and loading Murano results.
+
+Security note: the ``.pt`` loaders (``load_steering``, ``load_logit_lens``,
+``load_attention``, ``load_activation_store``, and the labeled variant) call
+``torch.load(..., weights_only=False)`` because the payloads hold custom objects
+(``Node`` keys, dataclasses) that the safe loader cannot reconstruct. That path
+executes arbitrary pickle, so only load artifacts you produced yourself or
+otherwise trust; do not load ``.pt`` files from an untrusted source.
+"""
 
 from __future__ import annotations
 
@@ -408,14 +416,25 @@ def load_logit_attribution(path: str | Path) -> Any:
         # null is how a non-finite scalar was stored; restore it as nan.
         return float("nan") if value is None else value
 
+    # The per-component maps can carry non-finite values too (a head whose frozen
+    # projection produced nan), stored as null; restore them the same way as the
+    # scalar fields so the round-trip is symmetric.
+    contributions = {node: _restore(v) for node, v in data["contributions"].items()}
+    raw_per_example = data.get("per_example")
+    per_example = (
+        None
+        if raw_per_example is None
+        else {node: [_restore(x) for x in values] for node, values in raw_per_example.items()}
+    )
+
     return LogitAttributionResult(
-        contributions=data["contributions"],
+        contributions=contributions,
         embed_contribution=_restore(data["embed_contribution"]),
         other_contribution=_restore(data["other_contribution"]),
         target=data["target"],
         total=_restore(data["total"]),
         completeness_error=_restore(data["completeness_error"]),
-        per_example=data.get("per_example"),
+        per_example=per_example,
         metadata=data.get("metadata", {}),
     )
 
@@ -951,10 +970,12 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     ) -> None:
         filename = "logit_lens.pt" if key == keys.LOGIT_LENS else f"{key}.pt"
         save_logit_lens(logit_lens, out / "logit_lens" / filename)
+        # Read shapes off max_probs, not all_probs: the full-vocab tensor is
+        # None unless the step ran with store_full_probs=True.
         metadata[key] = {
             "addresses": [str(a) for a in logit_lens.addresses],
-            "n_layers": logit_lens.all_probs.shape[0],
-            "n_inputs": logit_lens.all_probs.shape[1],
+            "n_layers": logit_lens.max_probs.shape[0],
+            "n_inputs": logit_lens.max_probs.shape[1],
         }
 
     def serialize_attention(

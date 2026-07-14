@@ -126,7 +126,10 @@ class SelectComponents(Step):
             self.modules = {canonical_module(name) for name in names}
         self.output_key = output_key
         self.reads = [source_key]
-        self.read_types = {source_key: (LogitAttributionResult, SweepResult)}
+        # _extract_scores also accepts a bare {Node: float} mapping, so include
+        # dict here or the pipeline's pre-flight type check would reject the very
+        # input the step supports.
+        self.read_types = {source_key: (LogitAttributionResult, SweepResult, dict)}
         self.writes = [output_key]
         self.write_types = {output_key: ComponentSelection}
 

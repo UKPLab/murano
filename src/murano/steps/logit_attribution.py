@@ -331,6 +331,26 @@ class LogitAttribution(Step):
             target = target - _gather_answer(answer_logits, incorrect_ids)
         return target
 
+    def _uses_unit_offset_norm(self, ln: Any) -> bool:
+        """Whether the final norm scales by ``(1 + weight)`` instead of ``weight``.
+
+        Gemma-family RMSNorm (``Gemma2RMSNorm`` etc.) applies ``x_normed * (1 +
+        weight)``; the frozen-norm decomposition must add 1 to the stored weight
+        or the reconstruction misses the identity term and completeness breaks.
+        Detected by the norm class name or the model type, both robust to the
+        nnsight Envoy wrapper.
+        """
+        try:
+            if "Gemma" in type(getattr(ln, "_module", ln)).__name__:
+                return True
+        except Exception:  # pragma: no cover - defensive
+            pass
+        try:
+            config = getattr(self.model.hf_model, "config", None)
+            return str(getattr(config, "model_type", "")).startswith("gemma")
+        except Exception:  # pragma: no cover - defensive
+            return False
+
     def _frozen_norm_params(
         self, r_pos: Tensor
     ) -> tuple[Tensor, Tensor, Tensor | None]:
@@ -339,9 +359,13 @@ class LogitAttribution(Step):
         LayerNorm centers and divides by the residual's standard deviation;
         RMSNorm divides by its root-mean-square. ``beta`` is returned only for
         LayerNorm, where it is a constant added once to the normalized vector.
+        Gemma-family RMSNorm scales by ``(1 + weight)``, so its effective gamma
+        adds one to the stored weight.
         """
         ln = self.model.final_norm
         gamma = ln.weight.to(device=r_pos.device, dtype=float32)
+        if self._uses_unit_offset_norm(ln):
+            gamma = gamma + 1.0
         eps = getattr(ln, "eps", None)
         if eps is None:
             eps = getattr(ln, "variance_epsilon", 1e-5)

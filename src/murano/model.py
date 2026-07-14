@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Sequence, cast
 
 import torch
-from torch import Tensor, bfloat16  # pyright: ignore[reportPrivateImportUsage]
+from torch import Tensor, bfloat16, float32  # pyright: ignore[reportPrivateImportUsage]
 from torch import dtype as TorchDtype  # pyright: ignore[reportPrivateImportUsage]
 from nnterp import StandardizedTransformer
 
@@ -20,6 +20,7 @@ from murano.nodes import (
     Node,
     NodeDict,
     canonical_module,
+    unreachable_addresses,
 )
 
 if TYPE_CHECKING:
@@ -31,6 +32,79 @@ if TYPE_CHECKING:
 # resolving the per-head split point. A general per-architecture resolver is
 # future work; until then unknown architectures raise from ``attn_out_proj``.
 _ATTN_OUT_PROJ_NAMES = ("o_proj", "out_proj", "c_proj", "dense", "wo")
+
+# float32 is worth the memory up to this many parameters; above it the default
+# resolves to bfloat16 so the model still fits. bf16's 8-bit mantissa measurably
+# reorders close logits at small scale, so the auto default keeps small-model
+# (GPT-2 / <=~3B) interpretability in the precision its logit differences need.
+_FP32_PARAM_LIMIT = 3_000_000_000
+
+
+def _estimate_num_params(config: Any) -> int | None:
+    """Rough parameter count from a model config, for the auto-dtype heuristic.
+
+    Uses only the shape fields every decoder config carries, so it never loads
+    weights. Accounts for grouped-query attention (fewer key/value params) and
+    tied input/output embeddings (counted once), which a naive estimate gets
+    badly wrong on large-vocab models like Gemma. Returns None when the config
+    omits a field the estimate needs.
+    """
+    hidden = getattr(config, "hidden_size", None) or getattr(config, "n_embd", None)
+    layers = getattr(config, "num_hidden_layers", None) or getattr(
+        config, "n_layer", None
+    )
+    vocab = getattr(config, "vocab_size", None)
+    if not hidden or not layers or not vocab:
+        return None
+    inter = getattr(config, "intermediate_size", None) or 4 * hidden
+    n_heads = (
+        getattr(config, "num_attention_heads", None)
+        or getattr(config, "n_head", None)
+        or 1
+    )
+    head_dim = getattr(config, "head_dim", None) or max(hidden // n_heads, 1)
+    n_kv = getattr(config, "num_key_value_heads", None) or n_heads
+    q_out = n_heads * head_dim
+    kv_out = n_kv * head_dim
+    # Attention: q (hidden->q_out) + k + v (hidden->kv_out each) + o (q_out->hidden).
+    attn = hidden * q_out + 2 * hidden * kv_out + q_out * hidden
+    # MLP: 3*hidden*inter upper-bounds a gated MLP (gate/up/down); an over-estimate
+    # for a plain 2-matrix MLP, which is fine for a threshold.
+    mlp = 3 * hidden * inter
+    per_layer = attn + mlp
+    # Embeddings: input + output, counted once when tied (the common case at the
+    # small/mid scale this threshold cares about, e.g. GPT-2, Gemma, Llama-3.2).
+    tied = bool(getattr(config, "tie_word_embeddings", False))
+    embed = vocab * hidden * (1 if tied else 2)
+    return layers * per_layer + embed
+
+
+def _resolve_auto_dtype(load_path: str) -> TorchDtype:
+    """Pick float32 for small models and bfloat16 for large ones, from the config.
+
+    Reads only the config (no weights), estimates the parameter count, and
+    returns float32 at or below :data:`_FP32_PARAM_LIMIT` else bfloat16. Falls
+    back to bfloat16 (the safe large-model default) when the config cannot be
+    read or is missing size fields.
+    """
+    try:
+        from transformers import AutoConfig
+
+        config = AutoConfig.from_pretrained(load_path)
+    except Exception as exc:  # pragma: no cover - exotic/unreadable config
+        logger.debug("auto dtype: could not read config (%s); using bfloat16", exc)
+        return bfloat16
+    n_params = _estimate_num_params(config)
+    if n_params is None:
+        logger.debug("auto dtype: config missing size fields; using bfloat16")
+        return bfloat16
+    chosen = float32 if n_params <= _FP32_PARAM_LIMIT else bfloat16
+    logger.info(
+        "auto dtype: ~%.2fB params -> %s (pass dtype= to override)",
+        n_params / 1e9,
+        chosen,
+    )
+    return chosen
 
 
 def _ensure_downloaded(model_id: str) -> str:
@@ -64,7 +138,15 @@ class MuranoModel:
     Args:
         model_id: HuggingFace model identifier.
         device_map: Device placement strategy.
-        dtype: Model weight dtype.
+        dtype: Model weight dtype, or ``"auto"`` (the default). ``"auto"`` loads
+            small models (at or below ~3B parameters, e.g. GPT-2) in float32 and
+            larger ones in bfloat16, decided from the config before any weight is
+            read. This matters for correctness: bfloat16's 8-bit mantissa
+            measurably reorders close logits at small scale, so argmax,
+            logit-difference, KL, and answer-rank degrade versus float32 on the
+            small models interpretability work most often targets. Pass an
+            explicit ``torch.dtype`` to override (e.g. ``torch.float16`` for a
+            large model on a memory-tight GPU).
         enable_attention_probs: If True, load with eager attention so nnterp can
             expose the per-head softmax attention weights via
             :attr:`attention_probabilities`. Off by default because eager
@@ -85,7 +167,7 @@ class MuranoModel:
         self,
         model_id: str,
         device_map: str = "auto",
-        dtype: TorchDtype = bfloat16,
+        dtype: TorchDtype | str = "auto",
         enable_attention_probs: bool = False,
         **loader_kwargs: Any,
     ):
@@ -95,6 +177,16 @@ class MuranoModel:
         # from the local path. This prevents nnsight/transformers from
         # making repeated HF API calls that trigger rate limits.
         load_path = _ensure_downloaded(model_id)
+
+        # Resolve the auto default from the config before loading: small models
+        # get float32 (its precision matters for their logit differences), large
+        # ones bfloat16 (so they fit). An explicit torch.dtype is used as given.
+        if isinstance(dtype, str):
+            if dtype != "auto":
+                raise ValueError(
+                    f"dtype string must be 'auto' or a torch.dtype, got {dtype!r}"
+                )
+            dtype = _resolve_auto_dtype(load_path)
 
         # device_map="auto" with nnsight can produce zero/NaN activations
         # for layers beyond the first. Use a single GPU when available.
@@ -481,20 +573,22 @@ class MuranoModel:
         """
         if not directions:
             return
-        module_list = [modules] if isinstance(modules, str) else list(modules)
-        hooked_modules = {Node(0, mod).module for mod in module_list}
-        if isinstance(layers, str):
-            # "all" hooks every layer, so a matching module is sufficient.
-            reachable = any(node.module in hooked_modules for node in directions)
-        else:
-            hooked = {Node(layer, mod) for layer in layers for mod in module_list}
-            reachable = bool(set(directions) & hooked)
-        if not reachable:
+        missing = unreachable_addresses(directions, layers, modules)
+        if len(missing) == len(directions):
             raise ValueError(
                 f"No intervention address matches a hooked site "
                 f"(layers={layers!r}, modules={modules!r}); the intervention "
                 f"would do nothing. Addresses: {sorted(directions)}. A bare-int "
                 f"direction key targets 'resid_post'."
+            )
+        if missing:
+            logger.warning(
+                "%d intervention address(es) match no hooked site "
+                "(layers=%r, modules=%r) and will be skipped: %s",
+                len(missing),
+                layers,
+                modules,
+                sorted(missing),
             )
 
     def _layer_indices(self, layers: list[int] | str) -> list[int]:
