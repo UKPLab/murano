@@ -24,9 +24,10 @@ libraries ship as extras, so you install for what you actually do:
 | (base) | recording, steering, intervention, logits, ablation, metrics, paired datasets | nnsight, nnterp, torch, transformers |
 | `probe` | linear probing | scikit-learn |
 | `data` | loading datasets by name from the Hub | datasets |
-| `plot` | figures and visualizations | matplotlib, seaborn, plotly |
+| `plot` | figures and visualizations | plotly, kaleido |
 | `sae` | sparse autoencoder features | sae-lens |
-| `all` | everything above | all of the above |
+| `notebook` | running the example notebooks | jupyter, ipykernel, nltk |
+| `all` | everything above | probe, data, plot, sae, notebook |
 
 Combine extras as needed:
 

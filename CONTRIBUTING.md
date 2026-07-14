@@ -103,8 +103,8 @@ No bespoke try/except guards: every optional import goes through
 
 ## Code of Conduct
 
-Please note that this project is released with a [Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
+ToDo: adopt and link a Code of Conduct. We ask contributors to be respectful and constructive in the meantime.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the Apache License 2.0, the license this project is released under.

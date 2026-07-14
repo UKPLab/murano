@@ -40,8 +40,8 @@ direction = model.find_direction(
     negative=["What a miserable, dreadful day", "This is awful and depressing"],
     layers=[10, 11, 12, 13],
 )
-print(direction.best_layer)         # e.g. 12
-print(direction.separation_scores)  # {10: 1.3, 11: 2.1, 12: 3.4, 13: 2.8}
+print(direction.best_layer)         # a Node, e.g. L12.resid_post
+print(direction.separation_scores)  # {L10.resid_post: 1.3, L11.resid_post: 2.1, ...}
 ```
 
 ## Steer generation
