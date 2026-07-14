@@ -48,7 +48,12 @@ class SteeringVector(Step):
     Args:
         method: Estimation method. Currently only ``"contrastive_mean_diff"``
             is supported.
-        normalize: If True, normalize each per-layer direction to unit norm.
+        normalize: If True, normalize each stored per-layer direction to unit
+            norm. Note the intervention functions (``steer_direction`` /
+            ``ablate_direction``) unit-normalize again at apply time, so
+            ``normalize=False`` only affects the magnitude of the stored vector
+            (e.g. if you read ``direction_per_layer`` yourself); it does not
+            change steering or ablation strength.
 
     Raises:
         ValueError: If ``method`` is not a supported value.

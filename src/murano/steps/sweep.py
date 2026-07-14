@@ -11,7 +11,10 @@ baseline ``Results``, rebuilt in every notebook that needs it.
 pipeline built before it), then forks the ``Results`` per item so each item sees
 the same starting state, and collects the harvested keys into a
 :class:`~murano.artifacts.SweepResult`. Because the forks are shallow copies, the
-swept steps' writes are scratch: they never reach the pipeline that follows.
+swept steps' writes are scratch: they never reach the pipeline that follows. The
+isolation is key-level only, though: a swept step that mutates a shared value in
+place (rather than writing a new key) would leak that change across items, so
+swept steps must treat the incoming ``Results`` values as read-only.
 
 The swept steps are built by a callback, so what varies is not restricted to a
 component. Sweeping over :class:`~murano.nodes.Node` addresses yields a component

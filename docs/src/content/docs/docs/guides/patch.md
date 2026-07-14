@@ -67,13 +67,13 @@ results = Pipeline([
 
 ### Custom intervention functions
 
-`Intervene` accepts any callable with signature `(activation: Tensor, layer_idx: int) -> Tensor`:
+`Intervene` accepts any callable with signature `(activation: Tensor, node: Node) -> Tensor`. The second argument is a `murano.Node` naming the hooked site (`node.layer`, `node.module`, ...), not a bare layer index, so a function that targets specific sites branches on it:
 
 ```python
 import torch
 
-def zero_out(activation: torch.Tensor, layer: int) -> torch.Tensor:
-    """Zero all activations — a sanity check."""
+def zero_out(activation: torch.Tensor, node) -> torch.Tensor:
+    """Zero all activations — a sanity check. `node` names the hooked site."""
     return torch.zeros_like(activation)
 
 results = Pipeline([
@@ -84,7 +84,7 @@ results = Pipeline([
 
 ## Weight-level ablation
 
-The `WeightAblation` step applies an orthogonal projection P = I - dd^T to the model's weight matrices directly. This removes the direction from **all** computations, not just the residual stream at hook points.
+The `WeightAblation` step applies an orthogonal projection P = I - dd^T to the model's weight matrices directly (write matrices as `P @ W`, read matrices as `W @ P`), so the ablation is baked into the weights rather than applied at hook points during the forward pass. It is a stronger, more global edit than activation-level ablation; note that the read-matrix projection interacts with the intervening layer norm, so it does not remove the direction perfectly.
 
 ```python
 from murano.steps import WeightAblation

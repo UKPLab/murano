@@ -480,11 +480,6 @@ class Ablate(Step):
         attention_mask: torch.Tensor = tokens["attention_mask"]
         batch, seq = tokens["input_ids"].shape
 
-        # zero needs no capture; mean from a precomputed table needs none either.
-        captured: dict[Site, torch.Tensor] = {}
-        if self.method == "resample" or (self.method == "mean" and self.means is None):
-            captured = self._capture(tokens)
-
         # resample draws its replacement from a second batch: raw source= prompts
         # or a source_key= prompt batch already in results (the cross-run patch).
         source_prompts: Sequence[str] | None = None
@@ -493,6 +488,18 @@ class Ablate(Step):
                 source_prompts = self.source
             elif self.source_key is not None:
                 source_prompts = results[self.source_key].prompts
+
+        # Capture the base activations only when they are actually used: for the
+        # batch mean (mean without a precomputed table) or the within-batch
+        # resample permutation (resample with no source). A cross-run resample
+        # replaces from source_captured, so the base capture would be a wasted
+        # forward pass. zero needs no capture at all.
+        need_base_capture = (self.method == "mean" and self.means is None) or (
+            self.method == "resample" and source_prompts is None
+        )
+        captured: dict[Site, torch.Tensor] = (
+            self._capture(tokens) if need_base_capture else {}
+        )
 
         source_captured: dict[Site, torch.Tensor] | None = None
         if source_prompts is not None:

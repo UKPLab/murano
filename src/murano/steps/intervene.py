@@ -10,7 +10,7 @@ from tqdm import tqdm
 from murano import keys
 from murano.artifacts import GenerationComparison, PromptBatch
 from murano.logging import logger
-from murano.nodes import Node, NodeDict
+from murano.nodes import Node, NodeDict, unreachable_addresses
 from murano.results import Results
 from murano.steps.base import Step
 
@@ -60,7 +60,9 @@ def _normalize_directions(directions: dict[Node, Tensor]) -> NodeDict:
 def ablate_direction(directions: dict[Node, Tensor]) -> Callable:
     """Return an intervention function that projects out a direction.
 
-    Removes the component along the direction from the residual stream.
+    Removes the component along the direction from the residual stream. Each
+    direction is unit-normalized first, so its magnitude does not matter for
+    ablation (the projection removes the full component regardless of scale).
 
     Args:
         directions: ``{address: tensor [d_model]}`` directions to ablate. Keys
@@ -85,12 +87,18 @@ def ablate_direction(directions: dict[Node, Tensor]) -> Callable:
 def steer_direction(directions: dict[Node, Tensor], alpha: float) -> Callable:
     """Return an intervention function that adds a scaled direction.
 
-    Adds alpha * direction to the residual stream at each layer/module.
+    Each direction is unit-normalized first, then ``alpha * unit_direction`` is
+    added to the residual stream at each layer/module. So ``alpha`` is the
+    absolute magnitude added (in residual-norm units), not a multiplier on the
+    stored vector's length: the direction's original magnitude is discarded, and
+    an upstream ``SteeringVector(normalize=False)`` therefore does not change the
+    steering strength (scale it with ``alpha`` instead).
 
     Args:
         directions: ``{address: tensor [d_model]}`` directions to add. Keys are
             coerced to canonical :class:`Node` addresses.
-        alpha: Scaling factor. Positive = strengthen, negative = suppress.
+        alpha: Absolute magnitude added along the unit direction. Positive =
+            strengthen, negative = suppress.
 
     Returns:
         Callable(activation, node) -> modified activation.
@@ -274,9 +282,39 @@ class Intervene(Step):
         # ablate_direction normalize the direction keys to canonical Nodes.
         steering = results[self.direction_key]
         directions = self._select_directions(steering)
+        self._check_reachable(directions)
         if self.mode == "steer":
             return steer_direction(directions, self.alpha)
         return ablate_direction(directions)
+
+    def _check_reachable(self, directions: dict[Node, Tensor]) -> None:
+        """Fail loudly (or warn) when directions land on no hooked site.
+
+        The quick-API ``model.generate`` guards this; the step must too, or a
+        ``modules=`` that does not match where the direction was recorded (e.g.
+        a ``resid_post`` direction with ``modules="mlp"``) silently returns the
+        clean generation as the "intervened" one and reads as a null result.
+        """
+        if not directions:
+            return
+        missing = unreachable_addresses(directions, self.layers, self.modules)
+        if len(missing) == len(directions):
+            raise ValueError(
+                f"No steering direction matches a hooked site "
+                f"(layers={self.layers!r}, modules={self.modules!r}); the "
+                f"intervention would do nothing. Directions: {sorted(directions)}. "
+                f"Align modules= with where the direction was recorded (a "
+                f"SteeringVector direction defaults to 'resid_post')."
+            )
+        if missing:
+            logger.warning(
+                "%d steering direction(s) match no hooked site (layers=%r, "
+                "modules=%r) and will be skipped: %s",
+                len(missing),
+                self.layers,
+                self.modules,
+                sorted(missing),
+            )
 
     def _select_directions(self, steering: object) -> dict[Node, Tensor]:
         """Return the subset of recorded directions ``direction_layers`` selects.

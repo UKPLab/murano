@@ -146,10 +146,11 @@ def _pattern_entropy(pattern: Tensor, mask: Tensor) -> Tensor:
 def _pattern_sink(pattern: Tensor, mask: Tensor, index: int) -> Tensor:
     """Return the per-head mean attention mass on the ``index``-th real key.
 
-    The key is taken relative to each example's first real token, not absolute
-    column ``index``: Murano's tokenizers left-pad by default, so column 0 is a
-    padding token for the shorter sequences in a batch. ``index=0`` is the usual
-    attention sink (the first real token).
+    The key is taken relative to each example's first real token (found from the
+    mask), not absolute column ``index``, so it is correct whichever side the
+    batch is padded on: under left padding column 0 is a padding token for the
+    shorter sequences. ``index=0`` is the usual attention sink (the first real
+    token).
     """
     batch, _, _, k_len = pattern.shape
     first_real = mask.long().argmax(dim=1)  # first key with mask == 1, per example
@@ -260,8 +261,9 @@ class AttentionResult:
         :func:`~murano.steps.metrics._answer_positions` form (an int, a per-example
         sequence or tensor, negatives from the end); ``None`` uses each example's
         last real token (the natural query for next-token prediction). Explicit
-        positive positions are absolute columns, so under Murano's default left
-        padding use ``-1`` for the last real token and prefer negative indices.
+        positive positions are absolute columns, so on a left-padded batch they
+        point into the padding for the shorter sequences; prefer negative indices
+        (``-1`` is the last real token) unless you know the batch is right-padded.
         """
         q = _positions(query, self.attention_mask)
         k = _positions(key, self.attention_mask)
@@ -574,8 +576,8 @@ class AblateAttention(Step):
             :func:`~murano.steps.metrics._answer_positions` form (an int or
             per-example sequence, negatives allowed); ``None`` overwrites every
             query row. These are absolute columns (negatives count from the end),
-            so under Murano's default left padding use ``-1`` for the last real
-            token.
+            so on a left-padded batch a positive index points into the padding for
+            the shorter sequences; use ``-1`` for the last real token.
         prompts_key: Results key to read the batch to run from.
         logits_key: Results key to write the intervened logits under.
         mask_key: Results key to write the attention mask under.

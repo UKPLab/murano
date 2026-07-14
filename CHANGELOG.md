@@ -81,11 +81,11 @@ Initial release.
 
 ### Added
 
-- Quick API on `MuranoModel`: `find_direction()`, `generate(intervention=...)`, direct activation recording.
+- Quick API on `MuranoModel`: `find_direction()`, `generate(ablate=...)` / `generate(steer=...)`, direct activation recording.
 - Pipeline API: composable `Step` + `Pipeline` with pre-flight validation of `reads`/`writes` contracts.
 - Steps: `Load`, `Record`, `SteeringVector`, `Intervene`, `Probe`, `GenerationMetric`.
 - Logit lens (`LogitLens` step).
-- Datasets: `MuranoDataset` (contrastive) and `LabeledDataset`, with `from_hub()` and `from_template()` factories.
+- Datasets: `MuranoDataset` (contrastive) and `LabeledDataset`, with `contrastive()` / `from_hub()` factories.
 - Direction-based interventions: `ablate_direction`, `steer_direction`.
 - I/O: `save_results()` with structured output layout, `load_steering()`, `save_ablated_model()`.
 - Top-level `__version__` via `importlib.metadata`.

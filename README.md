@@ -28,9 +28,10 @@ libraries ship as extras, so you install per use case:
 | (base) | recording, steering, intervention, logits, ablation, metrics, paired datasets | nnsight, nnterp, torch, transformers |
 | `probe` | linear probing | scikit-learn |
 | `data` | loading datasets by name from the Hub | datasets |
-| `plot` | figures and visualizations | matplotlib, seaborn, plotly |
+| `plot` | figures and visualizations | plotly, kaleido |
 | `sae` | sparse autoencoder features | sae-lens |
-| `all` | everything above | all of the above |
+| `notebook` | running the example notebooks | jupyter, ipykernel, nltk |
+| `all` | everything above | probe, data, plot, sae, notebook |
 
 ```bash
 pip install "murano-interp[probe,plot]"   # combine as needed
@@ -133,6 +134,13 @@ caught up-front.
 | `WeightAblation`   | `prompts`, `steering` | `intervene`, `weight_ablation` | Project a direction out of model weights, then generate. |
 | `Logits` ‡         | `prompts`             | `final_logits`, `attention_mask`, `target_ids` | Run a forward pass and expose output logits plus next-token targets. With `fn=`, apply an intervention during that pass. |
 | `Ablate` ‡         | `prompts`             | `ablated_logits`, `attention_mask` | Zero, mean, or resample a component and return the logits. |
+| `Patch` ‡          | `corrupt_prompts`, `prompts` | `patched_logits`, `patched_mask` | Interchange (activation) patching: inject source-run activations into the base run. |
+| `PathPatch` ‡      | `prompts`, `corrupt_prompts` | `path_patched_logits`, `path_patched_mask` | Isolate a sender-to-receiver path's effect. |
+| `RecordAttention` ‡ | `prompts`            | `attention_pattern`            | Capture per-head attention weights (needs `enable_attention_probs`). |
+| `AblateAttention` ‡ | `prompts`            | `attn_ablated_logits`, `attn_ablated_mask` | Overwrite per-head attention weights and return the logits. |
+| `LogitAttribution` ‡ | `prompts`           | `logit_attribution`            | Decompose a logit (difference) into per-component contributions (DLA). |
+| `SelectComponents` ‡ | `logit_attribution` (or `sweep`) | `selection`          | Rank per-component scores and keep the strongest as a target set. |
+| `LogitLens`        | `prompts`             | `logit_lens`                   | Project each layer's residual onto the vocabulary. |
 | `Sweep` ‡          | (the swept chain's)   | `sweep`                        | Run a step chain once per item and harvest a metric into a `SweepResult`. |
 | `Probe` §          | `record`              | `probe`                        | Train a linear probe per layer via cross-validation.     |
 | `GenerationMetric` | `intervene`           | `metric`                       | Score baseline vs modified outputs with a user metric.   |
@@ -172,15 +180,18 @@ Pipeline API like the other steps.
 
 ```text
 src/murano/
-  model.py
-  pipeline.py
-  results.py
-  artifacts.py
-  dataset.py
-  io.py
-  evaluation.py
-  steps/
-  plotting/
+  model.py       # MuranoModel: the nnterp-backed model wrapper
+  backend.py     # ModelBackend: the surface steps depend on
+  pipeline.py    # Pipeline / Step orchestration
+  results.py     # Results: the shared state passed between steps
+  keys.py        # canonical Results keys
+  nodes.py       # Node / Edge / NodeSet: component addressing
+  artifacts.py   # PromptBatch, SteeringResult, MetricScore, ...
+  dataset.py     # MuranoDataset, LabeledDataset, CleanCorruptDataset
+  tasks.py       # small canonical tasks (ioi, sentiment)
+  io.py          # save/load of results
+  steps/         # pipeline steps
+  plotting/      # Plotly visualizations
 ```
 
 ## Notebooks
@@ -195,8 +206,11 @@ then pick the application you need:
 - [`notebooks/reproductions/`](notebooks/reproductions/) — published results
   reproduced with Murano.
 
-Every notebook is executed before it is committed, and all of them render on the
+Notebooks are executed before they are committed so their stored outputs are
+current, and all of them render on the
 [documentation site](https://ukplab.github.io/murano/docs/notebooks/getting_started/).
+(This is a maintainer pre-commit step; CI checks that the notebooks import and
+parse, but does not re-execute them, since several need a GPU.)
 
 ## Development
 

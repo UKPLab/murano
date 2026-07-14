@@ -17,6 +17,8 @@ from torch import (  # pyright: ignore[reportPrivateImportUsage]
     topk,  # pyright: ignore[reportPrivateImportUsage]
 )
 
+from murano._optional import require_optional
+
 if TYPE_CHECKING:
     import plotly.graph_objects as go
 
@@ -263,6 +265,7 @@ def plot_sae_feature_logit_effects(
         A Plotly figure containing a positive/negative token table and a
         histogram over every vocabulary logit effect.
     """
+    require_optional("plot", "plotly")
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
@@ -383,6 +386,7 @@ def plot_sae_token_activations(
     Returns:
         A Plotly figure whose token backgrounds encode activation strength.
     """
+    require_optional("plot", "plotly")
     import plotly.graph_objects as go
 
     # Validate the public row contract once, then keep rendering simple.

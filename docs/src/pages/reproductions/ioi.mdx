@@ -63,7 +63,11 @@ from murano.steps.metrics import LogitDiffStep
 from murano.steps.paired import LoadPaired
 from murano.results import Results
 
-model = MuranoModel("gpt2", enable_attention_probs=True)
+import torch
+
+# gpt2 is small, so float32 is cheap and keeps the logit differences clean
+# (bfloat16 measurably reorders close logits at this scale).
+model = MuranoModel("gpt2", dtype=torch.float32, enable_attention_probs=True)
 ds = CleanCorruptDataset(clean=clean, corrupt=corrupt, correct=io_ids, incorrect=s_ids)
 
 base = LoadPaired(ds)(Results())

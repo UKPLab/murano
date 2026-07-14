@@ -162,6 +162,16 @@ class MuranoDataset:
         pos_texts = _load_hub_column(positive, n=n_total)
         neg_texts = _load_hub_column(negative, n=n_total)
 
+        # A source with fewer than n_train + n_eval rows would otherwise yield a
+        # short (or empty) eval split silently; fail loudly instead.
+        for label, texts in (("positive", pos_texts), ("negative", neg_texts)):
+            if len(texts) < n_total:
+                raise ValueError(
+                    f"{label} source yielded {len(texts)} examples, but n_train + "
+                    f"n_eval = {n_total} are needed; lower n_train/n_eval or use a "
+                    f"larger split."
+                )
+
         raw_pos = list(pos_texts)
         raw_neg = list(neg_texts)
 
@@ -298,7 +308,14 @@ class LabeledDataset:
             )
         """
         if isinstance(source, tuple):
-            name, config = source if len(source) == 2 else (source[0], None)
+            if len(source) == 2:
+                name, config = source
+            elif len(source) == 1:
+                name, config = source[0], None
+            else:
+                raise ValueError(
+                    f"source tuple must be (name,) or (name, config), got {source!r}"
+                )
         else:
             name, config = source, None
 
