@@ -159,9 +159,7 @@ class TestLogitLensStep:
         or a wrong projection, which a shape/sum-to-one check cannot.
         """
         prompts = ["hello world", "good world"]
-        result = Pipeline(
-            [LoadPrompts(prompts), LogitLens(model)]
-        ).run()["logit_lens"]
+        result = Pipeline([LoadPrompts(prompts), LogitLens(model)]).run()["logit_lens"]
 
         true_logits = model.logits(prompts)  # [B, S, V], the model's real output
         true_pred = true_logits.argmax(dim=-1)  # [B, S]

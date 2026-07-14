@@ -282,21 +282,39 @@ class TestLogitAttributionGemmaNorm:
         from murano.model import MuranoModel
 
         vocab = {
-            "<pad>": 0, "<s>": 1, "</s>": 2, "<unk>": 3,
-            "hello": 4, "world": 5, "good": 6, "bad": 7,
+            "<pad>": 0,
+            "<s>": 1,
+            "</s>": 2,
+            "<unk>": 3,
+            "hello": 4,
+            "world": 5,
+            "good": 6,
+            "bad": 7,
         }
         path = Path(tmp_path_factory.mktemp("tiny_gemma2"))
         tok = Tokenizer(WordLevel(vocab=dict(vocab), unk_token="<unk>"))
         tok.pre_tokenizer = Whitespace()
         PreTrainedTokenizerFast(
-            tokenizer_object=tok, unk_token="<unk>", pad_token="<pad>",
-            bos_token="<s>", eos_token="</s>", model_max_length=64,
+            tokenizer_object=tok,
+            unk_token="<unk>",
+            pad_token="<pad>",
+            bos_token="<s>",
+            eos_token="</s>",
+            model_max_length=64,
         ).save_pretrained(path)
         config = Gemma2Config(
-            vocab_size=len(vocab), hidden_size=32, intermediate_size=64,
-            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
-            head_dim=8, max_position_embeddings=64, sliding_window=64,
-            pad_token_id=0, bos_token_id=1, eos_token_id=2,
+            vocab_size=len(vocab),
+            hidden_size=32,
+            intermediate_size=64,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=8,
+            max_position_embeddings=64,
+            sliding_window=64,
+            pad_token_id=0,
+            bos_token_id=1,
+            eos_token_id=2,
         )
         torch.manual_seed(0)
         Gemma2ForCausalLM(config).save_pretrained(path)

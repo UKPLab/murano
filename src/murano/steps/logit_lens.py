@@ -144,7 +144,9 @@ class LogitLens(Step):
                 if isinstance(output, tuple):
                     output = output[0]
                 # output: [n_inputs, seq, d_model]; project to vocab.
-                probs = softmax(self.model.project_on_vocab(output), dim=-1).detach().cpu()
+                probs = (
+                    softmax(self.model.project_on_vocab(output), dim=-1).detach().cpu()
+                )
                 mp, pt = probs.max(dim=-1)
                 layer_max.append(mp)
                 layer_pred.append(pt)

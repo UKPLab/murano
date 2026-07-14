@@ -424,7 +424,10 @@ def load_logit_attribution(path: str | Path) -> Any:
     per_example = (
         None
         if raw_per_example is None
-        else {node: [_restore(x) for x in values] for node, values in raw_per_example.items()}
+        else {
+            node: [_restore(x) for x in values]
+            for node, values in raw_per_example.items()
+        }
     )
 
     return LogitAttributionResult(
