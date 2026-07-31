@@ -5,6 +5,31 @@ from murano.steps.load import Load
 from murano.steps.prompts import LoadPrompts
 from murano.steps.paired import LoadPaired
 from murano.steps.record import Record
+from murano.steps.gradients import (
+    GradientStore,
+    LoadRollouts,
+    RecordGradients,
+    RolloutBatch,
+)
+from murano.steps.gfc import (
+    GFCOperator,
+    GFCOperatorResult,
+    background_subtract,
+    marginal,
+    read_directions,
+    pairing_operator,
+    per_position_overlap,
+    permutation_floor,
+    pairing_overlap,
+)
+from murano.steps.gsae import (
+    CENSUS_CLASSES,
+    GSAE,
+    classify_features,
+    firing_rates,
+    normalized_gradient_inputs,
+    promoted_tokens,
+)
 from murano.steps.save import Save
 from murano.steps.train import SteeringVector
 from murano.steps.intervene import Intervene
@@ -55,6 +80,25 @@ __all__ = [
     "LoadPrompts",
     "LoadPaired",
     "Record",
+    "RolloutBatch",
+    "LoadRollouts",
+    "GradientStore",
+    "RecordGradients",
+    "GFCOperator",
+    "GFCOperatorResult",
+    "read_directions",
+    "marginal",
+    "background_subtract",
+    "pairing_operator",
+    "pairing_overlap",
+    "permutation_floor",
+    "per_position_overlap",
+    "CENSUS_CLASSES",
+    "GSAE",
+    "classify_features",
+    "firing_rates",
+    "normalized_gradient_inputs",
+    "promoted_tokens",
     "Save",
     "SteeringVector",
     "Intervene",
