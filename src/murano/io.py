@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, Callable
@@ -1134,6 +1135,29 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "n_labeled": len(labels.feat_ids),
         }
 
+    def serialize_fega(
+        key: str,
+        artifact: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        """Persist one typed FEGA phase artifact without changing its tensors."""
+        # Reuse PyTorch's trusted-local dataclass serialization used by checkpoints.
+        path = out / "fega" / f"{key}.pt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(artifact, path)
+        features = getattr(artifact, "features", None)
+        feature_ids = getattr(artifact, "feature_ids", ())
+        metadata[key] = {
+            "type": type(artifact).__name__,
+            "file": str(path.relative_to(out)),
+            "analysis_id": getattr(artifact, "analysis_id", ""),
+            "n_features": (
+                len(features) if isinstance(features, dict) else len(feature_ids)
+            ),
+        }
+
     register_artifact_serializer(registry, PromptBatch, serialize_prompts)
     register_artifact_serializer(registry, SteeringResult, serialize_steering)
     register_artifact_serializer(registry, GenerationComparison, serialize_generations)
@@ -1160,6 +1184,20 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     )
     register_artifact_serializer(registry, SAEFeatureExamples, serialize_sae_examples)
     register_artifact_serializer(registry, SAEFeatureLabels, serialize_sae_labels)
+    fega_artifacts = sys.modules.get("murano.fega.artifacts")
+    if fega_artifacts is not None:
+        for name in (
+            "FEGADataPrepResult",
+            "FEGAEffectStore",
+            "FEGAGeometryResult",
+            "FEGAVMFResult",
+            "FEGAStabilityResult",
+            "FEGAReportingResult",
+            "FEGAVisualizationResult",
+        ):
+            register_artifact_serializer(
+                registry, getattr(fega_artifacts, name), serialize_fega
+            )
     return registry
 
 

@@ -526,6 +526,17 @@ class MuranoModel:
         """
         return self._lm.model
 
+    @property
+    def raw_model(self):
+        """Underlying Hugging Face causal-LM module used for native hooks.
+
+        Unlike :attr:`hf_model`, which exposes nnterp's standardized base-model
+        view, this module includes the output embedding. FEGA uses it only for
+        source-equivalent raw forward hooks at the residual and readout edges.
+        """
+        # Return the exact module nnsight dispatches without wrapping its forward.
+        return self._lm._model
+
     def _coerce_texts(self, text: str | Sequence[str]) -> tuple[list[str], bool]:
         if isinstance(text, str):
             return [text], True

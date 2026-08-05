@@ -54,6 +54,11 @@ class ModelBackend(Protocol):
     tokenizer: Any
     hf_model: Any
 
+    @property
+    def raw_model(self) -> Any:
+        """Underlying causal-LM module, including its output embedding."""
+        ...
+
     def layer(self, idx: int) -> Any:
         """Return the module proxy for decoder layer ``idx``."""
         ...

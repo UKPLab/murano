@@ -1,0 +1,49 @@
+{
+  "family": "axis_or_antipodal",
+  "feature_id": 14513,
+  "rank": 1,
+  "source_metrics": {
+    "color": "#ff7f0e",
+    "evidence_status": "unavailable",
+    "family_metrics": {
+      "b_axis": 0.3157894736842105,
+      "c_ray": 0.03537044530185146,
+      "n_valid": 19.0,
+      "s_span_1": 0.8437636159400067,
+      "selected_k": null
+    },
+    "feature_id": 14513,
+    "label_confidence": "unstable",
+    "m_median": 90.01888275146484,
+    "n_valid": 19.0,
+    "primary_label": "axis_or_antipodal",
+    "projection": {
+      "axis_display_sign_flipped": true,
+      "mode_coloring": null,
+      "projection_2d_display_kind": "scatter_2d",
+      "projection_2d_display_transform": "none",
+      "projection_2d_explained_ratios": [
+        0.843763615940051,
+        0.0549718141523516
+      ],
+      "projection_2d_kind": "uncentered_logit_equivalent",
+      "residual_selected_k": null,
+      "sphere_explained_ratios": [
+        0.843763615940051,
+        0.0549718141523516,
+        0.022600451896738774
+      ],
+      "sphere_kind": "uncentered_logit_equivalent"
+    },
+    "secondary_flags": [
+      "long_tail_spectrum",
+      "lowD_candidate_blocked",
+      "residual_selected_k",
+      "selected_family_evidence_unavailable",
+      "selected_family_unstable",
+      "span_selected_k"
+    ],
+    "terminal_reason": null
+  },
+  "source_tag": "standard_new_primary"
+}

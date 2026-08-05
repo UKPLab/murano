@@ -1,0 +1,131 @@
+---
+layout: ../../layouts/ReproLayout.astro
+title: "Sparse Autoencoders Encode Both Concepts and Functions"
+description: "An executable Murano demonstration of Feature-Effect Geometry Analysis, with active rerenders of compact source-derived geometry."
+---
+
+<div class="mc-header">
+  <a href="/murano/reproductions" class="mc-back">← Back to gallery</a>
+
+  <div class="mc-badges">
+    <span class="badge badge--venue">arXiv 2026</span>
+    <span class="badge badge--tag">feature effects</span>
+    <span class="badge badge--tag">SAE</span>
+    <span class="badge badge--tag">geometry</span>
+  </div>
+
+  <h1 class="mc-title">
+    Sparse Autoencoders Encode Both Concepts and Functions: The Downstream Geometry of Feature Effects
+  </h1>
+
+  <p class="mc-authors">
+    Phu Gia Hoang, Anwoy Chatterjee, Tanmoy Chakraborty, Iryna Gurevych, Subhabrata Dutta
+  </p>
+
+  <div class="mc-actions">
+    <a href="https://github.com/UKPLab/murano/blob/main/notebooks/reproductions/hoang2026_feature_effect_geometry.ipynb" class="btn btn--primary" target="_blank" rel="noopener">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      View executed notebook
+    </a>
+    <a href="https://arxiv.org/abs/2607.24645" class="btn btn--outline" target="_blank" rel="noopener">arXiv</a>
+    <a href="https://github.com/UKPLab/FEGA" class="btn btn--outline" target="_blank" rel="noopener">Original code</a>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<article class="mc-body">
+
+## TL;DR
+
+Feature-Effect Geometry Analysis (FEGA) asks whether removing the same active sparse-autoencoder feature has a consistent output effect across contexts. The notebook runs all six FEGA analysis phases plus Murano visualization for Gemma 2 2B feature 19403 on 24 authored city–country prompts. It then actively rerenders compact source-derived geometry for every reported family. The live run is a small demonstration, not a reproduction of the paper's experiments.
+
+## Abstract
+
+Activation descriptions do not guarantee that an SAE feature has one reusable causal effect. Hoang et al. instead remove the same active latent in many contexts, collect the changes in output-logit space, and study the geometry of that effect cloud. FEGA distinguishes rays, axes, low-dimensional subspaces, multiple directional modes, and diffuse geometry. The paper reports that clean one-dimensional effects are uncommon: value-like features tend to be more structured, while context-dependent pointer-like features are usually diffuse.
+
+<hr class="divider" />
+
+## Running FEGA with Murano
+
+The notebook uses `google/gemma-2-2b`, the standard width-2pow16 dictionary-learning SAE at residual layer 12, and one feature that is active on all 24 authored prompts. Feature 19403 is not presented as a paper-selected feature.
+
+### Step 1: Define the intervention
+
+For each prompt, Murano records the model readout after replacing the target residual with the complete SAE reconstruction. It then decodes the same latent vector with feature 19403 set to zero. The FEGA effect is `ablated - baseline` at the input to the output embedding. Every authored example targets the final token of a prompt such as `"city: Paris, country:"`.
+
+### Step 2: Run the analysis and visualization phases
+
+`fega_steps(phases="all")` runs data preparation, effect collection, geometry metrics, dense CPU vMF fitting, stability checks, geometry reporting, and visualization in dependency order. A list of phases can be supplied instead; Murano loads required checkpoints explicitly and does not silently rerun omitted phases.
+
+```python
+results = Pipeline([
+    LoadPrompts(prompts),
+    *fega_steps(
+        model,
+        release=SAE_REPO,
+        sae_id=SAE_ID,
+        sae_model=sae,
+        feature_ids=[FEATURE_ID],
+        phases="all",
+        batch_size=len(prompts),
+        max_contexts=len(prompts),
+        n_jobs=1,
+        top_k_per_family=1,
+        figures=("atlas", "sphere_surface", "projection_2d"),
+        output_dir=live_directory.name,
+        dpi=120,
+    ),
+]).run()
+```
+
+### Step 3: Inspect the live result
+
+The executed notebook retained all 24 effects and assigned the authored population to `directed_ray`. The selected-family stability decision is `stable`, while the overall confidence remains `exploratory` because this is a 24-context run.
+
+| Live check | Result |
+| --- | --- |
+| Feature activation, min / median / max | 16.5 / 17.94 / 19.25 |
+| Effect magnitude, min / median / max | 144.7 / 330.9 / 895.3 |
+| Retained effects | 24 / 24 |
+| Ray concentration, `c_ray` | 0.9329 |
+| Leading-span share, `s_span(1)` | 0.9364 |
+| Selected vMF components | 3 |
+| Assignment stability | 0.9254 |
+| Family / stability / confidence | `directed_ray` / `stable` / `exploratory` |
+| Secondary flags | `lowD_candidate_blocked`, `span_selected_k` |
+| Completed stages | six analysis phases plus visualization |
+| Rendered figures | atlas, unit-sphere surface, 2D projection |
+| Final notebook check | `FEGA_NOTEBOOK_OK` |
+
+### Step 4: Compare compact source geometry
+
+One feature cannot exercise every visual family. The second notebook section therefore loads compact exported arrays for eight representatives, rerenders them through Murano, and shows each copied source PNG as a labeled target. The primary standard-SAE run supplies seven families; a separately labeled Matryoshka run supplies the multi-mode example.
+
+The notebook produces one fresh atlas plus a sphere-surface and family-specific projection for every representative. The compact bundle begins after source geometry export and contains only per-feature effect-space kernels, derived coordinates, labels, metrics, and reference PNGs. It excludes prompts, model or SAE weights, full residual-space effect and Gram artifacts, and vocabulary coordinates. It cannot rerun prompt preparation, effect collection, vMF fitting, paper datasets, feature selection, or aggregate analyses.
+
+<hr class="divider" />
+
+## Scope
+
+The live section demonstrates that native Murano FEGA executes end to end on a small authored population and exposes typed results for every phase. The compact section demonstrates Murano's atlas, unit-sphere surface, and family-specific projection renderers across the source families.
+
+It does **not** reproduce the paper's RAVEL or ICL datasets, paper-selected features, model and SAE sweep, aggregate family frequencies, or value-like versus pointer-like comparison. The live `directed_ray` result applies only to feature 19403 on these 24 prompts. Source-faithfulness checks are maintained separately from this public notebook; copied source figures are visual targets, not parity evidence.
+
+<hr class="divider" />
+
+## Citation
+
+```bibtex
+@misc{hoang2026sparseautoencodersencodeconcepts,
+  title         = {Sparse Autoencoders Encode Both Concepts and Functions: The Downstream Geometry of Feature Effects},
+  author        = {Phu Gia Hoang and Anwoy Chatterjee and Tanmoy Chakraborty and Iryna Gurevych and Subhabrata Dutta},
+  year          = {2026},
+  eprint        = {2607.24645},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url           = {https://arxiv.org/abs/2607.24645},
+}
+```
+
+</article>

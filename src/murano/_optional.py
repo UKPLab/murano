@@ -24,6 +24,7 @@ EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "data": ("datasets",),
     "plot": ("plotly",),
     "sae": ("sae_lens",),
+    "fega": ("numpy", "scipy", "sklearn", "joblib", "matplotlib", "sae_lens"),
     "notebook": ("ipykernel", "nltk"),
 }
 
