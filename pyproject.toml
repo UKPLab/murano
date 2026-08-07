@@ -5,7 +5,7 @@ description = "Mechanistic interpretability pipelines for recording, steering, p
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE.txt", "THIRD_PARTY_LICENSES/*"]
+license-files = ["LICENSE", "NOTICE.txt"]
 authors = [{ name = "UKP Lab, Technische Universität Darmstadt" }]
 maintainers = [{ name = "UKP Lab, Technische Universität Darmstadt" }]
 keywords = [
@@ -105,21 +105,13 @@ plot = [
 sae = [
     "sae-lens>=6.7.0",
 ]
-fega = [
-    "numpy>=1.26",
-    "scipy>=1.13",
-    "scikit-learn>=1.5.2",
-    "joblib>=1.4",
-    "matplotlib>=3.8",
-    "sae-lens>=6.7.0",
-]
 notebook = [
     "jupyter>=1.1",
     "ipykernel>=6.29",
     "nltk>=3.9.4",
 ]
 all = [
-    "murano-interp[probe,data,plot,sae,fega,notebook]",
+    "murano-interp[probe,data,plot,sae,notebook]",
 ]
 
 [tool.hatch.version]

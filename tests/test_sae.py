@@ -179,8 +179,8 @@ class TestSAEModel:
         torch.testing.assert_close(sae.decode(codes), codes @ sae._sae.W_dec)
 
     def test_encode_and_decode_match_loaded_sae_dtype(self):
-        """Checkpointed float32 rows must work with a lower-precision SAE."""
-        # Reproduce FEGA resume's float32 inputs against bfloat16 decoder weights.
+        """Float32 inputs must work with a lower-precision SAE."""
+        # Exercise mixed model and SAE dtypes through both generic operations.
         sae = SAEModel(release="acme/sae", sae_id="layer_0/canonical")
         sae._sae = _FakeSAE(d_sae=4, d_model=3)
         sae._sae.W_dec = sae._sae.W_dec.to(torch.bfloat16)

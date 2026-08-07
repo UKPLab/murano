@@ -1,7 +1,7 @@
 ---
 layout: ../../layouts/ReproLayout.astro
 title: "Sparse Autoencoders Encode Both Concepts and Functions"
-description: "An executable Murano demonstration of Feature-Effect Geometry Analysis, with active rerenders of compact source-derived geometry."
+description: "Reproduce Feature-Effect Geometry Analysis with Murano: remove one SAE feature across prompts, recover all eight geometry families from original FEGA examples, and compare the numerical and visual results."
 ---
 
 <div class="mc-header">
@@ -23,11 +23,12 @@ description: "An executable Murano demonstration of Feature-Effect Geometry Anal
   </p>
 
   <div class="mc-actions">
-    <a href="https://github.com/UKPLab/murano/blob/main/notebooks/reproductions/hoang2026_feature_effect_geometry.ipynb" class="btn btn--primary" target="_blank" rel="noopener">
+    <a href="https://github.com/UKPLab/murano/blob/main/notebooks/reproductions/fega/hoang2026_feature_effect_geometry.ipynb" class="btn btn--primary" target="_blank" rel="noopener">
       <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       View executed notebook
     </a>
     <a href="https://arxiv.org/abs/2607.24645" class="btn btn--outline" target="_blank" rel="noopener">arXiv</a>
+    <a href="https://ukplab.github.io/FEGA/" class="btn btn--outline" target="_blank" rel="noopener">Project page</a>
     <a href="https://github.com/UKPLab/FEGA" class="btn btn--outline" target="_blank" rel="noopener">Original code</a>
   </div>
 </div>
@@ -38,79 +39,148 @@ description: "An executable Murano demonstration of Feature-Effect Geometry Anal
 
 ## TL;DR
 
-Feature-Effect Geometry Analysis (FEGA) asks whether removing the same active sparse-autoencoder feature has a consistent output effect across contexts. The notebook runs all six FEGA analysis phases plus Murano visualization for Gemma 2 2B feature 19403 on 24 authored city–country prompts. It then actively rerenders compact source-derived geometry for every reported family. The live run is a small demonstration, not a reproduction of the paper's experiments.
+An SAE feature can activate on a recognizable concept without having one consistent effect on the model. **Feature-Effect Geometry Analysis (FEGA)** tests this by removing the same feature from many prompts and comparing how the model's vocabulary scores change. If those changes point in one direction, the feature behaves consistently; if they split into several directions or spread broadly, its effect depends on context. This reproduction uses Murano to collect effects for one Gemma 2 feature, then recovers all eight FEGA geometry families from examples produced by the original experiments. The numerical results match the original outputs, and the page compares newly generated 3D sphere and 2D projection plots with the original figures.
 
 ## Abstract
 
-Activation descriptions do not guarantee that an SAE feature has one reusable causal effect. Hoang et al. instead remove the same active latent in many contexts, collect the changes in output-logit space, and study the geometry of that effect cloud. FEGA distinguishes rays, axes, low-dimensional subspaces, multiple directional modes, and diffuse geometry. The paper reports that clean one-dimensional effects are uncommon: value-like features tend to be more structured, while context-dependent pointer-like features are usually diffuse.
+> The wide-scale use of sparse autoencoders (SAEs) as interpretability tools is limited by inconsistent links between SAE features and model behavior. Features with clear activation descriptions may have weak or unexpected causal effects; steering can vary across prompts or oppose the intended direction; and activation-based feature selection can miss features that produce the desired output change. Prior work has studied feature geometry inside the model, where features are computed. We instead study the geometry of changes in model logits caused by feature interventions. We introduce Feature-Effect Geometry Analysis (FEGA), an unsupervised framework that removes the same active SAE feature across contexts and analyzes the resulting cloud of logit changes. Across SAE variants, consistent one-dimensional effects are rare: few features behave like reusable directions. To interpret this variation, we distinguish value-like features, tied to static information such as factual attributes, from pointer-like features, associated with context-dependent operations. Value-like features more often exhibit structured, low-dimensional effects, although these effects typically span several directions. Pointer-like features, by contrast, predominantly exhibit diffuse effects. Our results show that a feature can be interpretable and causally relevant without providing a stable direction for steering.
 
 <hr class="divider" />
 
-## Running FEGA with Murano
+## Reproducing with Murano
 
-The notebook uses `google/gemma-2-2b`, the standard width-2pow16 dictionary-learning SAE at residual layer 12, and one feature that is active on all 24 authored prompts. Feature 19403 is not presented as a paper-selected feature.
+For one prompt, FEGA runs the model twice at a selected token. The baseline uses the complete SAE reconstruction. The intervention uses the same reconstruction after setting one feature activation to zero. Their difference describes which vocabulary logits rise or fall when that feature is removed. Repeating the intervention across prompts produces a matrix whose rows are feature effects; FEGA studies the shape of those rows.
 
-### Step 1: Define the intervention
+This reproduction uses **Gemma 2 2B**, a width-65k SAE trained on the residual stream after layer 12, and feature `33760`. The live example contains 64 prompts in which that feature is active.
 
-For each prompt, Murano records the model readout after replacing the target residual with the complete SAE reconstruction. It then decodes the same latent vector with feature 19403 set to zero. The FEGA effect is `ablated - baseline` at the input to the output embedding. Every authored example targets the final token of a prompt such as `"city: Paris, country:"`.
+### Step 1: Load the model and its SAE
 
-### Step 2: Run the analysis and visualization phases
-
-`fega_steps(phases="all")` runs data preparation, effect collection, geometry metrics, dense CPU vMF fitting, stability checks, geometry reporting, and visualization in dependency order. A list of phases can be supplied instead; Murano loads required checkpoints explicitly and does not silently rerun omitted phases.
+The SAE must be attached to the layer on which it was trained. Murano loads Gemma and exposes that layer and the model's unembedding matrix, which maps final activations to vocabulary scores. The SAE wrapper supplies the encoder and decoder needed to construct both reconstructions.
 
 ```python
-results = Pipeline([
-    LoadPrompts(prompts),
-    *fega_steps(
-        model,
-        release=SAE_REPO,
-        sae_id=SAE_ID,
-        sae_model=sae,
-        feature_ids=[FEATURE_ID],
-        phases="all",
-        batch_size=len(prompts),
-        max_contexts=len(prompts),
-        n_jobs=1,
-        top_k_per_family=1,
-        figures=("atlas", "sphere_surface", "projection_2d"),
-        output_dir=live_directory.name,
-        dpi=120,
-    ),
-]).run()
+model = MuranoModel(
+    "google/gemma-2-2b",
+    dtype=torch.bfloat16,
+    attn_implementation="eager",
+)
+
+sae = DictionarySAEModel(
+    SAE_REPO,
+    SAE_ID,
+    MODEL_ID,
+    device=str(model.unembed_weight.device),
+    dtype=torch.bfloat16,
+)
 ```
 
-### Step 3: Inspect the live result
+Run the notebook from a cloned Murano repository. The live example requires a CUDA GPU and access to Hugging Face on the first run to download the Gemma and SAE checkpoints.
 
-The executed notebook retained all 24 effects and assigned the authored population to `directed_ray`. The selected-family stability decision is `stable`, while the overall confidence remains `exploratory` because this is a 24-context run.
+### Step 2: Remove one feature across 64 prompts
 
-| Live check | Result |
-| --- | --- |
-| Feature activation, min / median / max | 16.5 / 17.94 / 19.25 |
-| Effect magnitude, min / median / max | 144.7 / 330.9 / 895.3 |
-| Retained effects | 24 / 24 |
-| Ray concentration, `c_ray` | 0.9329 |
-| Leading-span share, `s_span(1)` | 0.9364 |
-| Selected vMF components | 3 |
-| Assignment stability | 0.9254 |
-| Family / stability / confidence | `directed_ray` / `stable` / `exploratory` |
-| Secondary flags | `lowD_candidate_blocked`, `span_selected_k` |
-| Completed stages | six analysis phases plus visualization |
-| Rendered figures | atlas, unit-sphere surface, 2D projection |
-| Final notebook check | `FEGA_NOTEBOOK_OK` |
+Each prompt includes the token position at which feature `33760` should be removed. `FEGADataPrep` encodes that activation and selects the feature; `FEGAComputeEffect` runs the complete and feature-removed reconstructions and records their difference. Keeping the other SAE activations fixed isolates the effect of this one feature.
 
-### Step 4: Compare compact source geometry
+```python
+results = Results()
+results[murano_keys.PROMPTS] = prompt_batch
 
-One feature cannot exercise every visual family. The second notebook section therefore loads compact exported arrays for eight representatives, rerenders them through Murano, and shows each copied source PNG as a labeled target. The primary standard-SAE run supplies seven families; a separately labeled Matryoshka run supplies the multi-mode example.
+FEGADataPrep(
+    model,
+    SAE_REPO,
+    SAE_ID,
+    [33760],
+    position=logical_targets,
+    batch_size=8,
+    sae_model=sae,
+    preselected_context_indices={33760: tuple(range(64))},
+)(results)
 
-The notebook produces one fresh atlas plus a sphere-surface and family-specific projection for every representative. The compact bundle begins after source geometry export and contains only per-feature effect-space kernels, derived coordinates, labels, metrics, and reference PNGs. It excludes prompts, model or SAE weights, full residual-space effect and Gram artifacts, and vocabulary coordinates. It cannot rerun prompt preparation, effect collection, vMF fitting, paper datasets, feature selection, or aggregate analyses.
+FEGAComputeEffect(model, batch_size=8, sae_model=sae)(results)
+effects = results[fega_keys.EFFECTS]
+```
+
+All 64 prompts produce a positive activation and a finite effect. On this prompt set, most effects point in one direction, so feature `33760` receives the `directed_ray` label. Its stability check is unsuccessful, however, so this example demonstrates the collection procedure rather than claiming that the feature has the same geometry on every prompt population.
+
+### Step 3: Recover all eight geometry families
+
+The paper searched many models, SAEs, and features. Repeating that entire search would make a repository example unnecessarily expensive, so the reproduction includes eight small effect matrices exported from the original FEGA runs—one example for each geometry family. Each row is the effect of removing one feature from one prompt.
+
+The same analysis is applied to every matrix. It measures directional alignment and dimensionality, fits a von Mises-Fisher mixture when several recurring directions may be present, checks the stability of the result, assigns a geometry family, and draws a 3D sphere and 2D projection.
+
+```python
+effect_store = build_effect_store_from_raw_cloud(
+    delta_rows,
+    feature_inputs,
+    effects.gram,
+)
+
+results = Results()
+results[fega_keys.EFFECTS] = effect_store
+config = FEGAConfig()
+
+for step in (
+    FEGAGeometryMetrics(config),
+    FEGAVMF(model, config, n_jobs=1),
+    FEGAStability(config),
+    FEGAGeometryReporting(),
+    FEGAVisualize(
+        output_dir,
+        top_k_per_family=1,
+        figures=("sphere_surface", "projection_2d"),
+    ),
+):
+    step(results)
+```
+
+### Step 4: Compare the results with the original implementation
+
+After the eight examples have been analyzed, the reproduction loads the corresponding outputs from the original FEGA implementation. It compares the final label, representative geometry measurements, directional-mixture result, and stability decision.
+
+The visual comparison uses the distances between plotted points rather than raw pixels. A 2D or 3D projection can rotate or reflect while preserving exactly the same structure; pairwise distances and directional-group membership capture what the figure means.
+
+```python
+assert reporting.primary_label == expected["expected_family"]
+assert reporting.selected_k == expected["reporting"]["selected_k"]
+
+np.testing.assert_allclose(
+    pairwise_squared_distances(new_coordinates),
+    pairwise_squared_distances(original_coordinates),
+    rtol=1e-6,
+    atol=1e-6,
+)
+```
+
+<p class="aside">
+  Feature 33760 appears twice for different reasons. Its live run shows how Murano collects effects from prompts. Its saved effect matrix, produced by the original FEGA run, tests whether the geometry analysis recovers the original result.
+</p>
 
 <hr class="divider" />
 
-## Scope
+## Key results
 
-The live section demonstrates that native Murano FEGA executes end to end on a small authored population and exposes typed results for every phase. The compact section demonstrates Murano's atlas, unit-sphere surface, and family-specific projection renderers across the source families.
+| Feature | Original FEGA family | This reproduction | Selected k |
+| --- | --- | --- | --- |
+| `33760` | `directed_ray` | `directed_ray` | — |
+| `14513` | `axis_or_antipodal` | `axis_or_antipodal` | — |
+| `54361` | `global_2D_directional_subspace` | `global_2D_directional_subspace` | `2` |
+| `32542` | `global_kD_directional_subspace` | `global_kD_directional_subspace` | `8` |
+| `59154` | `oneD_diffuse` | `oneD_diffuse` | — |
+| `19224` | `residual_lowD_k` | `residual_lowD_k` | `4` |
+| `34636` | `unresolved_high_dimensional_or_diffuse` | `unresolved_high_dimensional_or_diffuse` | — |
+| `1425` (Matryoshka) | `multi_mode_directional_geometry` | `multi_mode_directional_geometry` | — |
 
-It does **not** reproduce the paper's RAVEL or ICL datasets, paper-selected features, model and SAE sweep, aggregate family frequencies, or value-like versus pointer-like comparison. The live `directed_ray` result applies only to feature 19403 on these 24 prompts. Source-faithfulness checks are maintained separately from this public notebook; copied source figures are visual targets, not parity evidence.
+All eight examples recover the original label, representative geometry measurements, directional-mixture result, and stability decision. The 16 newly generated figures—one sphere and one 2D projection per feature—also preserve the point and group structure of the original FEGA figures.
+
+The live run of feature `33760` retains all 64 prompts and reports `directed_ray`, with no selected `k` and an unstable stability result.
+
+<p class="aside">
+  The live example uses batches of eight. Changing the batch grouping can slightly change reduced-precision model activations and may change the resulting geometry, so batch size eight should be kept when repeating the displayed live result.
+</p>
+
+<p class="aside">
+  This reproduction reruns one model intervention and the complete geometry analysis for eight original examples. It does not repeat the paper's dataset construction, model-wide feature search, full model and SAE sweeps, aggregate prevalence results, or complete feature atlas.
+</p>
+
+The [reproduction README](https://github.com/UKPLab/murano/blob/main/notebooks/reproductions/fega/README.md) lists the runtime requirements, included files, source information, and licenses.
 
 <hr class="divider" />
 

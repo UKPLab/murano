@@ -14,19 +14,6 @@ except PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0+unknown"
 
 if TYPE_CHECKING:
-    from murano.fega.dictionary_sae import DictionarySAEModel as DictionarySAEModel
-    from murano.fega.artifacts import (
-        FEGADataPrepResult as FEGADataPrepResult,
-        FEGAEffectStore as FEGAEffectStore,
-        FEGAFeatureEffects as FEGAFeatureEffects,
-        FEGAGeometryResult as FEGAGeometryResult,
-        FEGAReportingResult as FEGAReportingResult,
-        FEGAStabilityResult as FEGAStabilityResult,
-        FEGAVMFResult as FEGAVMFResult,
-        FEGAVisualizationResult as FEGAVisualizationResult,
-    )
-    from murano.fega.config import FEGAConfig as FEGAConfig
-    from murano.fega.contexts import FEGAContext as FEGAContext
     from murano.artifacts import (
         ComponentSelection,
         MetricScore,
@@ -82,16 +69,6 @@ if TYPE_CHECKING:
         top_sae_features_for_tokens,
         top_sae_features_per_prompt,
     )
-    from murano.steps.fega import (
-        FEGAComputeEffect as FEGAComputeEffect,
-        FEGADataPrep as FEGADataPrep,
-        FEGAGeometryMetrics as FEGAGeometryMetrics,
-        FEGAGeometryReporting as FEGAGeometryReporting,
-        FEGAStability as FEGAStability,
-        FEGAVisualize as FEGAVisualize,
-        FEGAVMF as FEGAVMF,
-        fega_steps as fega_steps,
-    )
 
 
 _LAZY_ATTRS = {
@@ -128,20 +105,6 @@ _LAZY_ATTRS = {
     "SAEEncode": ("murano.steps.sae", "SAEEncode"),
     "SAEActivationStore": ("murano.steps.sae", "SAEActivationStore"),
     "SAEModel": ("murano.steps.sae", "SAEModel"),
-    "DictionarySAEModel": ("murano.fega.dictionary_sae", "DictionarySAEModel"),
-    "FEGAConfig": ("murano.fega.config", "FEGAConfig"),
-    "FEGAContext": ("murano.fega.contexts", "FEGAContext"),
-    "FEGADataPrepResult": ("murano.fega.artifacts", "FEGADataPrepResult"),
-    "FEGAEffectStore": ("murano.fega.artifacts", "FEGAEffectStore"),
-    "FEGAFeatureEffects": ("murano.fega.artifacts", "FEGAFeatureEffects"),
-    "FEGAGeometryResult": ("murano.fega.artifacts", "FEGAGeometryResult"),
-    "FEGAVMFResult": ("murano.fega.artifacts", "FEGAVMFResult"),
-    "FEGAStabilityResult": ("murano.fega.artifacts", "FEGAStabilityResult"),
-    "FEGAReportingResult": ("murano.fega.artifacts", "FEGAReportingResult"),
-    "FEGAVisualizationResult": (
-        "murano.fega.artifacts",
-        "FEGAVisualizationResult",
-    ),
     "SAETopActivations": ("murano.steps.sae", "SAETopActivations"),
     "sae_steer": ("murano.steps.sae", "sae_steer"),
     "top_sae_features_for_tokens": ("murano.steps.sae", "top_sae_features_for_tokens"),
@@ -149,14 +112,6 @@ _LAZY_ATTRS = {
     "SAEFeatureExamples": ("murano.steps.sae", "SAEFeatureExamples"),
     "SAEFeatureLabel": ("murano.steps.sae", "SAEFeatureLabel"),
     "SAEFeatureLabels": ("murano.steps.sae", "SAEFeatureLabels"),
-    "FEGADataPrep": ("murano.steps.fega", "FEGADataPrep"),
-    "FEGAComputeEffect": ("murano.steps.fega", "FEGAComputeEffect"),
-    "FEGAGeometryMetrics": ("murano.steps.fega", "FEGAGeometryMetrics"),
-    "FEGAVMF": ("murano.steps.fega", "FEGAVMF"),
-    "FEGAStability": ("murano.steps.fega", "FEGAStability"),
-    "FEGAGeometryReporting": ("murano.steps.fega", "FEGAGeometryReporting"),
-    "FEGAVisualize": ("murano.steps.fega", "FEGAVisualize"),
-    "fega_steps": ("murano.steps.fega", "fega_steps"),
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
     "load_logit_lens": ("murano.io", "load_logit_lens"),

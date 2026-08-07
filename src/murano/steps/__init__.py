@@ -1,8 +1,5 @@
 """Murano pipeline steps."""
 
-from importlib import import_module
-from typing import TYPE_CHECKING, Any
-
 from murano.steps.base import Step
 from murano.steps.load import Load
 from murano.steps.prompts import LoadPrompts
@@ -52,29 +49,6 @@ from murano.steps.metrics import (
     RecoveredMetricStep,
 )
 
-if TYPE_CHECKING:
-    from murano.steps.fega import (
-        FEGAComputeEffect as FEGAComputeEffect,
-        FEGADataPrep as FEGADataPrep,
-        FEGAGeometryMetrics as FEGAGeometryMetrics,
-        FEGAGeometryReporting as FEGAGeometryReporting,
-        FEGAStability as FEGAStability,
-        FEGAVisualize as FEGAVisualize,
-        FEGAVMF as FEGAVMF,
-        fega_steps as fega_steps,
-    )
-
-_FEGA_ATTRS = {
-    "FEGADataPrep",
-    "FEGAComputeEffect",
-    "FEGAGeometryMetrics",
-    "FEGAVMF",
-    "FEGAStability",
-    "FEGAGeometryReporting",
-    "FEGAVisualize",
-    "fega_steps",
-}
-
 __all__ = [
     "Step",
     "Load",
@@ -121,13 +95,3 @@ __all__ = [
     "AnswerRankStep",
     "RecoveredMetricStep",
 ]
-
-
-def __getattr__(name: str) -> Any:
-    """Lazily expose FEGA steps without making its extra a core dependency."""
-    # Keep the existing eager core-step imports while deferring only the optional app.
-    if name not in _FEGA_ATTRS:
-        raise AttributeError(f"module 'murano.steps' has no attribute {name!r}")
-    value = getattr(import_module("murano.steps.fega"), name)
-    globals()[name] = value
-    return value

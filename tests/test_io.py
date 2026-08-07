@@ -185,25 +185,6 @@ def test_save_warns_on_unregistered_artifact(tmp_path, caplog):
     assert not (tmp_path / "mystery.pt").exists()
 
 
-def test_save_preserves_typed_fega_artifacts(tmp_path):
-    """Standard Results.save must not silently drop native FEGA phase outputs."""
-    # Save one compact phase result through the existing serializer registry.
-    from murano import keys
-    from murano.fega.artifacts import FEGAGeometryResult
-
-    artifact = FEGAGeometryResult({}, analysis_id="analysis-1")
-    results = Results()
-    results[keys.FEGA_GEOMETRY] = artifact
-    save_results(results, output_dir=str(tmp_path))
-
-    # The trusted-local payload and metadata retain the phase type and identity.
-    path = tmp_path / "fega" / f"{keys.FEGA_GEOMETRY}.pt"
-    loaded = torch.load(path, weights_only=False)
-    assert loaded == artifact
-    metadata = json.loads((tmp_path / "metadata.json").read_text())
-    assert metadata[keys.FEGA_GEOMETRY]["analysis_id"] == "analysis-1"
-
-
 def test_save_does_not_warn_on_dataset_or_transient(tmp_path, caplog):
     from pathlib import Path
 

@@ -9,10 +9,6 @@ file for the full license text.
 -------------------------------------------------------------------------------
 Third party legal information
 
-Murano's dense vMF implementation adapts portions of spherecluster's
-von-Mises--Fisher mixture implementation. See
-THIRD_PARTY_LICENSES/spherecluster-MIT.txt for its license and attribution.
-
 Murano also depends on the following open-source projects, which are installed
 separately (via pip) and remain under their own licenses. Refer to each
 project's own distribution for the full license text:

@@ -27,14 +27,6 @@ SWEEP: Final = "sweep"
 METRIC: Final = "metric"
 WEIGHT_ABLATION: Final = "weight_ablation"
 OUTPUT_DIR: Final = "output_dir"
-FEGA_DATA_PREP: Final = "fega_data_prep"
-FEGA_EFFECTS: Final = "fega_effects"
-FEGA_GEOMETRY: Final = "fega_geometry"
-FEGA_VMF: Final = "fega_vmf"
-FEGA_STABILITY: Final = "fega_stability"
-FEGA_REPORTING: Final = "fega_reporting"
-FEGA_VISUALIZATION: Final = "fega_visualization"
-
 # Default base directory (relative to the current working directory) for saved
 # artifacts, shared by the Save step, Results.save, and the Plot step so they
 # all write into one predictable tree.
