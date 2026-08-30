@@ -145,6 +145,11 @@ class _FakeSAE:
     def encode(self, residual: torch.Tensor) -> torch.Tensor:
         return residual.new_zeros(*residual.shape[:-1], self.cfg.d_sae)
 
+    def decode(self, activations: torch.Tensor) -> torch.Tensor:
+        """Decode fake activations through the stored decoder matrix."""
+        # Match the public sae-lens decode shape without loading any weights.
+        return activations @ self.W_dec
+
 
 class TestSAEModel:
     """SAEModel contract; loading is mocked to avoid HF downloads."""
@@ -166,6 +171,23 @@ class TestSAEModel:
         sae._sae = _FakeSAE()
         out = sae.encode(torch.zeros(2, 3, 32))
         assert out.shape == (2, 3, 16)
+
+    def test_decode_delegates_to_loaded_sae(self):
+        sae = SAEModel(release="acme/sae", sae_id="layer_0/canonical")
+        sae._sae = _FakeSAE(d_sae=4, d_model=3)
+        codes = torch.arange(8, dtype=torch.float32).reshape(2, 4)
+        torch.testing.assert_close(sae.decode(codes), codes @ sae._sae.W_dec)
+
+    def test_encode_and_decode_match_loaded_sae_dtype(self):
+        """Float32 inputs must work with a lower-precision SAE."""
+        # Exercise mixed model and SAE dtypes through both generic operations.
+        sae = SAEModel(release="acme/sae", sae_id="layer_0/canonical")
+        sae._sae = _FakeSAE(d_sae=4, d_model=3)
+        sae._sae.W_dec = sae._sae.W_dec.to(torch.bfloat16)
+        residual = torch.zeros(2, 3, dtype=torch.float32)
+        codes = torch.arange(8, dtype=torch.float32).reshape(2, 4)
+        assert sae.encode(residual).dtype == torch.bfloat16
+        assert sae.decode(codes).dtype == torch.bfloat16
 
     def test_load_is_cached(self):
         # Once _sae is set, subsequent calls reuse it without re-loading.

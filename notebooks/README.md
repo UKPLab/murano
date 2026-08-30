@@ -101,3 +101,5 @@ application notebooks.
   — the linear structure of truth in Llama-2-13B.
 - [`reproductions/todd2024_function_vectors.ipynb`](reproductions/todd2024_function_vectors.ipynb)
   — function vectors in GPT-J-6B.
+- [`reproductions/hoang2026_feature_effect_geometry.ipynb`](reproductions/fega/hoang2026_feature_effect_geometry.ipynb) 
+  — Feature Effect Geometry Analysis of Gemma-2-2B SAE features.

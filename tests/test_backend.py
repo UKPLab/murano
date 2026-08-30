@@ -195,6 +195,12 @@ class TestModelBackendBehavior:
     def test_hf_model_is_underlying(self, tiny_model):
         assert tiny_model.hf_model is tiny_model._lm.model
 
+    def test_raw_model_includes_output_embedding(self, tiny_model):
+        """Expose the complete causal LM for notebook-local custom analyses."""
+        # The generic accessor must retain the output embedding omitted by hf_model.
+        assert tiny_model.raw_model is tiny_model._lm._model
+        assert tiny_model.raw_model.get_output_embeddings() is not None
+
     def test_generate_with_hooks_returns_str(self, tiny_model):
         out = tiny_model.generate_with_hooks(
             "hello world",

@@ -527,8 +527,26 @@ class SAEModel:
 
     def encode(self, residual: Tensor) -> Tensor:
         """Encode residual ``[N, seq, d_model]`` to SAE codes ``[N, seq, n_features]``."""
+        # Match the loaded SAE weights so mixed model/SAE dtypes remain valid.
         self._ensure_loaded()
-        return self._sae.encode(residual.to(self.device))
+        return self._sae.encode(
+            residual.to(device=self.device, dtype=self._sae.W_dec.dtype)
+        )
+
+    def decode(self, activations: Tensor) -> Tensor:
+        """Decode SAE activations back into the model activation space.
+
+        Args:
+            activations: SAE codes shaped ``[..., n_features]``.
+
+        Returns:
+            Reconstructed activations shaped ``[..., d_model]`` on the SAE device.
+        """
+        # Match the loaded decoder dtype, then preserve release-specific decoding.
+        self._ensure_loaded()
+        return self._sae.decode(
+            activations.to(device=self.device, dtype=self._sae.W_dec.dtype)
+        )
 
     def feature_direction(self, feature_id: int) -> Tensor:
         """Decoder direction (``[d_model]``) for a single SAE feature.

@@ -45,6 +45,7 @@ class ModelBackend(Protocol):
         head_dim: Per-head width (``d_model // n_heads``).
         tokenizer: The model's tokenizer.
         hf_model: Underlying HuggingFace module, for weight-level access.
+        raw_model: Complete causal-LM module, including its output embedding.
     """
 
     n_layers: int
@@ -53,6 +54,11 @@ class ModelBackend(Protocol):
     head_dim: int
     tokenizer: Any
     hf_model: Any
+
+    @property
+    def raw_model(self) -> Any:
+        """Return the complete causal-LM module for native torch hooks."""
+        ...
 
     def layer(self, idx: int) -> Any:
         """Return the module proxy for decoder layer ``idx``."""

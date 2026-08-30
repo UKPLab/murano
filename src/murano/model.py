@@ -526,6 +526,17 @@ class MuranoModel:
         """
         return self._lm.model
 
+    @property
+    def raw_model(self) -> Any:
+        """Underlying Hugging Face causal-LM module.
+
+        Unlike :attr:`hf_model`, which exposes nnterp's standardized base-model
+        view, this returns the complete causal-LM module, including its output
+        embedding.
+        """
+        # Return the exact module nnsight dispatches without wrapping its forward.
+        return self._lm._model
+
     def _coerce_texts(self, text: str | Sequence[str]) -> tuple[list[str], bool]:
         if isinstance(text, str):
             return [text], True

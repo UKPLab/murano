@@ -9,10 +9,9 @@ file for the full license text.
 -------------------------------------------------------------------------------
 Third party legal information
 
-Murano does not bundle or redistribute third-party source code. It depends on
-the following open-source projects, which are installed separately (via pip) and
-remain under their own licenses. Refer to each project's own distribution for
-the full license text:
+Murano also depends on the following open-source projects, which are installed
+separately (via pip) and remain under their own licenses. Refer to each
+project's own distribution for the full license text:
 
   - nnsight                     (https://github.com/ndif-team/nnsight)
   - nnterp                      (https://github.com/Butanium/nnterp)
@@ -26,4 +25,3 @@ the full license text:
   - seaborn                     (https://github.com/mwaskom/seaborn)
   - plotly                      (https://github.com/plotly/plotly.py)
   - sae-lens                    (https://github.com/jbloomAus/SAELens)
-

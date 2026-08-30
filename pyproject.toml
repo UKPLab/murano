@@ -5,7 +5,7 @@ description = "Mechanistic interpretability pipelines for recording, steering, p
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE.txt"]
 authors = [{ name = "UKP Lab, Technische Universität Darmstadt" }]
 maintainers = [{ name = "UKP Lab, Technische Universität Darmstadt" }]
 keywords = [
@@ -62,8 +62,12 @@ packages = ["src/murano"]
 # distribution. exclude takes precedence, so this also drops the nested
 # node_modules that the docs .gitignore hides but the sdist builder does not.
 exclude = [
+    "/.codex",
+    "/.omx",
+    "/AGENTS.md",
     "/docs",
     "/notebooks",
+    "/tasks",
     "**/node_modules",
 ]
 

@@ -37,14 +37,18 @@ We do not expect bit-exact reproductions. We do expect intellectual honesty: if 
 
    Use a short slug that identifies the paper, e.g. `repro/todd-2024-function-vectors` or `repro/tmlr2026-shape-happens`.
 
-2. **Add your notebook**
+2. **Add your notebook or bundle**
 
-   Drop your `.ipynb` into `notebooks/reproductions/` with a descriptive filename:
+   Add a single `.ipynb` to `notebooks/reproductions/`, or use a nested directory
+   when the reproduction needs local method code, artifacts, or license files:
 
    <FileTree>
    - notebooks/
      - reproductions/
        - **your_paper_slug.ipynb**
+       - your_paper_slug/
+         - **README.md**
+         - **your_paper_slug.ipynb**
    </FileTree>
 
    The notebook should:
@@ -52,6 +56,9 @@ We do not expect bit-exact reproductions. We do expect intellectual honesty: if 
    - Install dependencies in the first code cell (`!pip install murano-interp ...`)
    - Run the full experiment end-to-end without manual intervention
    - Print or plot the key results at the end
+
+   A nested bundle should include a `README.md` that states its contents,
+   dependencies, scope, provenance, and any local license information.
 
 3. **Write the gallery entry**
 
