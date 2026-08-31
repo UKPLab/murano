@@ -26,9 +26,12 @@ if TYPE_CHECKING:
     from murano.io import (
         load_activation_store,
         load_attention,
+        load_gradient_store,
         load_metric_score,
         load_labeled_activation_store,
         load_logit_lens,
+        load_gfc_operator,
+        load_gsae,
         load_sae_activations,
         load_sae_examples,
         load_sae_labels,
@@ -56,6 +59,14 @@ if TYPE_CHECKING:
     )
     from murano.steps.logit_lens import LogitLens, LogitLensResult
     from murano.steps.logits import Logits
+    from murano.steps.gradients import GradientStore, RolloutBatch
+    from murano.steps.gfc import (
+        GFCOperator,
+        GFCOperatorResult,
+        permutation_floor,
+        pairing_overlap,
+    )
+    from murano.steps.gsae import GSAE
     from murano.steps.select import SelectComponents
     from murano.steps.sae import (
         SAEActivationStore,
@@ -87,6 +98,13 @@ _LAZY_ATTRS = {
     "ComponentSelection": ("murano.artifacts", "ComponentSelection"),
     "SweepResult": ("murano.artifacts", "SweepResult"),
     "SelectComponents": ("murano.steps.select", "SelectComponents"),
+    "RolloutBatch": ("murano.steps.gradients", "RolloutBatch"),
+    "GradientStore": ("murano.steps.gradients", "GradientStore"),
+    "GFCOperator": ("murano.steps.gfc", "GFCOperator"),
+    "GFCOperatorResult": ("murano.steps.gfc", "GFCOperatorResult"),
+    "pairing_overlap": ("murano.steps.gfc", "pairing_overlap"),
+    "permutation_floor": ("murano.steps.gfc", "permutation_floor"),
+    "GSAE": ("murano.steps.gsae", "GSAE"),
     "MuranoDataset": ("murano.dataset", "MuranoDataset"),
     "LabeledDataset": ("murano.dataset", "LabeledDataset"),
     "CleanCorruptDataset": ("murano.dataset", "CleanCorruptDataset"),
@@ -122,6 +140,9 @@ _LAZY_ATTRS = {
     "load_sae_examples": ("murano.io", "load_sae_examples"),
     "load_sae_labels": ("murano.io", "load_sae_labels"),
     "load_metric_score": ("murano.io", "load_metric_score"),
+    "load_gradient_store": ("murano.io", "load_gradient_store"),
+    "load_gfc_operator": ("murano.io", "load_gfc_operator"),
+    "load_gsae": ("murano.io", "load_gsae"),
     "save_ablated_model": ("murano.io", "save_ablated_model"),
 }
 
@@ -142,6 +163,13 @@ __all__ = [
     "ComponentSelection",
     "SweepResult",
     "SelectComponents",
+    "RolloutBatch",
+    "GradientStore",
+    "GFCOperator",
+    "GFCOperatorResult",
+    "pairing_overlap",
+    "permutation_floor",
+    "GSAE",
     "MuranoDataset",
     "LabeledDataset",
     "CleanCorruptDataset",
@@ -176,6 +204,9 @@ __all__ = [
     "load_sae_examples",
     "load_sae_labels",
     "load_metric_score",
+    "load_gradient_store",
+    "load_gfc_operator",
+    "load_gsae",
     "save_ablated_model",
 ]
 

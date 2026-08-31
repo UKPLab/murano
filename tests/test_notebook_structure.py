@@ -56,6 +56,8 @@ _CAUSAL_STEPS = {
     "Probe",
     "Record",
     "RecordAttention",
+    "RecordGradients",
+    "GFCOperator",
     "SAEEncode",
     "SteeringVector",
     "WeightAblation",

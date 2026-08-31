@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from torch import Tensor
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from murano.nodes import Node
 
@@ -113,6 +113,17 @@ class ModelBackend(Protocol):
         With ``fn`` given, rewrite each target module's activation before the
         logits are read (the forward-pass analogue of ``generate_with_hooks``);
         ``per_head`` exposes the per-head activation for attention heads.
+        """
+        ...
+
+    def grad_forward(
+        self, input_ids: Tensor, layers: "Sequence[int]"
+    ) -> dict[int, Tensor]:
+        """Run a native forward pass and return live residual streams per layer.
+
+        Unlike ``forward_logits``, nothing is detached: the returned
+        ``{layer: [batch, seq, d_model]}`` block outputs stay connected to the
+        autograd graph so gradient-based steps can differentiate through them.
         """
         ...
 

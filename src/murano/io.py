@@ -1,7 +1,8 @@
 """I/O utilities: saving and loading Murano results.
 
 Security note: the ``.pt`` loaders (``load_steering``, ``load_logit_lens``,
-``load_attention``, ``load_activation_store``, and the labeled variant) call
+``load_attention``, ``load_activation_store`` and the labeled variant,
+``load_gradient_store``, ``load_gfc_operator``, and ``load_gsae``) call
 ``torch.load(..., weights_only=False)`` because the payloads hold custom objects
 (``Node`` keys, dataclasses) that the safe loader cannot reconstruct. That path
 executes arbitrary pickle, so only load artifacts you produced yourself or
@@ -773,6 +774,144 @@ def load_sae_labels(path: str | Path) -> Any:
     )
 
 
+def save_gradient_store(store: Any, path: Path) -> None:
+    """Save a GradientStore to a .pt file.
+
+    Args:
+        store: GradientStore to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "gradients": store.gradients,
+            "nll": store.nll,
+            "finite": store.finite,
+            "layer": store.layer,
+            "window": store.window,
+        },
+        path,
+    )
+    logger.info("Saved gradient store to %s", path)
+
+
+def load_gradient_store(path: str | Path) -> Any:
+    """Load a GradientStore from a .pt file.
+
+    Args:
+        path: Path to the gradient_record.pt file.
+
+    Returns:
+        GradientStore ready for downstream analyses.
+    """
+    from murano.steps.gradients import GradientStore
+
+    data = torch.load(path, weights_only=False)
+    return GradientStore(
+        gradients=data["gradients"],
+        nll=data["nll"],
+        finite=data["finite"],
+        layer=data["layer"],
+        window=data["window"],
+    )
+
+
+def save_gfc_operator(result: Any, path: Path) -> None:
+    """Save a GFCOperatorResult to a .pt file.
+
+    Args:
+        result: GFCOperatorResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "operator": result.operator,
+            "per_position": result.per_position,
+            "position_counts": result.position_counts,
+            "nll": result.nll,
+            "kept": result.kept,
+            "source_layer": result.source_layer,
+            "target_layer": result.target_layer,
+            "k": result.k,
+            "basis_seed": result.basis_seed,
+            "gradient_off": result.gradient_off,
+            "window": result.window,
+        },
+        path,
+    )
+    logger.info("Saved GFC operator to %s", path)
+
+
+def load_gfc_operator(path: str | Path) -> Any:
+    """Load a GFCOperatorResult from a .pt file.
+
+    Args:
+        path: Path to the gfc_operator.pt file.
+
+    Returns:
+        GFCOperatorResult ready for overlap comparisons.
+    """
+    from murano.steps.gfc import GFCOperatorResult
+
+    data = torch.load(path, weights_only=False)
+    return GFCOperatorResult(
+        operator=data["operator"],
+        per_position=data["per_position"],
+        position_counts=data["position_counts"],
+        nll=data["nll"],
+        kept=data["kept"],
+        source_layer=data["source_layer"],
+        target_layer=data["target_layer"],
+        k=data["k"],
+        basis_seed=data["basis_seed"],
+        gradient_off=data["gradient_off"],
+        window=data["window"],
+    )
+
+
+def save_gsae(gsae: Any, path: Path) -> None:
+    """Save a trained GSAE to a .pt file.
+
+    Args:
+        gsae: GSAE to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "w_enc": gsae.w_enc,
+            "w_dec": gsae.w_dec,
+            "b_pre": gsae.b_pre,
+            "k": gsae.k,
+            "fvu": gsae.fvu,
+        },
+        path,
+    )
+    logger.info("Saved GSAE to %s", path)
+
+
+def load_gsae(path: str | Path) -> Any:
+    """Load a trained GSAE from a .pt file.
+
+    Args:
+        path: Path to the gsae.pt file.
+
+    Returns:
+        GSAE ready for encoding and the firing-rate census.
+    """
+    from murano.steps.gsae import GSAE
+
+    data = torch.load(path, weights_only=False)
+    return GSAE(
+        w_enc=data["w_enc"],
+        w_dec=data["w_dec"],
+        b_pre=data["b_pre"],
+        k=data["k"],
+        fvu=data["fvu"],
+    )
+
+
 def save_prompts(prompt_batch: PromptBatch, path: Path) -> None:
     """Save a PromptBatch to JSON.
 
@@ -853,6 +992,9 @@ def register_artifact_serializer(
 def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     from murano.artifacts import ComponentSelection, SweepResult
     from murano.steps.attention import AttentionResult
+    from murano.steps.gradients import GradientStore
+    from murano.steps.gfc import GFCOperatorResult
+    from murano.steps.gsae import GSAE
     from murano.steps.logit_attribution import LogitAttributionResult
     from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
@@ -1134,6 +1276,52 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "n_labeled": len(labels.feat_ids),
         }
 
+    def serialize_gradient_store(
+        key: str,
+        store: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "gradient_record.pt" if key == keys.GRADIENT_RECORD else f"{key}.pt"
+        save_gradient_store(store, out / "gradients" / filename)
+        metadata[key] = {
+            "n_rollouts": len(store.gradients),
+            "n_finite": int(store.finite.sum()),
+            "layer": store.layer,
+            "window": store.window,
+        }
+
+    def serialize_gfc_operator(
+        key: str,
+        result: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "gfc_operator.pt" if key == keys.GFC_OPERATOR else f"{key}.pt"
+        save_gfc_operator(result, out / "gfc" / filename)
+        metadata[key] = {
+            "source_layer": result.source_layer,
+            "target_layer": result.target_layer,
+            "k": result.k,
+            "basis_seed": result.basis_seed,
+            "gradient_off": result.gradient_off,
+            "window": result.window,
+            "n_kept": int(result.kept.sum()) if result.kept is not None else None,
+        }
+
+    def serialize_gsae(
+        key: str,
+        gsae: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "gsae.pt" if key == keys.GSAE else f"{key}.pt"
+        save_gsae(gsae, out / "gsae" / filename)
+        metadata[key] = {"m": gsae.m, "k": gsae.k, "fvu": gsae.fvu}
+
     register_artifact_serializer(registry, PromptBatch, serialize_prompts)
     register_artifact_serializer(registry, SteeringResult, serialize_steering)
     register_artifact_serializer(registry, GenerationComparison, serialize_generations)
@@ -1160,6 +1348,9 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     )
     register_artifact_serializer(registry, SAEFeatureExamples, serialize_sae_examples)
     register_artifact_serializer(registry, SAEFeatureLabels, serialize_sae_labels)
+    register_artifact_serializer(registry, GradientStore, serialize_gradient_store)
+    register_artifact_serializer(registry, GFCOperatorResult, serialize_gfc_operator)
+    register_artifact_serializer(registry, GSAE, serialize_gsae)
     return registry
 
 
@@ -1196,6 +1387,12 @@ def save_results(
         ├── sae/                 # SAE activations + per-feature examples
         │   ├── sae_record.pt
         │   └── feature_examples.json
+        ├── gradients/           # recorded residual-stream gradients
+        │   └── gradient_record.pt
+        ├── gfc/                 # GFC routing operators
+        │   └── gfc_operator.pt
+        ├── gsae/                # trained gradient sparse autoencoders
+        │   └── gsae.pt
         └── metadata.json
 
     Args:

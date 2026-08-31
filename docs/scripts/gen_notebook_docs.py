@@ -42,6 +42,7 @@ ORDER = [
     "applications/metrics.ipynb",
     "applications/custom_pipeline.ipynb",
     "applications/weight_ablation.ipynb",
+    "applications/gradient_interpretability.ipynb",
     "applications/sae_features.ipynb",
     "applications/sae_steering.ipynb",
     "applications/sae_enrichment.ipynb",

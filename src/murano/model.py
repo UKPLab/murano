@@ -515,6 +515,62 @@ class MuranoModel:
         value = unwrap_traced(saved)
         return value.detach().float().cpu()
 
+    def grad_forward(
+        self, input_ids: Tensor, layers: Sequence[int]
+    ) -> dict[int, Tensor]:
+        """Run a native forward pass and return live residual streams per layer.
+
+        The graph-preserving counterpart of :meth:`forward_logits`: every
+        proxy-based capture path detaches its tensors, so gradient-based steps
+        (:class:`~murano.steps.gradients.RecordGradients`,
+        :class:`~murano.steps.gfc.GFCOperator`) need a forward whose
+        captured activations stay connected to the autograd graph. This runs
+        the underlying base module natively, no nnsight trace, with plain
+        forward hooks on the requested decoder layers, the same raw-module
+        seam the generation interventions use, and returns the hooked block
+        outputs without detaching. Callers take logits from the last layer's
+        residual via :meth:`project_on_vocab`, which is likewise
+        graph-preserving.
+
+        Args:
+            input_ids: ``[batch, seq]`` token ids. Pass unpadded sequences
+                (typically one rollout at a time): the native pass applies no
+                padding mask, so a padded batch would attend to pad tokens.
+            layers: Decoder layer indices whose block outputs to return.
+
+        Returns:
+            ``{layer: hidden}`` with each hidden ``[batch, seq, d_model]``
+            still attached to the autograd graph.
+
+        Raises:
+            RuntimeError: If a requested layer's forward never ran (its hook
+                captured nothing).
+        """
+        module = self.hf_model
+        base = getattr(module, "_module", module)
+        device = next(base.parameters()).device
+        stash: dict[int, Tensor] = {}
+        handles = []
+        for idx in layers:
+
+            def hook(module, inputs, output, idx=idx):
+                stash[idx] = output[0] if isinstance(output, tuple) else output
+
+            handles.append(self.raw_layer(idx).register_forward_hook(hook))
+        try:
+            with torch.enable_grad():
+                base(input_ids=input_ids.to(device), use_cache=False)
+        finally:
+            for handle in handles:
+                handle.remove()
+        missing = [idx for idx in layers if idx not in stash]
+        if missing:
+            raise RuntimeError(
+                f"grad_forward captured no output for layer(s) {missing}; "
+                f"the forward pass did not reach them."
+            )
+        return stash
+
     @property
     def hf_model(self):
         """Underlying HuggingFace module.

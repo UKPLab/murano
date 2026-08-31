@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import torch
@@ -17,6 +18,18 @@ from transformers import (
     LlamaForCausalLM,
     PreTrainedTokenizerFast,
 )
+
+if TYPE_CHECKING:
+    from murano.steps.gradients import RolloutBatch
+
+
+def toy_rollouts(n: int, length: int, prompt_len: int, seed: int) -> RolloutBatch:
+    """Deterministic fake rollouts over the tiny fixture vocab (ids 4..9)."""
+    from murano.steps.gradients import RolloutBatch
+
+    generator = torch.Generator().manual_seed(seed)
+    ids = [torch.randint(4, 10, (length,), generator=generator) for _ in range(n)]
+    return RolloutBatch(input_ids=ids, prompt_lengths=[prompt_len] * n)
 
 
 _VOCAB = {
