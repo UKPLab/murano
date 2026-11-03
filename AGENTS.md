@@ -243,7 +243,10 @@ Credit every method in three places:
 - One method per PR. Branch `agent/<issue>-<slug>` (humans: any name), opened
   against `base_branch` in `.claude/agent-loop.json` (normally `main`).
 - Conventional commits (`feat:`, `fix:`, `test:`, `docs:`).
-- Fill in `.github/PULL_REQUEST_TEMPLATE.md`, starting with `Closes #<issue>`.
+- Fill in `.github/PULL_REQUEST_TEMPLATE.md`, starting with `Closes #<issue>`,
+  using `.claude/skills/write-pr-description`: give the reviewer what the diff
+  cannot. Keep everything above the collapsed checklist under 250 words. The
+  rules are in `.claude/skills/murano-implement/SKILL.md` step 9.
 - Before pushing, all of these pass:
   ```bash
   uv run ruff format --check . && uv run ruff check .

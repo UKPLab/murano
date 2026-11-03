@@ -1,8 +1,14 @@
 Closes #
 
-### Summary
+<!-- One to three sentences: what this adds or fixes and why. A reviewer who reads only this decides whether the PR is theirs. Give the reviewer what the diff cannot; never list files or tests. -->
 
-<!-- What the PR adds or fixes, and what someone can now do that they couldn't before. Two or three sentences. -->
+### Needs a maintainer
+
+<!-- Only what a human has to decide or check: a call that could reasonably go the other way, something you could not verify, a change outside the PR's own new files. One line each, with the file or symbol. "Nothing." if empty. -->
+
+### Differences from the reference code
+
+<!-- New methods only; delete otherwise. One line each: what Murano does differently and why, in under 25 words. The detail lives in the "# Differs from" comment at that line. "None." if none. -->
 
 ### Paper and attribution
 
@@ -10,17 +16,11 @@ Closes #
 
 - Paper:
 - Reference code (repo@sha, license, adapted / oracle only):
-- Size (AGENTS.md section 1): chain / option on an existing step / preset / new step, and why
+- Size (AGENTS.md section 1): chain / option on an existing step / preset / new step
 
-### Differences from the reference code
+<details><summary>Registration checklist (AGENTS.md section 8)</summary>
 
-<!-- New methods only. One bullet per difference: what Murano does, what the reference does (file at the pinned SHA), and why. Each one also has a "# Differs from ..." comment at its line. Write "none" if there are none. -->
-
--
-
-### Registration checklist
-
-<!-- New methods only (AGENTS.md section 8). Tick each item, or write "n/a" and why. -->
+<!-- New methods only. Tick each true item. An item that does not apply stays unticked with "n/a: <reason>" on the same line. No other commentary. -->
 
 - [ ] `steps/__init__.py` export (+ `murano/__init__.py` lazy export for headline names)
 - [ ] `keys.py` constant + `tests/test_keys.py`
@@ -32,6 +32,8 @@ Closes #
 - [ ] Notebook in `ORDER` and `notebooks/README.md`, executed with outputs
 - [ ] Guide section, CHANGELOG `[Unreleased]` entry
 - [ ] Attribution block in the module docstring + `NOTICE.txt`
+
+</details>
 
 ### Checks run
 

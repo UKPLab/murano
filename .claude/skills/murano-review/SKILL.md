@@ -75,7 +75,10 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
    - **Docs, prose and attribution:** check `AGENTS.md` §10–11. Look for
      humanizer tells, notebook template compliance, whether the notebook was
      executed, the guide length, the Attribution block, NOTICE, the license
-     verdict, and the CHANGELOG bullet.
+     verdict, and the CHANGELOG bullet. Check the PR body against
+     `murano-implement` step 9: over 250 words above the checklist, a file or
+     test inventory, restated code comments, or a "Needs a maintainer" item
+     that needs no human is a must-fix.
 4. **Consolidate.** Flatten every candidate into `(file:line, claim)` pairs.
    One root cause or one fix makes one finding. The same line twice gets
    merged unless you can name two separate defects.
@@ -103,10 +106,10 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
 
 VERDICT: CHANGES_REQUESTED | READY_TO_MERGE
 
-<one sentence on what the PR does; then the problem count, or "no problems found">
+<the problem count, or "no problems found">
 
 ### Must fix
-1. `src/murano/steps/x.py:120`: <problem and consequence>. Fix: <exact change; name the helper/key/file>.
+1. `src/murano/steps/x.py:120`: <problem>. Fix: <exact change>.
 2. …
 
 ### AGENTS.md items failing
@@ -120,7 +123,10 @@ VERDICT: CHANGES_REQUESTED | READY_TO_MERGE
 - <e.g. execute notebooks/applications/x.ipynb (the agent environment had no network)>
 ```
 
-Leave out any heading that has nothing under it, except VERDICT.
+Leave out any heading that has nothing under it, except VERDICT. Each
+finding fits on one or two lines: where, what is wrong, the exact fix. Give
+the consequence only when it isn't obvious from the problem. No summary of
+the PR, no praise, no closing remarks.
 
 ## Return
 
