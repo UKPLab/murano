@@ -13,3 +13,6 @@ postponed: ["2610.41445", "2610.37157", "2610.37126", "2610.36797", "2610.31407"
 - #123 sourced: reference code is CC BY-NC (oracle-only), so the step is written from the paper; τ has no single default in the paper (0.01-0.04).
 - #124 sourced: MIT reference code (adapt-ok); plan is a new `ReadingVector` step, `SteeringVector` untouched.
 - Next tick implements the oldest sourced issue (#123) and sources #125.
+- PR #126 (#123) round 1: 13 must-fix findings (tests that can't fail, duplicate helper, padding advice, docs). Next tick revises it; the revise round rewrites the PR body under the new 250-word rule.
+- #125 sourced (MIT, pinned cf6fb23): new step plus a `Neuron` type; a hand-written Student-t quantile is planned where a normal approximation may do.
+- Subagents that check out branches run in isolated worktrees; remove them after the tick.
