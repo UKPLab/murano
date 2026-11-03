@@ -137,6 +137,11 @@ class TestInformationFlowMechanism:
         expected = torch.tensor([[0.0, 0.157894, 0.842105], [0.0, 0.0, 1.0]])
         assert torch.allclose(out, expected, atol=1e-4)
 
+    def test_threshold_drops_importance_equal_to_tau(self):
+        # The threshold is strict: an importance exactly at tau is zeroed.
+        out = _threshold(torch.tensor([[0.1, 0.9]]), 0.1)
+        assert torch.allclose(out, torch.tensor([[0.0, 1.0]]))
+
     @pytest.mark.parametrize("fixture", FIXTURES)
     def test_head_parts_sum_to_attention_output(self, fixture, request):
         model = request.getfixturevalue(fixture)
