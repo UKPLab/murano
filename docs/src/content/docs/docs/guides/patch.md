@@ -131,18 +131,13 @@ Before patching, you need candidate components. `InformationFlow` (Ferrando & Vo
 
 ```python
 from murano import MuranoModel, Pipeline, keys
-from murano.steps import InformationFlow, LoadPaired, Patch, SelectComponents
+from murano.steps import InformationFlow, LoadPaired
 from murano.tasks import ioi
 
 model = MuranoModel("gpt2", enable_attention_probs=True)
-results = Pipeline([
-    LoadPaired(ioi()),
-    InformationFlow(model, threshold=0.03),
-    SelectComponents(keys.INFORMATION_FLOW, top_k=8, modules="self_attn"),
-    Patch(model, targets_key=keys.SELECTION),
-]).run()
+results = Pipeline([LoadPaired(ioi()), InformationFlow(model, threshold=0.03)]).run()
 
 flow = results[keys.INFORMATION_FLOW]
 ```
 
-`flow.contributions` maps each head and MLP to the share of prompts whose routes pass through it, and `flow.edges[i]` lists the route edges for prompt `i`, with positions indexing `flow.tokens[i]`. The frequency depends on the threshold and the batch. Layer 0 heads sit on almost every route, so rank within later layers or patch the selection to see which heads matter for the task.
+`flow.contributions` maps each head and MLP to the share of prompts whose routes pass through it. That share depends on the threshold and the batch, and it says nothing about causal effect. On IOI many layer 0 heads sit on every route, so compare heads within the later layers. `flow.edges[i]` lists the edges of prompt `i`'s route. An edge's `source_pos` and `dest_pos` index `flow.tokens[i]`, and its `importance` is its share of the destination vector. To check whether the frequent heads matter, pass them to `Patch(targets=...)`, as the information flow notebook does.
