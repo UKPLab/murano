@@ -16,3 +16,6 @@ postponed: ["2610.41445", "2610.37157", "2610.37126", "2610.36797", "2610.31407"
 - PR #126 (#123) round 1: 13 must-fix findings (tests that can't fail, duplicate helper, padding advice, docs). Next tick revises it; the revise round rewrites the PR body under the new 250-word rule.
 - #125 sourced (MIT, pinned cf6fb23): new step plus a `Neuron` type; a hand-written Student-t quantile is planned where a normal approximation may do.
 - Subagents that check out branches run in isolated worktrees; remove them after the tick.
+- PR #126 round 2: 9 findings, mostly mutation survivors the round-1 tests missed (attention renormalization, `>=` thresholds, GQA mapping). Next revise is round 2 of 3; one more bounce blocks it.
+- PR #127 round 1: 7 findings. The sign rule is an open question (https://github.com/UKPLab/murano/pull/127#issuecomment-6609544252), provisional = reference rule; the revise round answers finding 1 by linking it.
+- Both PR bodies still say "Needs a maintainer"; their revise rounds rewrite them under the "Open questions" format.
