@@ -127,7 +127,7 @@ This saves the weights and tokenizer so you can reload the ablated model with `t
 
 ## Choosing what to patch: information flow routes
 
-Before patching, you need candidate components. `InformationFlow` (Ferrando & Voita, 2024) finds the heads and MLPs a prediction goes through from one forward pass. It splits each residual vector into the parts that wrote it, scores each part by its L1 proximity to the whole, and walks down from the prediction keeping every edge above `threshold`. The model must be loaded with `enable_attention_probs=True`.
+Before patching, you need candidate components. `InformationFlow` (Ferrando & Voita, 2024) finds the heads and MLPs a prediction goes through from two forward passes, with no corrupt prompts or gradients. It splits each residual vector into the parts that wrote it, scores each part by its L1 proximity to the whole, and walks down from the prediction keeping every edge above `threshold`. The model must be loaded with `enable_attention_probs=True`.
 
 ```python
 from murano import MuranoModel, Pipeline, keys

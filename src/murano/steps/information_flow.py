@@ -1,7 +1,7 @@
 """InformationFlow step: the routes information takes to a prediction.
 
 Information flow routes (Ferrando & Voita, 2024) answer "which heads and MLPs
-does this prediction actually go through", from one forward pass and with no
+does this prediction actually go through", from two forward passes and with no
 contrastive template, patching or gradients. Every residual-stream vector is a
 sum of the vectors that wrote it: after attention, the incoming residual plus one
 vector per (head, source token); after the FFN, the incoming residual plus the
@@ -194,8 +194,9 @@ def _head_outputs(attn_in: Tensor, w_v: Tensor, b_v: Tensor, w_o: Tensor) -> Ten
 class InformationFlow(Step):
     """Extract the information flow routes to each prompt's prediction.
 
-    Runs the prompts once, splits every residual-stream vector into the parts
-    that wrote it, scores each part's importance (:func:`_importance`), and walks
+    Runs the prompts twice (once for the residuals, once for the attention
+    weights), splits every residual-stream vector into the parts that wrote it,
+    scores each part's importance (:func:`_importance`), and walks
     down from the target token's last-layer residual keeping each edge whose
     importance exceeds ``threshold``. Requires a model loaded with
     ``enable_attention_probs=True``.
