@@ -54,6 +54,9 @@ a minute each, dominated by loading the model; the exceptions are called out bel
 - [`applications/attention.ipynb`](applications/attention.ipynb) — summarize
   every head with one number, inspect a single head's pattern, ablate it, and read
   what it writes through its OV circuit. Extras: `[plot]`.
+- [`applications/information_flow.ipynb`](applications/information_flow.ipynb)
+  — trace the routes to an IOI prediction, count which heads they use, and patch
+  the frequent ones to see which matter for the task. Extras: `[plot]`.
 - [`applications/ablation.ipynb`](applications/ablation.ipynb) — zero, mean and
   resample ablation on the same head, and why they disagree. No extras.
 - [`applications/activation_patching.ipynb`](applications/activation_patching.ipynb)

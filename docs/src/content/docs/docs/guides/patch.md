@@ -124,3 +124,25 @@ This saves the weights and tokenizer so you can reload the ablated model with `t
 | Reversible | Yes (no weight changes) | Auto-restores after step |
 | Speed | Faster (fewer computations) | Slower (modifies all weights) |
 | When to use | Quick experiments, layer-specific | Strongest ablation, model export |
+
+## Choosing what to patch: information flow routes
+
+Before patching, you need candidate components. `InformationFlow` (Ferrando & Voita, 2024) finds the heads and MLPs a prediction goes through from one forward pass. It splits each residual vector into the parts that wrote it, scores each part by its L1 proximity to the whole, and walks down from the prediction keeping every edge above `threshold`. The model must be loaded with `enable_attention_probs=True`.
+
+```python
+from murano import MuranoModel, Pipeline, keys
+from murano.steps import InformationFlow, LoadPaired, Patch, SelectComponents
+from murano.tasks import ioi
+
+model = MuranoModel("gpt2", enable_attention_probs=True)
+results = Pipeline([
+    LoadPaired(ioi()),
+    InformationFlow(model, threshold=0.03),
+    SelectComponents(keys.INFORMATION_FLOW, top_k=8, modules="self_attn"),
+    Patch(model, targets_key=keys.SELECTION),
+]).run()
+
+flow = results[keys.INFORMATION_FLOW]
+```
+
+`flow.contributions` maps each head and MLP to the share of prompts whose routes pass through it, and `flow.edges[i]` lists the route edges for prompt `i`, with positions indexing `flow.tokens[i]`. The frequency depends on the threshold and the batch. Layer 0 heads sit on almost every route, so rank within later layers or patch the selection to see which heads matter for the task.

@@ -139,7 +139,8 @@ caught up-front.
 | `RecordAttention` ‡ | `prompts`            | `attention_pattern`            | Capture per-head attention weights (needs `enable_attention_probs`). |
 | `AblateAttention` ‡ | `prompts`            | `attn_ablated_logits`, `attn_ablated_mask` | Overwrite per-head attention weights and return the logits. |
 | `LogitAttribution` ‡ | `prompts`           | `logit_attribution`            | Decompose a logit (difference) into per-component contributions (DLA). |
-| `SelectComponents` ‡ | `logit_attribution` (or `sweep`) | `selection`          | Rank per-component scores and keep the strongest as a target set. |
+| `InformationFlow` ‡ | `prompts`            | `information_flow`             | Trace the information flow routes to a prediction and count how often each head and MLP is on them (needs `enable_attention_probs`). |
+| `SelectComponents` ‡ | `logit_attribution` (or `sweep`, `information_flow`) | `selection`          | Rank per-component scores and keep the strongest as a target set. |
 | `LogitLens`        | `prompts`             | `logit_lens`                   | Project each layer's residual onto the vocabulary. |
 | `Sweep` ‡          | (the swept chain's)   | `sweep`                        | Run a step chain once per item and harvest a metric into a `SweepResult`. |
 | `Probe` §          | `record`              | `probe`                        | Train a linear probe per layer via cross-validation.     |
