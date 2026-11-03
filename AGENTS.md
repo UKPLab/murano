@@ -19,6 +19,33 @@ no chain can express.
 - If a method is a setting of an existing engine, write a thin preset.
   `Patch(Ablate)` in `steps/patch.py` is the model: about 70 lines, all
   defaults and docstring.
+
+How much new code a method gets, smallest first. Take the first rung that
+fits:
+
+1. A chain of existing steps. No new code beyond a guide section or notebook.
+2. A new value for an existing option on the closest step, when the method
+   changes only the core computation and keeps that step's inputs,
+   parameters and result fields. For example, LAT reading vectors are
+   `SteeringVector(method="lat")`: the top singular vector of the paired
+   differences instead of their mean. Accepting a new value is not a public
+   signature change.
+3. A thin preset subclass, like `Patch(Ablate)`.
+4. A new step, only when the method needs new parameters, different inputs
+   or new result fields.
+
+To pick the rung, list every difference between the method (paper and
+reference code) and the closest existing step, and sort each into one of two
+kinds:
+
+- **Instrumental:** it changes what gets computed (a different estimator,
+  target or intervention).
+- **Incidental:** an implementation artefact (a sign flip that makes a
+  centered PCA act as a plain SVD), a paper-versus-code toggle the code
+  already settles, or a diagnostic the existing result already covers.
+
+Only instrumental differences justify code. Drop incidental ones and say so
+in the dossier.
 - If it needs a capability the backend lacks (gradients, a new hook point, a
   new model family), stop. That's a backend change, which needs its own
   human-approved issue (label `agent:blocked`).
@@ -192,6 +219,12 @@ and pin the commit it prints.
 - `oracle-only` (GPL family, MPL, no license, NOASSERTION): you may read and
   run it to get test oracles, but write Murano's code from the paper. Say so in
   the attribution.
+
+Every place where Murano computes something differently from the pinned
+reference code (or from the paper, when the code is oracle-only) gets a
+comment at that line, `# Differs from <repo>@<sha> <path>: <what>, because
+<why>.`, and a bullet under "Differences from the reference code" in the PR
+body. Incidental differences dropped on purpose count too.
 
 Credit every method in three places:
 

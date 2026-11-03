@@ -10,6 +10,13 @@ Closes #
 
 - Paper:
 - Reference code (repo@sha, license, adapted / oracle only):
+- Size (AGENTS.md section 1): chain / option on an existing step / preset / new step, and why
+
+### Differences from the reference code
+
+<!-- New methods only. One bullet per difference: what Murano does, what the reference does (file at the pinned SHA), and why. Each one also has a "# Differs from ..." comment at its line. Write "none" if there are none. -->
+
+-
 
 ### Registration checklist
 

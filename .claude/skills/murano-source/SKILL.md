@@ -51,9 +51,16 @@ Script: `scripts/repo_check.py <github-url> --authors "A B,C D"` (needs `gh`).
      anything that needs sudo or a GPU. Record the exact inputs, seed, model
      and outputs.
 6. **Map onto Murano.** Read `AGENTS.md` §1–6, and read end to end the two
-   existing steps closest to the method. Decide:
+   existing steps closest to the method. First decide how much new code it
+   needs (`AGENTS.md` §1): list every difference between the method and the
+   closest step, mark each instrumental or incidental, and take the smallest
+   rung the instrumental ones allow. A method that only swaps the core
+   computation of an existing step, keeping its inputs, parameters and
+   result fields, becomes a new option value on that step, not a new step.
+   Then decide:
    - which existing steps it reuses
-   - the new step(s), with what each reads, writes and returns
+   - the new step(s), or the new option value on an existing step, with what
+     each reads, writes and returns
    - the new keys
    - the Result fields, including whether it exposes `contributions` or a
      `MetricScore`
@@ -95,7 +102,11 @@ Ambiguities: <what the paper leaves open, and how the reference code settles it>
 Differences, paper vs code: <list or "none">
 
 ### Murano mapping
-Reuses: <steps> · New: `<StepName>` reads `<keys>` → writes `<key>`: `<Name>Result(<fields>)`
+Size: <chain of existing steps | `<Step>(<option>="<value>")` | preset of `<Step>` | new step>, because <the instrumental differences>
+Instrumental differences from `<closest step>`: <what changes in the computation>
+Incidental, dropped: <artefacts, settled toggles, redundant diagnostics; or "none">
+Planned differences from the reference code: <what Murano does differently and why; or "none">
+Reuses: <steps> · New: <`<StepName>` reads `<keys>` → writes `<key>`: `<Name>Result(<fields>)` | the option value and the lines it changes>
 Composes with: <SelectComponents via contributions | Sweep via MetricScore | …>
 Plot: <default view or "none, call plot_<x> directly"> · Extra: <none | name>
 

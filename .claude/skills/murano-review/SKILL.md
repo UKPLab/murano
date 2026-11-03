@@ -57,7 +57,11 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
    passes yourself.
    - **Correctness:** does the code compute the dossier's algorithm (step by
      step against the equations), including edge cases (padding, batch of 1,
-     per-head, GPT-2 tuple outputs, dtype and device)?
+     per-head, GPT-2 tuple outputs, dtype and device)? Diff the computation
+     against the reference code at the pinned SHA. Every difference needs a
+     `# Differs from ...` comment at the line with its reason, and a matching
+     bullet under "Differences from the reference code" in the PR body. A
+     missing or unexplained one is a must-fix.
    - **Tests:** check against `murano-test`. Does each oracle have a test? Can
      each mechanism test fail? Are there shape-only "mechanism" tests, missing
      error paths, or Hub downloads?
@@ -65,7 +69,9 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
      private helper and see whether an existing one does the same job. Check
      backend-only model access, key handling, docstring shape, every
      registration-checklist item, scope creep, and changes to public
-     signatures.
+     signatures. Check the size against `AGENTS.md` §1: a new step, key or
+     result type where a new option value on an existing step would carry the
+     instrumental differences is a must-fix.
    - **Docs, prose and attribution:** check `AGENTS.md` §10–11. Look for
      humanizer tells, notebook template compliance, whether the notebook was
      executed, the guide length, the Attribution block, NOTICE, the license

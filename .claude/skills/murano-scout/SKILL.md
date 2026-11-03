@@ -137,9 +137,9 @@ The ledger runs before any model reads anything:
     wide discussion you can link.
 - **Generality**: 3 means usable on most models, tasks and analyses; 0 means
   tied to one setup.
-- **Fit**: 3 means it composes from existing steps plus one small new step,
-  and its result feeds `SelectComponents` or `Sweep`; 0 means it fights the
-  Step/Results model.
+- **Fit**: 3 means it is a new option on an existing step, or composes from
+  existing steps plus one small new step, and its result feeds
+  `SelectComponents` or `Sweep`; 0 means it fights the Step/Results model.
 - **Cost**: 3 means an afternoon; 0 means weeks or heavy dependencies.
 
 ## Issue body

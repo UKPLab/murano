@@ -18,7 +18,7 @@ Gates (pass/fail, one line of evidence each):
 
 Scores 0-3:
 - generality: 3 = usable on most models, tasks and analyses; 0 = tied to one setup.
-- fit: 3 = existing steps plus one small new step whose result feeds SelectComponents (per-component scores) or Sweep (a scalar); 0 = fights the Step/Results model.
+- fit: 3 = a new option value on an existing step (it only changes that step's core computation), or existing steps plus one small new step whose result feeds SelectComponents (per-component scores) or Sweep (a scalar); 0 = fights the Step/Results model.
 - cost: 3 = an afternoon; 0 = weeks or heavy dependencies.
 
 Output: write a JSON array, one object per paper, to `{out}`, then return the same array and nothing else:
