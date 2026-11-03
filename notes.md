@@ -7,15 +7,9 @@ postponed: ["2610.41445", "2610.37157", "2610.37126", "2610.36797", "2610.31407"
 
 ## Open threads
 - Loop runs against the `dev-loop` branch (not main): agent branches start from it, PRs target it.
-- Scout 2026-11-03 filed #123 (Information Flow Routes), #124 (RepE), #125 (RACE). Tuned Lens 2303.08112, Nullify 2610.10655 and ALTI 2203.04212 were accepted on score but deferred 7 days for the backlog cap; they come back through `ledger.py due`.
-- #123 (Information Flow Routes) and ALTI 2203.04212 share the contribution decomposition.
+- Tuned Lens 2303.08112, Nullify 2610.10655 and ALTI 2203.04212 were accepted on score but deferred 7 days for the backlog cap; they come back through `ledger.py due`. ALTI shares the contribution decomposition with #123.
 - OPENALEX_API_KEY lives in .claude/settings.local.json (locally ignored); the cloud routine needs it in its environment.
-- #123 sourced: reference code is CC BY-NC (oracle-only), so the step is written from the paper; τ has no single default in the paper (0.01-0.04).
-- #124 sourced: MIT reference code (adapt-ok); plan is a new `ReadingVector` step, `SteeringVector` untouched.
-- Next tick implements the oldest sourced issue (#123) and sources #125.
-- PR #126 (#123) round 1: 13 must-fix findings (tests that can't fail, duplicate helper, padding advice, docs). Next tick revises it; the revise round rewrites the PR body under the new 250-word rule.
-- #125 sourced (MIT, pinned cf6fb23): new step plus a `Neuron` type; a hand-written Student-t quantile is planned where a normal approximation may do.
+- #125 sourced (MIT, pinned cf6fb23): new step plus a `Neuron` type; a hand-written Student-t quantile is planned where a normal approximation may do. Implement waits for a free PR slot.
 - Subagents that check out branches run in isolated worktrees; remove them after the tick.
-- PR #126 round 2: 9 findings, mostly mutation survivors the round-1 tests missed (attention renormalization, `>=` thresholds, GQA mapping). Next revise is round 2 of 3; one more bounce blocks it.
-- PR #127 round 1: 7 findings. The sign rule is an open question (https://github.com/UKPLab/murano/pull/127#issuecomment-6609544252), provisional = reference rule; the revise round answers finding 1 by linking it.
-- Both PR bodies still say "Needs a maintainer"; their revise rounds rewrite them under the "Open questions" format.
+- PR #126 at round 2: one finding left (a dead assertion in tests/test_information_flow.py:276-278). Next revise is the last one (round 3); open questions: failed oracle 7, out-of-method edits, dropped layers= argument.
+- PR #127 round 1: 7 findings, revise due next tick. The sign rule is an open question (https://github.com/UKPLab/murano/pull/127#issuecomment-6609544252), provisional = reference rule; finding 1 gets answered by linking it. Its body still says "Needs a maintainer"; the revise rewrites it.
