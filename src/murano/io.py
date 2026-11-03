@@ -442,6 +442,59 @@ def load_logit_attribution(path: str | Path) -> Any:
     )
 
 
+def save_information_flow(result: Any, path: Path) -> None:
+    """Save an InformationFlowResult to a JSON file.
+
+    Component and edge addresses are stored as their string form; the loader
+    coerces them back to Node objects.
+
+    Args:
+        result: InformationFlowResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "contributions": {str(k): v for k, v in result.contributions.items()},
+        "head_importance": {str(k): v for k, v in result.head_importance.items()},
+        "edges": [
+            [
+                [str(e.source), e.source_pos, str(e.dest), e.dest_pos, e.importance]
+                for e in edges
+            ]
+            for edges in result.edges
+        ],
+        "tokens": result.tokens,
+        "positions": result.positions,
+        "threshold": result.threshold,
+        "metadata": result.metadata,
+    }
+    _write_json(path, data)
+    logger.info("Saved information flow result to %s", path)
+
+
+def load_information_flow(path: str | Path) -> Any:
+    """Load an InformationFlowResult from a file written by :func:`save_information_flow`.
+
+    Args:
+        path: Path to the information_flow.json file.
+
+    Returns:
+        InformationFlowResult with string addresses coerced back to Node keys.
+    """
+    from murano.steps.information_flow import InformationFlowResult, RouteEdge
+
+    data = json.loads(Path(path).read_text())
+    return InformationFlowResult(
+        contributions=data["contributions"],
+        head_importance=data["head_importance"],
+        edges=[[RouteEdge(*edge) for edge in edges] for edges in data["edges"]],
+        tokens=data["tokens"],
+        positions=data["positions"],
+        threshold=data["threshold"],
+        metadata=data.get("metadata", {}),
+    )
+
+
 def save_component_selection(selection: Any, path: Path) -> None:
     """Save a ComponentSelection to a JSON file.
 
@@ -853,6 +906,7 @@ def register_artifact_serializer(
 def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     from murano.artifacts import ComponentSelection, SweepResult
     from murano.steps.attention import AttentionResult
+    from murano.steps.information_flow import InformationFlowResult
     from murano.steps.logit_attribution import LogitAttributionResult
     from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
@@ -1014,6 +1068,19 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "completeness_error": attribution.completeness_error,
         }
 
+    def serialize_information_flow(
+        key: str,
+        flow: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = (
+            "information_flow.json" if key == keys.INFORMATION_FLOW else f"{key}.json"
+        )
+        save_information_flow(flow, out / "information_flow" / filename)
+        metadata[key] = {"threshold": flow.threshold, "n_prompts": len(flow.edges)}
+
     def serialize_component_selection(
         key: str,
         selection: Any,
@@ -1146,6 +1213,9 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     register_artifact_serializer(registry, AttentionResult, serialize_attention)
     register_artifact_serializer(
         registry, LogitAttributionResult, serialize_logit_attribution
+    )
+    register_artifact_serializer(
+        registry, InformationFlowResult, serialize_information_flow
     )
     register_artifact_serializer(
         registry, ComponentSelection, serialize_component_selection

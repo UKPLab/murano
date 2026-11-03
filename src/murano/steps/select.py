@@ -2,8 +2,9 @@
 
 Turns a per-component importance readout into a concrete target set. It reads a
 :class:`~murano.steps.logit_attribution.LogitAttributionResult` or a component
-:class:`~murano.artifacts.SweepResult` (both map each head and MLP to a signed
-score through ``contributions``), ranks the components, keeps the strongest, and
+:class:`~murano.artifacts.SweepResult`, or an
+:class:`~murano.steps.information_flow.InformationFlowResult` (each maps heads and
+MLPs to a score through ``contributions``), ranks the components, keeps the strongest, and
 writes a :class:`~murano.artifacts.ComponentSelection`. A downstream
 :class:`~murano.steps.patch.Patch` or :class:`~murano.steps.path_patch.PathPatch`
 reads that selection at run time, so "score the important heads, then patch them"
@@ -18,6 +19,7 @@ from murano.logging import logger
 from murano.nodes import Node, NodeDict, canonical_module
 from murano.results import Results
 from murano.steps.base import Step
+from murano.steps.information_flow import InformationFlowResult
 from murano.steps.logit_attribution import LogitAttributionResult
 
 _BY = ("abs", "signed", "negative")
@@ -70,8 +72,8 @@ class SelectComponents(Step):
     single mode, all heads or all whole-components).
 
     Reads from results:
-        results[source_key]: LogitAttributionResult or component SweepResult
-            (default ``logit_attribution``).
+        results[source_key]: LogitAttributionResult, component SweepResult or
+            InformationFlowResult (default ``logit_attribution``).
 
     Writes to results:
         results[output_key]: ComponentSelection (default ``selection``).
@@ -129,7 +131,14 @@ class SelectComponents(Step):
         # _extract_scores also accepts a bare {Node: float} mapping, so include
         # dict here or the pipeline's pre-flight type check would reject the very
         # input the step supports.
-        self.read_types = {source_key: (LogitAttributionResult, SweepResult, dict)}
+        self.read_types = {
+            source_key: (
+                LogitAttributionResult,
+                SweepResult,
+                InformationFlowResult,
+                dict,
+            )
+        }
         self.writes = [output_key]
         self.write_types = {output_key: ComponentSelection}
 

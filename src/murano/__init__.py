@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from murano.io import (
         load_activation_store,
         load_attention,
+        load_information_flow,
         load_metric_score,
         load_labeled_activation_store,
         load_logit_lens,
@@ -50,6 +51,10 @@ if TYPE_CHECKING:
     from murano.results import Results
     from murano.steps.attention import AttentionResult
     from murano.steps.base import Step
+    from murano.steps.information_flow import (
+        InformationFlow,
+        InformationFlowResult,
+    )
     from murano.steps.logit_attribution import (
         LogitAttribution,
         LogitAttributionResult,
@@ -98,6 +103,11 @@ _LAZY_ATTRS = {
         "murano.steps.logit_attribution",
         "LogitAttributionResult",
     ),
+    "InformationFlow": ("murano.steps.information_flow", "InformationFlow"),
+    "InformationFlowResult": (
+        "murano.steps.information_flow",
+        "InformationFlowResult",
+    ),
     "LogitLens": ("murano.steps.logit_lens", "LogitLens"),
     "LogitLensResult": ("murano.steps.logit_lens", "LogitLensResult"),
     "AttentionResult": ("murano.steps.attention", "AttentionResult"),
@@ -116,6 +126,7 @@ _LAZY_ATTRS = {
     "load_steering": ("murano.io", "load_steering"),
     "load_logit_lens": ("murano.io", "load_logit_lens"),
     "load_attention": ("murano.io", "load_attention"),
+    "load_information_flow": ("murano.io", "load_information_flow"),
     "load_activation_store": ("murano.io", "load_activation_store"),
     "load_labeled_activation_store": ("murano.io", "load_labeled_activation_store"),
     "load_sae_activations": ("murano.io", "load_sae_activations"),
@@ -150,6 +161,8 @@ __all__ = [
     "Step",
     "LogitAttribution",
     "LogitAttributionResult",
+    "InformationFlow",
+    "InformationFlowResult",
     "LogitLens",
     "LogitLensResult",
     "AttentionResult",
@@ -170,6 +183,7 @@ __all__ = [
     "load_steering",
     "load_logit_lens",
     "load_attention",
+    "load_information_flow",
     "load_activation_store",
     "load_labeled_activation_store",
     "load_sae_activations",

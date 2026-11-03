@@ -24,6 +24,7 @@ from murano.steps.evaluate import GenerationMetric
 from murano.steps.probe import Probe
 from murano.steps.plot import Plot
 from murano.steps.logit_lens import LogitLens, LogitLensResult
+from murano.steps.information_flow import InformationFlow, InformationFlowResult
 from murano.steps.logit_attribution import LogitAttribution, LogitAttributionResult
 from murano.steps.logits import Logits
 from murano.steps.sae import (
@@ -75,6 +76,8 @@ __all__ = [
     "LogitLensResult",
     "LogitAttribution",
     "LogitAttributionResult",
+    "InformationFlow",
+    "InformationFlowResult",
     "Logits",
     "SAEActivationStore",
     "SAEEncode",

@@ -123,7 +123,8 @@ must-fix in review.
 ## 6. Make results composable
 
 - A per-component score goes in `contributions: dict[Node, float]`.
-  `SelectComponents` can then rank it with no new code.
+  `SelectComponents` can then rank it once the result type is added to its
+  `read_types` (`steps/select.py`).
 - A scalar outcome is a `MetricScore`, so `Sweep` can collect it.
 - A set of components is iterable over `Node`, so `Patch(targets_key=...)` can
   read it.

@@ -7,6 +7,7 @@ from murano.plotting.steering import (
 )
 from murano.plotting.logit_lens import plot_logit_lens
 from murano.plotting.logit_attribution import plot_logit_attribution
+from murano.plotting.information_flow import plot_information_flow
 from murano.plotting.probing import plot_confusion_matrix, plot_probe_accuracy
 from murano.plotting.attention import plot_attention_pattern, plot_head_matrix
 from murano.plotting.sweep import plot_sweep
@@ -31,6 +32,7 @@ __all__ = [
     "plot_sae_feature_logit_effects",
     "plot_sae_token_activations",
     "plot_logit_attribution",
+    "plot_information_flow",
     "plot_confusion_matrix",
     "plot_probe_accuracy",
     "plot_attention_pattern",
