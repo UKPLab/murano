@@ -316,12 +316,12 @@ LAYERS = [
     (  # layer 0
         torch.tensor([[[0.5, 0.5], [0.0, 0.0]], [[0.375, 0.125], [0.5, 0.0]]]),
         torch.tensor([[1.0, 0.0], [0.5, 0.5]]),
-        torch.tensor([[0.5, 0.5], [0.125, 0.875]]),
+        torch.tensor([[0.5, 0.5], [0.25, 0.75]]),  # FFN share equals tau
     ),
     (  # layer 1
         torch.tensor([[[0.5, 0.5], [0.0, 0.0]], [[0.125, 0.125], [0.5, 0.25]]]),
         torch.tensor([[1.0, 0.0], [0.25, 0.75]]),
-        torch.tensor([[0.5, 0.5], [0.5, 0.5]]),
+        torch.tensor([[0.5, 0.5], [0.75, 0.25]]),  # residual share equals tau
     ),
 ]
 
@@ -339,13 +339,14 @@ class TestInformationFlowRoutes:
         assert {
             (e.source, e.source_pos, e.dest, e.dest_pos, e.importance) for e in edges
         } == {
-            (mid1, 1, Node(1, MLP), 1, 0.5),
-            (Node(1, MLP), 1, post1, 1, 0.5),
-            (mid1, 1, post1, 1, 0.5),
+            # Layer 1's residual share equals tau, so only the FFN path is
+            # kept; the walk still continues below resid_mid through it.
+            (mid1, 1, Node(1, MLP), 1, 0.75),
+            (Node(1, MLP), 1, post1, 1, 0.75),
             (post0, 1, mid1, 1, 0.75),
             # Layer 1's edge from token 0 equals tau exactly, so it is dropped
             # and token 0 is never reached through resid_post of layer 0.
-            (mid0, 1, post0, 1, 0.875),  # FFN at 0.125 is below tau
+            (mid0, 1, post0, 1, 0.75),  # FFN share equals tau: dropped
             (Node(0, RESID_PRE), 0, mid0, 1, 0.5),
             (Node(0, RESID_PRE), 1, mid0, 1, 0.5),
         }
