@@ -260,16 +260,22 @@ class TestInformationFlowMechanism:
                 for k, v in w2.items()
             )
 
-    def test_ffn_pair_renormalized(self, gpt2_model_attn):
+    @pytest.mark.parametrize("module", [RESID_POST, RESID_MID])
+    def test_kept_edges_renormalized(self, gpt2_model_attn, module):
         result = _run(gpt2_model_attn, threshold=0.3, renormalize=True)
         incoming: dict = {}
-        for edges in result.edges:
+        for index, edges in enumerate(result.edges):
             for e in edges:
-                if e.dest.module == RESID_POST:
-                    incoming.setdefault((e.dest, e.dest_pos), []).append(e.importance)
-        # Precondition: tau drops one of the (FFN, residual) pair somewhere, so
-        # the kept importance only reaches 1 through renormalization.
-        assert any(len(w) == 1 for w in incoming.values())
+                if e.dest.module == module:
+                    key = (index, e.dest, e.dest_pos)
+                    incoming.setdefault(key, []).append(e.importance)
+        # Precondition: tau drops an incoming edge somewhere (one of the (FFN,
+        # residual) pair, or a source token of the attention), so the kept
+        # importance only reaches 1 through renormalization.
+        candidates = {RESID_POST: lambda pos: 2, RESID_MID: lambda pos: pos + 1}
+        assert any(
+            len(w) < candidates[module](pos) for (_, _, pos), w in incoming.items()
+        )
         for kept in incoming.values():
             assert sum(kept) == pytest.approx(1.0, abs=1e-5)
 
