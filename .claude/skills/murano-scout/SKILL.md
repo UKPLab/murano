@@ -28,8 +28,10 @@ To get an OpenAlex key when `OPENALEX_API_KEY` is unset, first ask the user
 (AskUserQuestion) whether you may send their email address to OpenAlex. Send
 it only after an explicit yes:
 `curl -s -X POST https://api.openalex.org/api-keys -H 'Content-Type: application/json' -d '{"email": "<their email>"}'`.
-OpenAlex emails them a link to the key; ask them to export `OPENALEX_API_KEY`
-(for the cloud routine, add it to the routine's environment). Ask once per
+The response holds the key, which works once the user clicks the activation
+link OpenAlex emails them. Give them the key and ask them to export
+`OPENALEX_API_KEY` (for the cloud routine, add it to the routine's
+environment). Never commit it. Ask once per
 session and not again after a no. When nobody can answer, as in the scheduled
 routine, send nothing and note in the log that a key would help. When a paper comes back as
 `{"error": "source_unavailable"}`, do not reject or defer it. If it was
