@@ -273,9 +273,6 @@ class TestInformationFlowMechanism:
         for index in range(len(PROMPTS)):
             # Precondition: the higher threshold drops something.
             assert _edge_set(high, index) < _edge_set(low, index)
-            if not renormalize:
-                # Without renormalization each kept edge is a kept edge at tau=0.
-                assert _edge_set(high, index) <= _edge_set(low, index)
         assert all(e.importance > 0.1 for edges in high.edges for e in edges)
 
     def test_norm_order_two_runs_through_the_step(self, gpt2_model_attn):
