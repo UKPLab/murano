@@ -7,6 +7,6 @@ postponed: ["2610.41445", "2610.37157", "2610.37126", "2610.36797", "2610.31407"
 
 ## Open threads
 - Loop runs against the `dev-loop` branch (not main): agent branches start from it, PRs target it.
-- pending_impact.json: 20 papers passed every gate on 2026-11-03 but could not be scored (keyless OpenAlex daily budget exhausted). Score them with one `paper.py impact` call (pass their `repo` as --repo) after midnight UTC; do not re-screen.
-- Top candidates by Generality+Fit+Cost while waiting: RepE 2310.01405 (9, 1056 stars), RACE 2608.24758 (9, EMNLP 2026), TopoSteer 2611.01493 (9), contrastive covariance steering 2610.14025 (9).
+- Scout 2026-11-03 filed #123 (Information Flow Routes), #124 (RepE), #125 (RACE). Tuned Lens 2303.08112, Nullify 2610.10655 and ALTI 2203.04212 were accepted on score but deferred 7 days for the backlog cap; they come back through `ledger.py due`.
 - #123 (Information Flow Routes) and ALTI 2203.04212 share the contribution decomposition.
+- OPENALEX_API_KEY lives in .claude/settings.local.json (locally ignored); the cloud routine needs it in its environment.
