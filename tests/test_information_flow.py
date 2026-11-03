@@ -407,8 +407,10 @@ class TestInformationFlowRoutes:
         }
         assert used_mlps == {Node(1, MLP)}
 
+    # One prompt and two: frequencies divide by the batch size either way.
+    @pytest.mark.parametrize("n_prompts", [1, 2])
     def test_head_importance_is_mean_in_route_sub_edge(
-        self, murano_model_attn, monkeypatch
+        self, murano_model_attn, monkeypatch, n_prompts
     ):
         real = InformationFlow._routes
         monkeypatch.setattr(
@@ -416,7 +418,7 @@ class TestInformationFlowRoutes:
             "_routes",
             lambda self, layers, start: real(self, LAYERS, 1),
         )
-        result = _run(murano_model_attn, threshold=TAU)
+        result = _run(murano_model_attn, prompts=PROMPTS[:n_prompts], threshold=TAU)
         expected = {Node(0, SELF_ATTN, head=0): 0.4375, Node(1, SELF_ATTN, head=0): 0.5}
         for node, value in result.head_importance.items():
             assert value == pytest.approx(expected.get(node, 0.0))
