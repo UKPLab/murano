@@ -83,12 +83,20 @@ def _importance(parts: Tensor, whole: Tensor, order: int = 1) -> Tensor:
     # clips the proximity at 0 instead of EPS=1e-5, because the paper's Eq. 1 uses
     # max(., 0) and an EPS floor gives masked future tokens a nonzero edge.
     proximity = proximity.clamp(min=0)
+    # Differs from facebookresearch/llm-transparency-tool@f1340f0 routes/contributions.py:
+    # floors the denominator at 1e-12, so a node whose proximities are all 0 gets
+    # zeros, because the 0 clip above (unlike the EPS floor) lets that sum be 0
+    # and the raw division would give NaN.
     return proximity / proximity.sum(dim=-1, keepdim=True).clamp(min=_TINY)
 
 
 def _threshold(importance: Tensor, threshold: float) -> Tensor:
     """Zero importances at or below ``threshold`` and renormalize the rest (§2.2)."""
     kept = importance * (importance > threshold)
+    # Differs from facebookresearch/llm-transparency-tool@f1340f0 routes/contributions.py
+    # apply_threshold_and_renormalize: floors the denominator at 1e-12, so a node
+    # with nothing above the threshold gets zeros instead of NaN, because a NaN
+    # importance would fail every comparison in the route walk silently.
     return kept / kept.sum(dim=-1, keepdim=True).clamp(min=_TINY)
 
 
