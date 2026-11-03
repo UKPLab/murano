@@ -28,7 +28,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
-from torch import Tensor, cat, einsum, no_grad, stack, zeros  # pyright: ignore[reportPrivateImportUsage]
+from torch import Tensor, cat, einsum, no_grad, stack  # pyright: ignore[reportPrivateImportUsage]
 
 from murano import keys
 from murano.artifacts import PromptBatch
@@ -43,7 +43,12 @@ from murano.nodes import (
     NodeDict,
 )
 from murano.results import Results
-from murano.steps.attention import _capture_patterns, _head_ov_weights, _positions
+from murano.steps.attention import (
+    _capture_patterns,
+    _head_ov_weights,
+    _head_value_block,
+    _positions,
+)
 from murano.steps.base import Step
 from murano.steps.sae import _is_sandwich_norm
 from murano._proxy import unwrap_traced
@@ -154,28 +159,6 @@ class InformationFlowResult:
 
 
 # ── Step ──────────────────────────────────────────────────────────────
-
-
-def _head_value_bias(model: ModelBackend, layer: int, head: int) -> Tensor:
-    """Return one head's value-projection bias ``[head_dim]`` (zeros when absent).
-
-    Mirrors the layouts :func:`~murano.steps.attention._head_ov_weights`
-    accepts: a separate ``v_proj`` (grouped-query aware) or GPT-2's fused
-    ``c_attn``, whose value block is the last third.
-    """
-    head_dim = model.head_dim
-    attn = model.raw_module(layer, SELF_ATTN)
-    if hasattr(attn, "v_proj"):
-        bias = attn.v_proj.bias
-        if bias is not None:
-            head = head // (model.n_heads // (bias.shape[0] // head_dim))
-    else:
-        bias = attn.c_attn.bias
-        if bias is not None:
-            bias = bias[2 * model.d_model :]
-    if bias is None:
-        return zeros(head_dim)
-    return bias.detach().float()[head * head_dim : (head + 1) * head_dim]
 
 
 def _head_outputs(attn_in: Tensor, w_v: Tensor, b_v: Tensor, w_o: Tensor) -> Tensor:
@@ -410,7 +393,8 @@ class InformationFlow(Step):
             *(_head_ov_weights(self.model, layer, h) for h in range(self.model.n_heads))
         )
         b_v = [
-            _head_value_bias(self.model, layer, h) for h in range(self.model.n_heads)
+            _head_value_block(self.model, layer, h)[1]
+            for h in range(self.model.n_heads)
         ]
         device = w_v[0].device
         return stack(w_v), stack(b_v).to(device), stack(w_o)
