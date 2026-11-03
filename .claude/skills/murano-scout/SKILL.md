@@ -19,10 +19,14 @@ citations, venues), Hugging Face papers and GitHub (the official repo and its
 stars). There is no Semantic Scholar: keyless it is throttled to zero, and no
 keyless source counts arXiv citations reliably. OpenAlex undercounts them
 by about 10×, so `impact` treats its count as a lower bound and adds adoption
-signals. `OPENALEX_API_KEY` and `GITHUB_TOKEN` are optional. When a call
-prints `{"error": "source_unavailable"}`, the paper counts as not screened:
-write no ledger row and add it to `postponed` in `.agent-state/notes.md`, so
-the next scout picks it up.
+signals. Keyless OpenAlex has a daily budget of about 100 searches per IP
+(shared with everything else on that IP, resets at midnight UTC), so the scout
+spends it on `impact` only. `OPENALEX_API_KEY` (free, its own budget) and
+`GITHUB_TOKEN` are optional. When a paper comes back as
+`{"error": "source_unavailable"}`, do not reject or defer it. If it was
+already screened, keep its screening result in
+`.agent-state/pending_impact.json` and score only Impact next scout. Otherwise
+add it to `postponed` in `.agent-state/notes.md`.
 
 ## No paper is screened twice
 
@@ -42,13 +46,14 @@ The ledger runs before any model reads anything:
    first run, use 90 days ago.
 2. **Collect IDs, not text.** Append to `candidates.jsonl` in the scratchpad:
    - For each query in `cfg.queries`, run `paper.py search "<q>" --since <since>`
-     (OpenAlex) and `paper.py search "<q>" --source arxiv --since <since>`.
-     Pause 3 s between arXiv calls (its API etiquette). Run the loop under
-     `bash`: zsh doesn't word-split `$args`, so flags kept in a variable
-     arrive as one argument.
+     (arXiv, newest first). Pause 3 s between calls (arXiv's API etiquette).
+     Run the loop under `bash`: zsh doesn't word-split `$args`, so flags kept
+     in a variable arrive as one argument.
    - If the classics sweep is due, also run
-     `paper.py search "<q>" --source arxiv --limit 100` with no `--since`
-     (most relevant first; the ledger drops what was seen before).
+     `paper.py search "<q>" --limit 100` with no `--since` (most relevant
+     first; the ledger drops what was seen before).
+   - Add the papers in `.agent-state/pending_impact.json`: already screened,
+     they skip straight to step 6.
    - Add the IDs in `postponed` from the notes.
    - Use WebSearch, limited to the window, for method posts on
      transformer-circuits.pub, the Anthropic, Google DeepMind and OpenAI
@@ -78,10 +83,11 @@ The ledger runs before any model reads anything:
      and search issues and PRs (`gh issue list --search "<key terms>" --state all`,
      same for `gh pr list`). Open work such as #119 (gradients) and #121
      (FEGA) counts.
-   - Impact: `paper.py impact <id> --repo <owner/name>` for gate-passing
-     papers only. Pass `--repo` when the screen named official code (without
-     it, `impact` falls back to the repo the authors linked on Hugging Face).
-     Add `--viral` only when the screen found concrete evidence.
+   - Impact: one call for all gate-passing papers,
+     `paper.py impact <id> <id> ... --repo <id>=<owner/name> ...`. Pass
+     `--repo` for each paper whose screen named official code (without it,
+     `impact` falls back to the repo the authors linked on Hugging Face). Add
+     `--viral <id>` only when the screen found concrete evidence.
 7. **Decide**, and write a ledger row for every paper:
    - **Accept**: all gates pass, total ≥ `cfg.accept.min_total`, Impact ≥
      `cfg.accept.min_impact`.

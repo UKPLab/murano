@@ -1,19 +1,19 @@
 """Paper metadata, search, impact score, and code links for the murano scout.
 
 Stdlib only, so it runs anywhere the loop runs. Every subcommand prints JSON
-(``search`` and ``meta`` print JSON Lines, one paper per line, ready for
-``ledger.py filter``).
+(``search``, ``meta`` and ``impact`` print JSON Lines, one paper per line,
+ready for ``ledger.py filter``).
 
     python paper.py search "activation patching" --since 2026-10-01
-    python paper.py search "sparse autoencoder" --source arxiv --since 2026-10-01
-    python paper.py search "logit lens" --source arxiv          # classics: by relevance
+    python paper.py search "logit lens" --limit 100             # classics: by relevance
     python paper.py meta 2211.00593 2310.01405 DOI:10.18653/v1/2024.emnlp-main.965
-    python paper.py impact 2211.00593 [--repo owner/name] [--viral]
+    python paper.py impact 2211.00593 2310.01405 [--repo 2310.01405=owner/name] [--viral ID]
     python paper.py code-links 2211.00593
 
-Every source is keyless: the arXiv API (search, metadata), OpenAlex (search,
-citations, venues), Hugging Face papers (the author-linked repo) and GitHub
-(repo stars). No source gives reliable citation counts for arXiv ML papers
+Every source is keyless: the arXiv API (search, metadata), OpenAlex (citations,
+venues; ``--source openalex`` search), Hugging Face papers (the author-linked
+repo) and GitHub (repo stars). Keyless OpenAlex has a small daily budget per
+IP (about 100 searches), so the scout spends it on ``impact`` only. No source gives reliable citation counts for arXiv ML papers
 without a key: OpenAlex barely parses preprint reference lists and undercounts
 them by an order of magnitude. ``impact`` therefore reads OpenAlex citations as
 a lower bound and adds adoption signals (top venue, GitHub stars of the
@@ -341,26 +341,35 @@ def impact_score(m: dict, viral: bool = False) -> dict:
     }
 
 
-def impact(paper_id: str, repo: str | None = None, viral: bool = False) -> dict:
-    (m,) = meta([paper_id])
-    records = openalex_records(m["title"])
-    venues = {
-        (loc.get("source") or {}).get("display_name")
-        for w in records
-        for loc in w.get("locations") or []
-    }
-    m["citationCount"] = sum(w.get("cited_by_count") or 0 for w in records)
-    m["publicationVenue"] = "; ".join(sorted(v for v in venues if v)) or None
-    m["repo"], m["githubStars"] = repo_stars(m.get("arxiv"), repo)
-    return {
-        "id": paper_id,
-        "title": m["title"],
-        "citations_lower_bound": m["citationCount"],
-        "venues": m["publicationVenue"],
-        "repo": m["repo"],
-        "stars": m["githubStars"],
-        **impact_score(m, viral),
-    }
+def impact(paper_ids: list[str], repos: dict[str, str], viral: set[str]) -> list[dict]:
+    """Impact per paper: one arXiv call for all metadata, then OpenAlex and stars per paper."""
+    out = []
+    for pid, m in zip(paper_ids, meta(paper_ids)):
+        try:
+            records = openalex_records(m["title"])
+            m["repo"], m["githubStars"] = repo_stars(m.get("arxiv"), repos.get(pid))
+        except SourceUnavailable as e:
+            out.append({"id": pid, "error": "source_unavailable", "detail": str(e)})
+            continue
+        venues = {
+            (loc.get("source") or {}).get("display_name")
+            for w in records
+            for loc in w.get("locations") or []
+        }
+        m["citationCount"] = sum(w.get("cited_by_count") or 0 for w in records)
+        m["publicationVenue"] = "; ".join(sorted(v for v in venues if v)) or None
+        out.append(
+            {
+                "id": pid,
+                "title": m["title"],
+                "citations_lower_bound": m["citationCount"],
+                "venues": m["publicationVenue"],
+                "repo": m["repo"],
+                "stars": m["githubStars"],
+                **impact_score(m, pid in viral),
+            }
+        )
+    return out
 
 
 def code_links(arxiv_id: str) -> list[str]:
@@ -396,14 +405,24 @@ def main(argv: list[str] | None = None) -> int | None:
     s.add_argument("query")
     s.add_argument("--since", help="YYYY-MM-DD; only papers published on or after")
     s.add_argument("--limit", type=int, default=50)
-    s.add_argument("--source", choices=("openalex", "arxiv"), default="openalex")
+    s.add_argument("--source", choices=("arxiv", "openalex"), default="arxiv")
     sub.add_parser("meta").add_argument("ids", nargs="+")
     i = sub.add_parser("impact")
-    i.add_argument("id")
+    i.add_argument("ids", nargs="+")
     i.add_argument(
-        "--repo", help="owner/name of the official code, when HF papers lacks it"
+        "--repo",
+        action="append",
+        default=[],
+        metavar="ID=OWNER/NAME",
+        help="official code of paper ID, when HF papers lacks it (repeatable)",
     )
-    i.add_argument("--viral", action="store_true", help="agent-verified viral signal")
+    i.add_argument(
+        "--viral",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="paper ID has an agent-verified viral signal (repeatable)",
+    )
     sub.add_parser("code-links").add_argument("id")
     a = ap.parse_args(argv)
     try:
@@ -426,7 +445,9 @@ def _run(a: argparse.Namespace) -> None:
         for row in meta(a.ids):
             print(json.dumps(row))
     elif a.cmd == "impact":
-        print(json.dumps(impact(a.id, a.repo, a.viral), indent=2))
+        repos = dict(r.split("=", 1) for r in a.repo)
+        for row in impact(a.ids, repos, set(a.viral)):
+            print(json.dumps(row))
     else:
         print(json.dumps(code_links(a.id), indent=2))
 
