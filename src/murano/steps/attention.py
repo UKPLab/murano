@@ -407,9 +407,10 @@ def _head_value_block(
         w_v = _projection_weight(proj)
     else:
         raise NotImplementedError(
-            "ov_circuit needs a separate value projection (self_attn.v_proj) or a "
-            "contiguous fused c_attn (GPT-2 style); this architecture's attention "
-            "module exposes neither (e.g. GPT-NeoX interleaves q/k/v)."
+            "Per-head value weights need a separate value projection "
+            "(self_attn.v_proj) or a contiguous fused c_attn (GPT-2 style); this "
+            "architecture's attention module exposes neither (e.g. GPT-NeoX "
+            "interleaves q/k/v)."
         )
     rows = slice(offset + head * head_dim, offset + (head + 1) * head_dim)
     bias = proj.bias

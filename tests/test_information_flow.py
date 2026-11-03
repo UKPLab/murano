@@ -431,6 +431,13 @@ class TestInformationFlowErrors:
         with pytest.raises(ValueError, match="sandwich-norm"):
             _run(murano_model_attn)
 
+    def test_no_value_projection(self, murano_model_attn, monkeypatch):
+        # An attention module with neither v_proj nor a fused c_attn (GPT-NeoX's
+        # interleaved query_key_value) has no per-head value block to split.
+        monkeypatch.setattr(murano_model_attn, "raw_module", lambda *_: object())
+        with pytest.raises(NotImplementedError, match="Per-head value weights"):
+            _run(murano_model_attn)
+
     def test_needs_attention_probs(self, murano_model):
         with pytest.raises(RuntimeError, match="enable_attention_probs"):
             _run(murano_model)
