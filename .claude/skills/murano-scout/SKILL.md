@@ -7,26 +7,22 @@ description: Find mechanistic-interpretability methods worth implementing in Mur
 
 Adapted from `k-dense-ai/scientific-agent-skills` `skills/literature-review`
 (MIT; a reproducible search with a screening log of records identified,
-screened and excluded, with reasons). Also from `allenai/asta-plugins`
-`plugins/asta-tools/skills/semantic-scholar` (Apache-2.0; S2 ID formats and
-field sets, reimplemented in `scripts/paper.py` because the `asta` CLI isn't
-available in the cloud).
+screened and excluded, with reasons).
 
 Scripts (stdlib, run with `python3 -I`):
 - `scripts/paper.py`: `search`, `meta`, `impact`, `code-links`
 - `scripts/ledger.py`: `filter`, `add`, `due`, `sync-issues`. Always pass
   `--ledger .agent-state/scouted.jsonl`.
 
-Sources: OpenAlex (the default `search`, fast and keyless) and the arXiv API
-cover the window. Semantic Scholar does the classics sweep and every `impact`
-call, because OpenAlex undercounts arXiv citations several-fold. `meta` falls
-back to OpenAlex when S2 throttles, with `citationCount` set to null.
-
-Set `S2_API_KEY`: keyless Semantic Scholar is throttled to near zero.
-`OPENALEX_API_KEY` is optional. When a call prints
-`{"error": "s2_unavailable"}`, the paper counts as not screened: write no
-ledger row and add it to `postponed` in `.agent-state/notes.md`, so the next
-scout picks it up.
+Every source is keyless: the arXiv API (search, `meta`), OpenAlex (search,
+citations, venues), Hugging Face papers and GitHub (the official repo and its
+stars). There is no Semantic Scholar: keyless it is throttled to zero, and no
+keyless source counts arXiv citations reliably. OpenAlex undercounts them
+by about 10×, so `impact` treats its count as a lower bound and adds adoption
+signals. `OPENALEX_API_KEY` and `GITHUB_TOKEN` are optional. When a call
+prints `{"error": "source_unavailable"}`, the paper counts as not screened:
+write no ledger row and add it to `postponed` in `.agent-state/notes.md`, so
+the next scout picks it up.
 
 ## No paper is screened twice
 
@@ -51,7 +47,8 @@ The ledger runs before any model reads anything:
      `bash`: zsh doesn't word-split `$args`, so flags kept in a variable
      arrive as one argument.
    - If the classics sweep is due, also run
-     `paper.py search "<q>" --source s2 --min-citations 100` with no `--since`.
+     `paper.py search "<q>" --source arxiv --limit 100` with no `--since`
+     (most relevant first; the ledger drops what was seen before).
    - Add the IDs in `postponed` from the notes.
    - Use WebSearch, limited to the window, for method posts on
      transformer-circuits.pub, the Anthropic, Google DeepMind and OpenAI
@@ -71,16 +68,20 @@ The ledger runs before any model reads anything:
 5. **Screen** the rest in batches of 5, one cheap subagent per batch, at most
    `cfg.max_parallel_subagents` at a time. Each subagent reads the abstracts
    (`paper.py meta`, or the arXiv abstract page) and the method section when
-   the abstract isn't enough. It returns per paper: G1–G4 and G6 as pass/fail
-   with one line of evidence each; Generality, Fit and Cost scored 0–3; a
-   three-sentence method summary; and `paper.py code-links` output.
+   the abstract isn't enough. `paper.py meta` takes many IDs in one call. It
+   returns per paper: G1–G4 and G6 as pass/fail with one line of evidence
+   each; Generality, Fit and Cost scored 0–3; a three-sentence method summary;
+   `paper.py code-links` output; and the official repo, if any, as
+   `owner/name` (not a dependency such as TransformerLens).
 6. **G5 and Impact** (by you, with scripts):
    - G5: grep `src/murano/steps/` and the README step table for the method,
      and search issues and PRs (`gh issue list --search "<key terms>" --state all`,
      same for `gh pr list`). Open work such as #119 (gradients) and #121
      (FEGA) counts.
-   - Impact: `paper.py impact <id>`, adding `--viral` only when the screen
-     found concrete evidence.
+   - Impact: `paper.py impact <id> --repo <owner/name>` for gate-passing
+     papers only. Pass `--repo` when the screen named official code (without
+     it, `impact` falls back to the repo the authors linked on Hugging Face).
+     Add `--viral` only when the screen found concrete evidence.
 7. **Decide**, and write a ledger row for every paper:
    - **Accept**: all gates pass, total ≥ `cfg.accept.min_total`, Impact ≥
      `cfg.accept.min_impact`.
@@ -114,12 +115,16 @@ The ledger runs before any model reads anything:
 
 ## Score (0–3 each, accept at total ≥ 8 and Impact ≥ 2)
 
-- **Impact** comes from `paper.py impact`, never by hand:
-  - 3: ≥ 300 citations, or under 18 months old at ≥ 10 citations per month.
+- **Impact** comes from `paper.py impact`, never by hand. Citations are the
+  OpenAlex sum over every record with the paper's title, a lower bound. Stars
+  are those of the official repo; the thresholds were calibrated on papers
+  whose citation-based Impact is known.
+  - 3: ≥ 300 citations, or under 18 months old at ≥ 10 citations per month,
+    or ≥ 500 stars.
   - 2: ≥ 100 citations; or under 18 months old with ≥ 20 citations at ≥ 3.3
     per month; or a top venue (NeurIPS, ICML, ICLR, ACL, EMNLP, NAACL, TMLR,
-    COLM); or the viral flag.
-  - 1: ≥ 20 citations.
+    COLM) on any OpenAlex record; or the viral flag; or ≥ 150 stars.
+  - 1: ≥ 20 citations, or ≥ 30 stars.
   - The viral flag needs concrete evidence: a post with ≥ 150 karma on the
     Alignment Forum or LessWrong, a transformer-circuits or major-lab post, or
     wide discussion you can link.

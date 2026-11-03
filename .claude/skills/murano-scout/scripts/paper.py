@@ -1,25 +1,23 @@
 """Paper metadata, search, impact score, and code links for the murano scout.
 
 Stdlib only, so it runs anywhere the loop runs. Every subcommand prints JSON
-(``search`` prints JSON Lines, one candidate per line, ready for
+(``search`` and ``meta`` print JSON Lines, one paper per line, ready for
 ``ledger.py filter``).
 
     python paper.py search "activation patching" --since 2026-10-01
     python paper.py search "sparse autoencoder" --source arxiv --since 2026-10-01
-    python paper.py search "logit lens" --source s2 --min-citations 100
-    python paper.py meta ARXIV:2211.00593
-    python paper.py impact ARXIV:2211.00593 [--viral]
+    python paper.py search "logit lens" --source arxiv          # classics: by relevance
+    python paper.py meta 2211.00593 2310.01405 DOI:10.18653/v1/2024.emnlp-main.965
+    python paper.py impact 2211.00593 [--repo owner/name] [--viral]
     python paper.py code-links 2211.00593
 
-Sources: OpenAlex (default search; fast, keyless) and the arXiv API cover the
-recent window. Semantic Scholar does the citation-sorted classics sweep and is
-the only source ``impact`` trusts: OpenAlex splits an arXiv paper's citations
-across its preprint and venue records and undercounts them several-fold.
-``meta`` falls back to OpenAlex (citation count withheld) when S2 throttles.
-
-S2 runs keyless at the shared public rate; set ``S2_API_KEY`` for a dedicated
-one, and optionally ``OPENALEX_API_KEY``. Field sets and ID formats follow the
-S2 Graph API (the same ones allenai/asta-plugins' semantic-scholar skill uses).
+Every source is keyless: the arXiv API (search, metadata), OpenAlex (search,
+citations, venues), Hugging Face papers (the author-linked repo) and GitHub
+(repo stars). No source gives reliable citation counts for arXiv ML papers
+without a key: OpenAlex barely parses preprint reference lists and undercounts
+them by an order of magnitude. ``impact`` therefore reads OpenAlex citations as
+a lower bound and adds adoption signals (top venue, GitHub stars of the
+official code). Set ``OPENALEX_API_KEY`` or ``GITHUB_TOKEN`` for higher limits.
 """
 
 from __future__ import annotations
@@ -37,13 +35,9 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date
 
-S2 = "https://api.semanticscholar.org/graph/v1"
 OPENALEX = "https://api.openalex.org/works"
-FIELDS = (
-    "paperId,externalIds,title,abstract,year,publicationDate,venue,"
-    "publicationVenue,citationCount,influentialCitationCount,url,authors.name"
-)
-SEARCH_FIELDS = "paperId,externalIds,title,year,publicationDate,venue,citationCount"
+ARXIV = "https://export.arxiv.org/api/query"
+_ATOM = {"a": "http://www.w3.org/2005/Atom"}
 
 # Venues whose acceptance alone counts as an impact signal. Long names match as
 # substrings; abbreviations must match as whole words ("acl" must not hit "eacl").
@@ -67,38 +61,44 @@ TOP_VENUE_ABBREVS = {
     "tmlr",
     "colm",
 }
+# GitHub stars of the official code, calibrated on papers whose citation-based
+# Impact is known (RepE 1056 -> 3, Tuned Lens 622 -> 3, Transcoders 214 -> 2).
+# ponytail: fixed thresholds; recalibrate if star counts inflate across the field.
+STARS_FOR = {3: 500, 2: 150, 1: 30}
 
 _ARXIV = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?")
 _GITHUB = re.compile(r"github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)")
 
 
 def normalize_id(raw: str) -> str:
-    """Return an S2-style ID (``ARXIV:``, ``DOI:`` or a bare S2 paperId) for ``raw``.
+    """Return ``ARXIV:<id>`` or ``DOI:<doi>`` for ``raw``, else ``raw`` unchanged.
 
-    Accepts arXiv IDs with or without version, prefix or URL, DOIs with or
-    without ``https://doi.org/``, and 40-hex S2 paperIds.
+    Accepts arXiv IDs with or without version, prefix or URL, and DOIs with or
+    without ``https://doi.org/``.
     """
     s = raw.strip()
     low = s.lower()
     if low.startswith("doi:") or "doi.org/" in low or low.startswith("10."):
         doi = re.sub(r"^(doi:|https?://(dx\.)?doi\.org/)", "", low)
         return f"DOI:{doi}"
-    if re.fullmatch(r"[0-9a-f]{40}", low):
-        return low
     m = _ARXIV.search(s)
     if m and ("arxiv" in low or re.fullmatch(r"\d{4}\.\d{4,5}(v\d+)?", s)):
         return f"ARXIV:{m.group(1)}"
     return s
 
 
-class S2Unavailable(RuntimeError):
-    """Semantic Scholar kept answering 429. Keyless access is throttled to near zero."""
+def norm_title(title: str | None) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).split())
 
 
-def _get(url: str, *, s2: bool = False, tries: int = 5) -> bytes:
+class SourceUnavailable(RuntimeError):
+    """A source kept answering 429 or could not resolve the paper."""
+
+
+def _get(url: str, *, tries: int = 4) -> bytes:
     headers = {"User-Agent": "murano-scout/1"}
-    if s2 and os.environ.get("S2_API_KEY"):
-        headers["x-api-key"] = os.environ["S2_API_KEY"]
+    if "api.github.com" in url and os.environ.get("GITHUB_TOKEN"):
+        headers["Authorization"] = f"Bearer {os.environ['GITHUB_TOKEN']}"
     for attempt in range(tries):
         try:
             with urllib.request.urlopen(
@@ -110,37 +110,7 @@ def _get(url: str, *, s2: bool = False, tries: int = 5) -> bytes:
                 raise
             if attempt < tries - 1:
                 time.sleep(2 ** (attempt + 1))
-    if s2:
-        raise S2Unavailable("Semantic Scholar rate-limited this client; set S2_API_KEY")
-    raise RuntimeError(f"rate-limited: {url}")
-
-
-def _candidate(p: dict) -> dict:
-    ext = p.get("externalIds") or {}
-    return {
-        "paperId": p.get("paperId"),
-        "arxiv": ext.get("ArXiv"),
-        "doi": (ext.get("DOI") or "").lower() or None,
-        "title": p.get("title"),
-        "year": p.get("year"),
-        "publicationDate": p.get("publicationDate"),
-        "venue": p.get("venue"),
-        "citationCount": p.get("citationCount"),
-    }
-
-
-def search_s2(
-    query: str, since: str | None, min_citations: int, limit: int
-) -> list[dict]:
-    params = {"query": query, "fields": SEARCH_FIELDS, "sort": "citationCount:desc"}
-    if since:
-        params["publicationDateOrYear"] = f"{since}:"
-    if min_citations:
-        params["minCitationCount"] = str(min_citations)
-    data = json.loads(
-        _get(f"{S2}/paper/search/bulk?{urllib.parse.urlencode(params)}", s2=True)
-    )
-    return [_candidate(p) for p in (data.get("data") or [])[:limit]]
+    raise SourceUnavailable(f"rate-limited: {url}")
 
 
 def _openalex(path: str = "", **params: str) -> dict:
@@ -158,7 +128,6 @@ def _openalex_candidate(w: dict) -> dict:
     )
     venues = [(loc.get("source") or {}).get("display_name") for loc in locs]
     return {
-        "paperId": None,
         "arxiv": m.group(1) if m else None,
         "doi": doi,
         "title": w.get("title"),
@@ -167,6 +136,33 @@ def _openalex_candidate(w: dict) -> dict:
         "venue": next((v for v in venues if v), None),
         "citationCount": w.get("cited_by_count"),
     }
+
+
+def _arxiv_query(terms: str | None, *, ids: list[str] | None = None, **params: str):
+    q = dict(params)
+    if terms:
+        q["search_query"] = terms
+    if ids:
+        q["id_list"] = ",".join(ids)
+        q["max_results"] = str(len(ids))
+    root = ET.fromstring(_get(f"{ARXIV}?{urllib.parse.urlencode(q)}"))
+    for entry in root.findall("a:entry", _ATOM):
+        published = (entry.findtext("a:published", "", _ATOM) or "")[:10]
+        m = _ARXIV.search(entry.findtext("a:id", "", _ATOM) or "")
+        if not m:  # arXiv answers an unknown id with an error entry
+            continue
+        yield (
+            entry,
+            {
+                "arxiv": m.group(1),
+                "doi": None,
+                "title": " ".join((entry.findtext("a:title", "", _ATOM) or "").split()),
+                "year": int(published[:4]) if published else None,
+                "publicationDate": published or None,
+                "venue": "arXiv",
+                "citationCount": None,
+            },
+        )
 
 
 def search_openalex(query: str, since: str | None, limit: int) -> list[dict]:
@@ -181,98 +177,94 @@ def search_openalex(query: str, since: str | None, limit: int) -> list[dict]:
     return [_openalex_candidate(w) for w in data.get("results") or []]
 
 
-def meta_openalex(paper_id: str) -> dict:
-    """Metadata for screening when S2 throttles; citationCount is withheld (see module doc)."""
-    nid = normalize_id(paper_id)
-    if nid.startswith("ARXIV:"):
-        key = f"doi:10.48550/arxiv.{nid.removeprefix('ARXIV:')}"
-    elif nid.startswith("DOI:"):
-        key = f"doi:{nid.removeprefix('DOI:')}"
-    else:
-        raise S2Unavailable(f"S2 throttled and OpenAlex cannot resolve {paper_id}")
-    try:
-        w = _openalex(f"/{urllib.parse.quote(key, safe=':/')}")
-    except urllib.error.HTTPError as e:
-        if e.code != 404:
-            raise
-        raise S2Unavailable(f"S2 throttled and OpenAlex has no {paper_id}") from e
-    out = {**_openalex_candidate(w), "citationCount": None}
-    inv = w.get("abstract_inverted_index") or {}
-    words = {i: word for word, idxs in inv.items() for i in idxs}
-    out["abstract"] = " ".join(words[i] for i in sorted(words)) or None
-    out["influentialCitationCount"] = None
-    venues = {
-        (loc.get("source") or {}).get("display_name")
-        for loc in w.get("locations") or []
-    }
-    out["publicationVenue"] = "; ".join(sorted(v for v in venues if v)) or None
-    out["authors"] = [
-        (a.get("author") or {}).get("display_name") for a in w.get("authorships") or []
-    ]
-    out["url"] = w.get("id")
-    out["source"] = "openalex"
-    return out
-
-
 def search_arxiv(query: str, since: str | None, limit: int) -> list[dict]:
-    """Recent preprints S2 may not have indexed yet, newest first."""
+    """ML/NLP preprints: newest first with ``since``, most relevant first without it."""
     # arXiv ORs bare words; AND them and stay inside the ML/NLP categories.
     terms = " AND ".join(
         f'all:"{t}"' if " " in t else f"all:{t}" for t in shlex.split(query)
     )
-    params = {
-        "search_query": f"({terms}) AND (cat:cs.LG OR cat:cs.CL OR cat:cs.AI)",
-        "sortBy": "submittedDate",
-        "sortOrder": "descending",
-        "max_results": str(limit),
-    }
-    root = ET.fromstring(
-        _get(f"https://export.arxiv.org/api/query?{urllib.parse.urlencode(params)}")
+    rows = _arxiv_query(
+        f"({terms}) AND (cat:cs.LG OR cat:cs.CL OR cat:cs.AI)",
+        sortBy="submittedDate" if since else "relevance",
+        sortOrder="descending",
+        max_results=str(limit),
     )
-    ns = {"a": "http://www.w3.org/2005/Atom"}
-    out = []
-    for entry in root.findall("a:entry", ns):
-        published = (entry.findtext("a:published", "", ns) or "")[:10]
-        if since and published < since:
-            continue
-        m = _ARXIV.search(entry.findtext("a:id", "", ns) or "")
-        out.append(
-            {
-                "paperId": None,
-                "arxiv": m.group(1) if m else None,
-                "doi": None,
-                "title": " ".join((entry.findtext("a:title", "", ns) or "").split()),
-                "year": int(published[:4]) if published else None,
-                "publicationDate": published or None,
-                "venue": "arXiv",
-                "citationCount": None,
-            }
-        )
-    return out
+    return [
+        row for _, row in rows if not since or (row["publicationDate"] or "") >= since
+    ]
 
 
-def meta(paper_id: str, today: date | None = None, *, s2_only: bool = False) -> dict:
+def _openalex_meta(doi: str) -> dict:
     try:
-        p = json.loads(
-            _get(
-                f"{S2}/paper/{urllib.parse.quote(normalize_id(paper_id), safe=':')}?fields={FIELDS}",
-                s2=True,
-            )
-        )
-    except S2Unavailable:
-        if s2_only:
+        w = _openalex(f"/{urllib.parse.quote(f'doi:{doi}', safe=':/')}")
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
             raise
-        out = meta_openalex(paper_id)
-    else:
-        out = _candidate(p)
-        out["abstract"] = p.get("abstract")
-        out["influentialCitationCount"] = p.get("influentialCitationCount")
-        out["publicationVenue"] = (p.get("publicationVenue") or {}).get("name")
-        out["authors"] = [a.get("name") for a in p.get("authors") or []]
-        out["url"] = p.get("url")
-        out["source"] = "s2"
-    out["months"] = months_since(out["publicationDate"], out["year"], today)
+        raise SourceUnavailable(f"OpenAlex has no DOI {doi}") from e
+    out = _openalex_candidate(w)
+    inv = w.get("abstract_inverted_index") or {}
+    words = {i: word for word, idxs in inv.items() for i in idxs}
+    out["abstract"] = " ".join(words[i] for i in sorted(words)) or None
+    out["authors"] = [
+        (a.get("author") or {}).get("display_name") for a in w.get("authorships") or []
+    ]
+    out["url"] = w.get("id")
     return out
+
+
+def meta(paper_ids: list[str], today: date | None = None) -> list[dict]:
+    """Title, abstract, authors and date: one arXiv call for all arXiv IDs, OpenAlex per DOI."""
+    nids = [normalize_id(p) for p in paper_ids]
+    aids = [n.removeprefix("ARXIV:") for n in nids if n.startswith("ARXIV:")]
+    found = {}
+    if aids:
+        for entry, row in _arxiv_query(None, ids=aids):
+            row["abstract"] = " ".join(
+                (entry.findtext("a:summary", "", _ATOM) or "").split()
+            )
+            row["authors"] = [
+                a.findtext("a:name", "", _ATOM)
+                for a in entry.findall("a:author", _ATOM)
+            ]
+            row["url"] = f"https://arxiv.org/abs/{row['arxiv']}"
+            found[f"ARXIV:{row['arxiv']}"] = row
+    out = []
+    for raw, nid in zip(paper_ids, nids):
+        if nid.startswith("DOI:"):
+            row = _openalex_meta(nid.removeprefix("DOI:"))
+        elif nid in found:
+            row = found[nid]
+        else:
+            raise SourceUnavailable(f"cannot resolve {raw}")
+        row["months"] = months_since(row["publicationDate"], row["year"], today)
+        out.append(row)
+    return out
+
+
+def openalex_records(title: str) -> list[dict]:
+    """Every OpenAlex record (preprint, venue version, ...) with exactly this title."""
+    data = _openalex(filter=f"title.search:{norm_title(title)}", per_page="25")
+    return [
+        w
+        for w in data.get("results") or []
+        if norm_title(w.get("title")) == norm_title(title)
+    ]
+
+
+def repo_stars(arxiv_id: str | None, repo: str | None) -> tuple[str | None, int | None]:
+    """Stars of ``repo``, else of the repo the authors linked on Hugging Face papers."""
+    if not repo and arxiv_id:
+        try:
+            hf = json.loads(_get(f"https://huggingface.co/api/papers/{arxiv_id}"))
+        except urllib.error.HTTPError:
+            return None, None
+        repo = (
+            "/".join((hf.get("githubRepo") or "").rstrip("/").split("/")[-2:]) or None
+        )
+    if not repo:
+        return None, None
+    gh = json.loads(_get(f"https://api.github.com/repos/{repo}"))
+    return repo, gh.get("stargazers_count")
 
 
 def months_since(
@@ -301,42 +293,73 @@ def is_top_venue(*venues: str | None) -> bool:
 
 
 def impact_score(m: dict, viral: bool = False) -> dict:
-    """Deterministic 0-3 Impact score; the anchors live in murano-scout/SKILL.md."""
+    """Deterministic 0-3 Impact score; the anchors live in murano-scout/SKILL.md.
+
+    ``citationCount`` is a lower bound (OpenAlex), so stars of the official code
+    (``githubStars``) can lift the score where citations are undercounted.
+    """
     c = m.get("citationCount") or 0
+    stars = m.get("githubStars") or 0
     months = m.get("months") or months_since(m.get("publicationDate"), m.get("year"))
     rate = c / months
     top = is_top_venue(m.get("venue"), m.get("publicationVenue"))
-    reasons = []
-    if c >= 300 or (months < 18 and rate >= 10):
-        score = 3
-        reasons.append(f"{c} citations, {rate:.1f}/month")
-    elif c >= 100 or (months < 18 and c >= 20 and rate >= 20 / 6) or top or viral:
-        score = 2
-        reasons += [
-            r
-            for r, hit in (
-                (f"{c} citations", c >= 100),
-                (
-                    f"{rate:.1f} citations/month at {months:.0f} months",
-                    months < 18 and c >= 20,
-                ),
-                ("top venue", top),
-                ("viral signal", viral),
-            )
-            if hit
-        ]
-    elif c >= 20:
-        score = 1
-        reasons.append(f"{c} citations")
-    else:
-        score = 0
-        reasons.append(f"{c} citations at {months:.0f} months")
+    hits = {
+        3: [
+            (
+                f"{c} citations, {rate:.1f}/month",
+                c >= 300 or (months < 18 and rate >= 10),
+            ),
+            (f"{stars} GitHub stars", stars >= STARS_FOR[3]),
+        ],
+        2: [
+            (f"{c} citations", c >= 100),
+            (
+                f"{rate:.1f} citations/month at {months:.0f} months",
+                months < 18 and c >= 20 and rate >= 20 / 6,
+            ),
+            ("top venue", top),
+            ("viral signal", viral),
+            (f"{stars} GitHub stars", stars >= STARS_FOR[2]),
+        ],
+        1: [
+            (f"{c} citations", c >= 20),
+            (f"{stars} GitHub stars", stars >= STARS_FOR[1]),
+        ],
+    }
+    score = next((s for s in (3, 2, 1) if any(hit for _, hit in hits[s])), 0)
+    reasons = (
+        [r for r, hit in hits[score] if hit]
+        if score
+        else [f"{c} citations, {stars} stars at {months:.0f} months"]
+    )
     # Too new to judge is not the same as unimportant: the scout defers these
     # instead of rejecting them, and ledger.py due brings them back later.
     return {
         "impact": score,
         "reasons": reasons,
         "deferrable": score < 2 and months < 12,
+    }
+
+
+def impact(paper_id: str, repo: str | None = None, viral: bool = False) -> dict:
+    (m,) = meta([paper_id])
+    records = openalex_records(m["title"])
+    venues = {
+        (loc.get("source") or {}).get("display_name")
+        for w in records
+        for loc in w.get("locations") or []
+    }
+    m["citationCount"] = sum(w.get("cited_by_count") or 0 for w in records)
+    m["publicationVenue"] = "; ".join(sorted(v for v in venues if v)) or None
+    m["repo"], m["githubStars"] = repo_stars(m.get("arxiv"), repo)
+    return {
+        "id": paper_id,
+        "title": m["title"],
+        "citations_lower_bound": m["citationCount"],
+        "venues": m["publicationVenue"],
+        "repo": m["repo"],
+        "stars": m["githubStars"],
+        **impact_score(m, viral),
     }
 
 
@@ -372,48 +395,38 @@ def main(argv: list[str] | None = None) -> int | None:
     s = sub.add_parser("search")
     s.add_argument("query")
     s.add_argument("--since", help="YYYY-MM-DD; only papers published on or after")
-    s.add_argument("--min-citations", type=int, default=0)
     s.add_argument("--limit", type=int, default=50)
-    s.add_argument("--source", choices=("openalex", "arxiv", "s2"), default="openalex")
-    for name in ("meta", "impact", "code-links"):
-        p = sub.add_parser(name)
-        p.add_argument("id")
-        if name == "impact":
-            p.add_argument(
-                "--viral", action="store_true", help="agent-verified viral signal"
-            )
+    s.add_argument("--source", choices=("openalex", "arxiv"), default="openalex")
+    sub.add_parser("meta").add_argument("ids", nargs="+")
+    i = sub.add_parser("impact")
+    i.add_argument("id")
+    i.add_argument(
+        "--repo", help="owner/name of the official code, when HF papers lacks it"
+    )
+    i.add_argument("--viral", action="store_true", help="agent-verified viral signal")
+    sub.add_parser("code-links").add_argument("id")
     a = ap.parse_args(argv)
     try:
         _run(a)
-    except S2Unavailable as e:
+    except SourceUnavailable as e:
         # The scout treats this as "not screened": no ledger row, retry next tick.
-        print(json.dumps({"error": "s2_unavailable", "detail": str(e)}))
+        print(json.dumps({"error": "source_unavailable", "detail": str(e)}))
         return 2
 
 
 def _run(a: argparse.Namespace) -> None:
     if a.cmd == "search":
-        if a.source == "s2":
-            rows = search_s2(a.query, a.since, a.min_citations, a.limit)
-        elif a.min_citations:
-            sys.exit(
-                "--min-citations needs --source s2 (citation counts elsewhere are unreliable)"
-            )
-        elif a.source == "arxiv":
+        if a.source == "arxiv":
             rows = search_arxiv(a.query, a.since, a.limit)
         else:
             rows = search_openalex(a.query, a.since, a.limit)
         for row in rows:
             print(json.dumps(row))
     elif a.cmd == "meta":
-        print(json.dumps(meta(a.id), indent=2))
+        for row in meta(a.ids):
+            print(json.dumps(row))
     elif a.cmd == "impact":
-        m = meta(a.id, s2_only=True)
-        print(
-            json.dumps(
-                {"id": a.id, "title": m["title"], **impact_score(m, a.viral)}, indent=2
-            )
-        )
+        print(json.dumps(impact(a.id, a.repo, a.viral), indent=2))
     else:
         print(json.dumps(code_links(a.id), indent=2))
 

@@ -30,7 +30,6 @@ def test_normalize_id():
         paper.normalize_id("https://doi.org/10.18653/V1/N18-3011")
         == "DOI:10.18653/v1/n18-3011"
     )
-    assert paper.normalize_id("A" * 40) == "a" * 40
 
 
 def test_impact_score():
@@ -49,6 +48,11 @@ def test_impact_score():
     assert paper.impact_score(fresh, viral=True)["impact"] == 2
     stale = {"citationCount": 3, "months": 30}
     assert paper.impact_score(stale)["deferrable"] is False
+    # Undercounted citations: stars of the official code lift the score.
+    adopted = {"citationCount": 65, "months": 37, "githubStars": 1056}
+    assert paper.impact_score(adopted)["impact"] == 3
+    assert paper.impact_score({**adopted, "githubStars": 214})["impact"] == 2
+    assert paper.impact_score({**adopted, "githubStars": 35})["impact"] == 1
 
 
 def test_top_venue_abbrev_is_whole_word():
