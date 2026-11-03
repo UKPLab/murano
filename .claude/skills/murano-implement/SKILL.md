@@ -15,7 +15,9 @@ The rules are in `AGENTS.md`, and every section of it applies. The plan is the
 ## Implement mode (issue `agent:sourced`)
 
 1. **Set up.** Add `agent:wip` to the issue.
-   `git switch main && git pull --ff-only && git switch -c agent/<issue>-<slug>`.
+   `git switch <base> && git pull --ff-only && git switch -c agent/<issue>-<slug>`,
+   where `<base>` is `base_branch` in `.claude/agent-loop.json` (normally `main`).
+   Open the PR against it: `gh pr create --base <base>`.
 2. **Read before writing.** Read the dossier, `AGENTS.md`, and the two existing
    steps the dossier's mapping names, end to end, with their tests. Match their
    structure, docstring shape, naming and helper use.
@@ -36,7 +38,7 @@ The rules are in `AGENTS.md`, and every section of it applies. The plan is the
 7. **Attribution:** add a `NOTICE.txt` line under "Adapted implementations".
    The notebook header cites the paper and the code at its pinned SHA.
 8. **Checks:** all the commands in `AGENTS.md` §12 must pass. Then look at
-   `git diff --stat main`. Every file listed has to be explained by the
+   `git diff --stat <base>`. Every file listed has to be explained by the
    checklist. Revert anything else.
 9. **Commit and open the PR.** Use conventional commits. Push the branch and
    create the PR with the body from `.github/PULL_REQUEST_TEMPLATE.md`, written

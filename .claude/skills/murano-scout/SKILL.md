@@ -9,20 +9,25 @@ Adapted from `k-dense-ai/scientific-agent-skills` `skills/literature-review`
 (MIT; a reproducible search with a screening log of records identified,
 screened and excluded, with reasons).
 
-Scripts (stdlib, run with `python3 -I`):
-- `scripts/paper.py`: `search`, `meta`, `impact`, `code-links`
-- `scripts/ledger.py`: `filter`, `add`, `due`, `sync-issues`. Always pass
-  `--ledger .agent-state/scouted.jsonl`.
+Every deterministic step is a script (stdlib, run with `python3 -I`); you
+make only the judgment calls: which titles are on-topic, G5 verdicts, the
+viral flag, and the issue prose.
+- `scripts/scout.py`: the procedure below, one subcommand per step. Run state
+  lives in `.agent-state/run/`.
+- `scripts/paper.py`: `search`, `meta`, `impact`, `code-links` (used by
+  `scout.py`, and by screeners for reading papers).
+- `scripts/ledger.py`: the ledger (`scout.py` writes every row through it).
 
-Every source is keyless: the arXiv API (search, `meta`), OpenAlex (search,
-citations, venues), Hugging Face papers and GitHub (the official repo and its
-stars). There is no Semantic Scholar: keyless it is throttled to zero, and no
-keyless source counts arXiv citations reliably. OpenAlex undercounts them
-by about 10×, so `impact` treats its count as a lower bound and adds adoption
-signals. Keyless OpenAlex has a daily budget of about 100 searches per IP
-(shared with everything else on that IP, resets at midnight UTC), so the scout
-spends it on `impact` only. `OPENALEX_API_KEY` (free, its own budget) and
-`GITHUB_TOKEN` are optional.
+Every source is keyless: the arXiv API (search, `meta`), OpenAlex (citations,
+venues), Hugging Face papers and GitHub (the official repo and its stars).
+There is no Semantic Scholar: keyless it is throttled to zero, and no keyless
+source counts arXiv citations reliably. OpenAlex undercounts them by about
+10×, so `impact` treats its count as a lower bound and adds adoption signals.
+Keyless OpenAlex has a daily budget of about 100 searches per IP (shared with
+everything else on that IP, resets at midnight UTC), which is why search uses
+arXiv. `OPENALEX_API_KEY` (free, its own budget) and `GITHUB_TOKEN` are
+optional; locally they can live in the `env` block of the git-ignored
+`.claude/settings.local.json`.
 
 To get an OpenAlex key when `OPENALEX_API_KEY` is unset, first ask the user
 (AskUserQuestion) whether you may send their email address to OpenAlex. Send
@@ -31,13 +36,9 @@ it only after an explicit yes:
 The response holds the key, which works once the user clicks the activation
 link OpenAlex emails them. Give them the key and ask them to export
 `OPENALEX_API_KEY` (for the cloud routine, add it to the routine's
-environment). Never commit it. Ask once per
-session and not again after a no. When nobody can answer, as in the scheduled
-routine, send nothing and note in the log that a key would help. When a paper comes back as
-`{"error": "source_unavailable"}`, do not reject or defer it. If it was
-already screened, keep its screening result in
-`.agent-state/pending_impact.json` and score only Impact next scout. Otherwise
-add it to `postponed` in `.agent-state/notes.md`.
+environment). Never commit it. Ask once per session and not again after a no.
+When nobody can answer, as in the scheduled routine, send nothing and note in
+the log that a key would help.
 
 ## No paper is screened twice
 
@@ -47,77 +48,66 @@ The ledger runs before any model reads anything:
 - `rejected` is permanent.
 - `deferred` (Impact too low *because the paper is too new*, or the backlog is
   full) comes back only through `ledger.py due`.
+- A paper that passed screening but could not be scored (`source_unavailable`)
+  waits in `.agent-state/pending_impact.json`; the next `score` picks it up
+  without screening it again.
 - Issues closed as "not planned" sync in as human rejections.
 - The window only covers papers since the last scout. Older classics come from
   a separate sweep every `cfg.classics_sweep_every_days`.
 
 ## Procedure
 
-1. **Window.** Set `since` to `last_scout` from `.agent-state/notes.md`. On a
-   first run, use 90 days ago.
-2. **Collect IDs, not text.** Append to `candidates.jsonl` in the scratchpad:
-   - For each query in `cfg.queries`, run `paper.py search "<q>" --since <since>`
-     (arXiv, newest first). Pause 3 s between calls (arXiv's API etiquette).
-     Run the loop under `bash`: zsh doesn't word-split `$args`, so flags kept
-     in a variable arrive as one argument.
-   - If the classics sweep is due, also run
-     `paper.py search "<q>" --limit 100` with no `--since` (most relevant
-     first; the ledger drops what was seen before).
-   - Add the papers in `.agent-state/pending_impact.json`: already screened,
-     they skip straight to step 6.
-   - Add the IDs in `postponed` from the notes.
-   - Use WebSearch, limited to the window, for method posts on
-     transformer-circuits.pub, the Anthropic, Google DeepMind and OpenAI
-     interpretability blogs, the Alignment Forum and LessWrong interpretability
-     tags, and widely shared threads about a new interpretability method. Map
-     each post to its arXiv ID when it has one. Otherwise add
-     `{"url": ..., "title": ...}`.
-   - Optional sources (alphaXiv, Scholar Gateway) are fine when their
-     connectors are authorized.
-3. **Dedup.**
-   `ledger.py filter < candidates.jsonl > unseen.jsonl`, then
-   `ledger.py due >> unseen.jsonl`.
-4. **Title triage** (by you, no subagent). Drop titles that are plainly not
-   about language-model internals, such as clinical, vision-only or
-   chess-only work. Record each one with
-   `ledger.py add --status rejected --gate G2 --reason "title triage: <why>"`.
-5. **Screen** the rest in batches of 5, one cheap subagent per batch, at most
-   `cfg.max_parallel_subagents` at a time. Each subagent reads the abstracts
-   (`paper.py meta`, or the arXiv abstract page) and the method section when
-   the abstract isn't enough. `paper.py meta` takes many IDs in one call. It
-   returns per paper: G1–G4 and G6 as pass/fail with one line of evidence
-   each; Generality, Fit and Cost scored 0–3; a three-sentence method summary;
-   `paper.py code-links` output; and the official repo, if any, as
-   `owner/name` (not a dependency such as TransformerLens).
-6. **G5 and Impact** (by you, with scripts):
-   - G5: grep `src/murano/steps/` and the README step table for the method,
-     and search issues and PRs (`gh issue list --search "<key terms>" --state all`,
-     same for `gh pr list`). Open work such as #119 (gradients) and #121
-     (FEGA) counts.
-   - Impact: one call for all gate-passing papers,
-     `paper.py impact <id> <id> ... --repo <id>=<owner/name> ...`. Pass
-     `--repo` for each paper whose screen named official code (without it,
-     `impact` falls back to the repo the authors linked on Hugging Face). Add
-     `--viral <id>` only when the screen found concrete evidence.
-7. **Decide**, and write a ledger row for every paper:
-   - **Accept**: all gates pass, total ≥ `cfg.accept.min_total`, Impact ≥
-     `cfg.accept.min_impact`.
-   - **Defer**: the gates pass but Impact is short and `impact` says
-     `deferrable` (`--status deferred --recheck-days cfg.defer_recheck_days`).
-   - **Reject**: anything else, with `--gate` naming the first gate that failed
-     (`score` when only the total fell short).
-8. **File issues.** Sort accepts by total. Open at most
-   `min(cfg.max_new_issues_per_scout, cfg.backlog_cap - open backlog)` of them.
-   Each one gets title `[METHOD] <method name> (<Author> et al., <year>)`,
-   labels `enhancement` and `agent:todo`, and a body with the headings from
-   `.github/ISSUE_TEMPLATE/method_proposal.yml` (see the template below),
-   written through `humanizer`. Then run
-   `ledger.py add ... --status accepted --issue <n>`. Accepts that didn't fit
-   get `--status deferred --recheck-days 7 --reason "backlog full"`.
-9. **Log.** Hand the loop the counts: identified, already seen, title-triaged,
-   screened, accepted (issue links), deferred, rejected per gate, postponed.
-   Also hand it the new `last_scout` (today), and `last_classics` if the sweep
-   ran.
+`S` below means `python3 -I .claude/skills/murano-scout/scripts/scout.py`.
+
+1. **Web posts** (optional, by you). WebSearch, limited to the window, for
+   method posts on transformer-circuits.pub, the Anthropic, Google DeepMind
+   and OpenAI interpretability blogs, the Alignment Forum and LessWrong
+   interpretability tags, and widely shared threads about a new method. Write
+   one JSON line per post to a file: `{"arxiv": "<id>"}` when it has an arXiv
+   ID, else `{"url": ..., "title": ...}`.
+2. **Collect.** `S collect [--extra posts.jsonl]`. It sets the window
+   (`last_scout`, or 90 days back on a first run), decides whether the classics
+   sweep is due, runs every `cfg.queries` search on arXiv at arXiv's pace, adds
+   the postponed IDs, drops everything in the ledger or pending, adds deferred
+   papers that are due, and fetches missing titles.
+3. **Title triage** (by you, no subagent). `S triage` prints every unseen
+   title with its index, likeliest on-topic first (`K` interpretability term,
+   `L` LM term, `!` off-topic term). Read all of it. Pick at most
+   `5 × (cfg.max_subagents_per_tick − subagents already used)` papers to
+   screen, preferring method-proposal titles and cited classics. Postpone the
+   other on-topic papers. Then `S triage --screen 0-9,14 --postpone 20-40
+   [--used N]`: every index you didn't name is rejected as G2.
+4. **Screen.** `S batches` writes one brief per 5 papers
+   (`.agent-state/run/batch_<n>.md`, from `screener_prompt.md`). Spawn one
+   cheap subagent per brief with the file's contents as its prompt, at most
+   `cfg.max_parallel_subagents` at a time. Each writes its JSON to
+   `run/out_<n>.json`. Then `S record` computes pass and the first failed
+   gate for every paper.
+5. **G5** (by you). For each passing paper, `S g5-search "<term>" ...` lists
+   matching issues, PRs and source files. Open work such as #119 (gradients)
+   and #121 (FEGA) counts, and so does a method that composes from existing
+   steps with no new code. `S g5-fail <id> "<reason>"` records a failure.
+6. **Impact.** `S score`, adding `--viral <id>` only when you verified the
+   screener's `viral_evidence`. One call scores every gate-passing paper and
+   every pending one, using the screener's `official_repo` for stars.
+7. **Decide.** `S decide` applies the rules and writes the ledger rows: accept
+   at total ≥ `cfg.accept.min_total` and Impact ≥ `cfg.accept.min_impact`,
+   up to `min(cfg.max_new_issues_per_scout − filed this scout,
+   cfg.backlog_cap − open backlog)` issues; extra accepts are deferred 7 days
+   ("backlog full"); short Impact on a `deferrable` paper defers it
+   `cfg.defer_recheck_days`; anything else is rejected with its first failed
+   gate (`score` when only the total fell short). It prints `to_file`.
+8. **File issues.** For each paper in `to_file`:
+   `S draft-issue <id> > body.md` fills every computed field (paper line,
+   links, scores, gates) and prints a suggested title. Rewrite Method from
+   the screener's summary, write the Murano mapping (existing steps it reuses;
+   the new step and what it reads and writes), run the prose through
+   `humanizer` (embedded mode), and file with
+   `S file-issue <id> body.md --title "[METHOD] <method name> (<Author> et al., <year>)"`.
+   It labels the issue `enhancement` and `agent:todo` and writes the accepted
+   ledger row.
+9. **Finish.** `S finish` stamps `last_scout` (and `last_classics`) in the
+   notes and prints the counts block for the loop's log comment.
 
 ## Gates (all must pass)
 
@@ -152,29 +142,14 @@ The ledger runs before any model reads anything:
   Step/Results model.
 - **Cost**: 3 means an afternoon; 0 means weeks or heavy dependencies.
 
-## Issue body template
+## Issue body
 
-```markdown
-> *Generated by the murano agent loop.*
-
-### Paper
-<Title>. <Authors>. <Venue, year>. <arXiv/DOI link>
-
-### Links
-<code repos from code-links, project page, notable posts>
-
-### Method
-<three sentences: what it computes, on which components, what you learn>
-
-### Why it matters
-Impact <n>/3 (<paper.py reasons>) · Generality <n> · Fit <n> · Cost <n> · total <n>/12
-Gates: G1 ✓ <evidence> · G2 ✓ · G3 ✓ · G4 ✓ <oracle idea> · G5 ✓ · G6 ✓ <official code | fully specified>
-
-### Murano mapping
-<existing steps it reuses; the new step(s) and what they read and write>
-```
+`scout.py draft-issue` writes the headings of
+`.github/ISSUE_TEMPLATE/method_proposal.yml`: Paper, Links, Method, Why it
+matters (Impact with its reasons, Generality, Fit, Cost, total, and every
+gate's evidence) and Murano mapping. It starts with
+`> *Generated by the murano agent loop.*`.
 
 ## Return
 
-The log counts from step 9, the new issue numbers, and the new values for
-`last_scout`, `last_classics` and `postponed`.
+The counts block from `scout.py finish` and the new issue numbers.

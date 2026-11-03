@@ -11,11 +11,14 @@ HERE = Path(__file__).parent
 sys.path[:0] = [
     str(HERE / "murano-scout" / "scripts"),
     str(HERE / "murano-source" / "scripts"),
+    str(HERE / "murano-loop" / "scripts"),
 ]
 
 import ledger  # noqa: E402
+import loop  # noqa: E402
 import paper  # noqa: E402
 import repo_check  # noqa: E402
+import scout  # noqa: E402
 
 TODAY = date(2026, 11, 7)
 
@@ -171,3 +174,129 @@ def test_license_and_repo_parsing():
         "saprmarks", "Samuel Marks", ["Samuel Marks", "Max Tegmark"]
     )
     assert not repo_check.owner_matches("randomdev", None, ["Samuel Marks"])
+
+
+CFG = {
+    "scout_min_interval_days": 6,
+    "classics_sweep_every_days": 90,
+    "backlog_cap": 5,
+    "max_open_agent_prs": 2,
+    "max_review_rounds": 3,
+    "max_sourcing_per_tick": 2,
+    "accept": {"min_total": 8, "min_impact": 2},
+}
+
+
+def _item(n, labels, created, body=""):
+    return {
+        "number": n,
+        "labels": [{"name": lab} for lab in labels],
+        "createdAt": created,
+        "body": body,
+    }
+
+
+def test_tick_plan_orders_oldest_first_and_respects_limits():
+    prs = [
+        _item(10, ["agent:needs-review"], "2026-11-02"),
+        _item(
+            11,
+            ["agent:changes-requested"],
+            "2026-11-01",
+            "<!-- agent-review-round: 3 -->",
+        ),
+        _item(12, ["agent:needs-review", "agent:hold"], "2026-10-01"),
+    ]
+    issues = [
+        _item(20, ["agent:todo"], "2026-11-03"),
+        _item(21, ["agent:todo"], "2026-11-01"),
+        _item(22, ["agent:todo"], "2026-11-02"),
+        _item(23, ["agent:sourced", "has-pr"], "2026-10-01"),
+        _item(24, ["agent:sourced"], "2026-10-02"),
+    ]
+    notes = {"last_scout": "2026-11-01", "last_classics": "never"}
+    plan = loop.tick_plan(prs, issues, CFG, notes, TODAY)
+    assert plan["review"] == [10]  # held PR skipped
+    assert plan["revise"] == {"pr": 11, "round": 3, "block": True}
+    # Two agent PRs open (held one excluded) reaches max_open_agent_prs.
+    assert plan["implement"] is None
+    assert plan["source"] == [21, 22]
+    assert (
+        plan["backlog"] == 5 and plan["scout"] is False and plan["classics_due"] is True
+    )
+    fewer = loop.tick_plan(prs[:1], issues[:2], CFG, notes, TODAY)
+    # Scouted exactly scout_min_interval_days ago with room in the backlog: due.
+    assert fewer["implement"] is None and fewer["scout"] is True
+    assert (
+        loop.tick_plan([], issues[:2], CFG, {"last_scout": "2026-11-05"}, TODAY)[
+            "scout"
+        ]
+        is False
+    )
+
+
+def test_notes_round_trip(tmp_path):
+    path = tmp_path / "notes.md"
+    notes = {
+        "last_scout": "2026-11-03",
+        "postponed": ["2610.1", "10.5281/x"],
+        "threads": "- one\n- two",
+    }
+    loop.write_notes(notes, path)
+    back = loop.read_notes(path)
+    assert back["postponed"] == ["2610.1", "10.5281/x"]
+    assert back["last_scout"] == "2026-11-03" and back["last_classics"] == "never"
+    assert back["threads"].strip() == "- one\n- two"
+    assert loop.days_since("never", TODAY) is None
+    assert loop.days_since("2026-11-01", TODAY) == 6
+
+
+def test_scout_parsing_helpers():
+    assert scout.parse_spec("0-2, 7") == {0, 1, 2, 7}
+    assert scout.parse_spec(None) == set()
+    assert scout.pid({"arxiv": "2310.01405v2"}) == "2310.01405"
+    assert scout.pid({"arxiv": "DOI 10.5281/Zenodo.1"}) == "10.5281/zenodo.1"
+    assert scout._ref("2310.01405") == "2310.01405"
+    assert scout._ref("10.5281/zenodo.1") == "DOI:10.5281/zenodo.1"
+    ok = {g: ["pass", ""] for g in scout.GATES}
+    assert scout.first_failed(ok) is None
+    assert (
+        scout.first_failed({**ok, "G3": ["fail", "gradients"], "G6": ["fail", ""]})
+        == "G3"
+    )
+    assert scout.first_failed({**ok, "G4": "FAIL"}) == "G4"
+    assert scout.triage_flag("Steering vectors in language models") == "KL"
+    assert scout.triage_flag("Microneedle patch for wound healing").endswith("!")
+
+
+def test_decide_actions_caps_issues_and_defers():
+    def e(i, impact, total, deferrable=False, passed=True, err=None):
+        return {
+            "id": i,
+            "pass": passed,
+            "impact": impact,
+            "total": total,
+            "deferrable": deferrable,
+            "impact_error": err,
+            "gate": None if passed else "G3",
+        }
+
+    entries = [
+        e("a", 3, 12),
+        e("b", 2, 11),
+        e("c", 3, 10),  # three accepts, two slots
+        e("d", 0, 9, deferrable=True),
+        e("f", 2, 7),
+        e("g", None, 9, err="source_unavailable"),
+        e("h", 0, 3, passed=False),
+    ]
+    acts = {x["id"]: act for x, act in scout.decide_actions(entries, 2, CFG)}
+    assert acts == {
+        "a": "file",
+        "b": "file",
+        "c": "defer_backlog",
+        "d": "defer_new",
+        "f": "reject_score",
+        "g": "pending",
+        "h": "reject_gate",
+    }

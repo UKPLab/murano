@@ -208,7 +208,7 @@ Credit every method in three places:
 ## 12. Pull requests
 
 - One method per PR. Branch `agent/<issue>-<slug>` (humans: any name), opened
-  against `main`.
+  against `base_branch` in `.claude/agent-loop.json` (normally `main`).
 - Conventional commits (`feat:`, `fix:`, `test:`, `docs:`).
 - Fill in `.github/PULL_REQUEST_TEMPLATE.md`, starting with `Closes #<issue>`.
 - Before pushing, all of these pass:
