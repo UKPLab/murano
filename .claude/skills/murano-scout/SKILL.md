@@ -22,7 +22,16 @@ by about 10×, so `impact` treats its count as a lower bound and adds adoption
 signals. Keyless OpenAlex has a daily budget of about 100 searches per IP
 (shared with everything else on that IP, resets at midnight UTC), so the scout
 spends it on `impact` only. `OPENALEX_API_KEY` (free, its own budget) and
-`GITHUB_TOKEN` are optional. When a paper comes back as
+`GITHUB_TOKEN` are optional.
+
+To get an OpenAlex key when `OPENALEX_API_KEY` is unset, first ask the user
+(AskUserQuestion) whether you may send their email address to OpenAlex. Send
+it only after an explicit yes:
+`curl -s -X POST https://api.openalex.org/api-keys -H 'Content-Type: application/json' -d '{"email": "<their email>"}'`.
+OpenAlex emails them a link to the key; ask them to export `OPENALEX_API_KEY`
+(for the cloud routine, add it to the routine's environment). Ask once per
+session and not again after a no. When nobody can answer, as in the scheduled
+routine, send nothing and note in the log that a key would help. When a paper comes back as
 `{"error": "source_unavailable"}`, do not reject or defer it. If it was
 already screened, keep its screening result in
 `.agent-state/pending_impact.json` and score only Impact next scout. Otherwise
