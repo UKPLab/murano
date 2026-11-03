@@ -190,6 +190,49 @@ class TestInformationFlowMechanism:
                     b.copy_(s)
 
     @pytest.mark.parametrize("fixture", FIXTURES)
+    def test_attention_importance_includes_residual(self, fixture, request):
+        model = request.getfixturevalue(fixture)
+        step = InformationFlow(model, renormalize=False)
+        tokens = model.tokenizer(["hello world good bad"], return_tensors="pt")
+        resid, patterns = step._capture(tokens)
+        layer = 1
+        pre, attn_in, mid, post = (r[0].float() for r in resid[layer])
+        pattern = patterns[layer][0].float()  # [H, Q, K]
+        weights = step._value_output_weights(layer)
+        head_out = _head_outputs(attn_in, *weights)  # [S, H, d]
+        seq, n_heads = head_out.shape[:2]
+        # Eq. 4: resid_mid's parts are every (key, head) vector plus resid_pre.
+        expected = torch.stack(
+            [
+                _importance(
+                    torch.cat(
+                        [
+                            (pattern[:, pos, :].T.unsqueeze(-1) * head_out).flatten(
+                                0, 1
+                            ),
+                            pre[pos : pos + 1],
+                        ]
+                    ),
+                    mid[pos],
+                )
+                for pos in range(seq)
+            ]
+        )  # [S, S*H + 1]
+        residual = expected[:, -1]
+        # Precondition: the residual holds a share of every resid_mid node.
+        assert (residual > 0).all()
+        heads, edge, _ = step._layer_importances(
+            pre, attn_in, mid, post, pattern, *weights
+        )
+        assert torch.allclose(
+            heads, expected[:, :-1].reshape(seq, seq, n_heads), atol=1e-5
+        )
+        # The self edge carries the residual's share on top of the heads'.
+        assert torch.allclose(
+            edge.diagonal() - heads.sum(-1).diagonal(), residual, atol=1e-5
+        )
+
+    @pytest.mark.parametrize("fixture", FIXTURES)
     def test_zero_threshold_reaches_every_causal_node(self, fixture, request):
         model = request.getfixturevalue(fixture)
         result = _run(model, prompts=["hello world good bad"], threshold=0.0)
