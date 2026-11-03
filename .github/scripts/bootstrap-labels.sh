@@ -83,4 +83,16 @@ create_or_update "impact:medium" "fbca04" "Medium: feature is usable but takes g
 create_or_update "impact:low"    "c2e0c6" "Low: minor confusion or polish"
 
 echo
+echo "Agent-loop state labels (see AGENTS.md section 13)"
+create_or_update "agent:todo"              "bfd4f2" "Agent loop: queued method, waiting for sourcing"
+create_or_update "agent:sourced"           "5ab0f2" "Agent loop: dossier posted, ready to implement"
+create_or_update "agent:wip"               "ededed" "Agent loop: claimed by a running tick"
+create_or_update "agent:needs-review"      "fbca04" "Agent loop: PR waiting for the strict review"
+create_or_update "agent:changes-requested" "d93f0b" "Agent loop: review found must-fix items"
+create_or_update "agent:ready-to-merge"    "0e8a16" "Agent loop: review passed; a maintainer merges"
+create_or_update "agent:blocked"           "b60205" "Agent loop: needs a human decision"
+create_or_update "agent:hold"              "000000" "Agent loop: agents keep out"
+create_or_update "agent:log"               "c5def5" "Agent loop: the pinned run log"
+
+echo
 echo "Done."

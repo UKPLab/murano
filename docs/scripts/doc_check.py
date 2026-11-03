@@ -18,30 +18,11 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 SRC = REPO_ROOT / "src"
 REPORT_PATH = REPO_ROOT / "docs" / "doc_report.md"
 
-# All public modules to check
-MODULES = [
-    "murano.model",
-    "murano.pipeline",
-    "murano.dataset",
-    "murano.artifacts",
-    "murano.results",
-    "murano.io",
-    "murano.steps.base",
-    "murano.steps.record",
-    "murano.steps.intervene",
-    "murano.steps.train",
-    "murano.steps.probe",
-    "murano.steps.evaluate",
-    "murano.steps.load",
-    "murano.steps.save",
-    "murano.steps.paired",
-    "murano.steps.logits",
-    "murano.steps.ablate",
-    "murano.steps.patch",
-    "murano.steps.path_patch",
-    "murano.steps.attention",
-    "murano.steps.logit_attribution",
-]
+# Check every module the API reference documents (one list, kept in gen_api_docs).
+sys.path.insert(0, str(Path(__file__).parent))
+from gen_api_docs import MODULES as _API_MODULES  # noqa: E402
+
+MODULES = [module for module, _ in _API_MODULES]
 
 # Skip these names everywhere
 SKIP_NAMES = {

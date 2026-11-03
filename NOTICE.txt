@@ -27,3 +27,14 @@ the full license text:
   - plotly                      (https://github.com/plotly/plotly.py)
   - sae-lens                    (https://github.com/jbloomAus/SAELens)
 
+-------------------------------------------------------------------------------
+Adapted implementations
+
+Methods whose Murano implementation adapts code from, or was checked against,
+a third-party reference implementation. One entry per method, in the form:
+
+  - <murano module>: <Authors> (<year>), "<paper title>".
+    Reference code: <repo URL>@<commit SHA> (<SPDX license>);
+    adapted: <what was adapted> | used as a test oracle only.
+
+(none yet)

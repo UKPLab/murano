@@ -1,0 +1,55 @@
+name: 🔬 Method proposal
+description: Propose an interpretability method from a paper for Murano to implement
+title: "[METHOD] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Propose a method from a paper or post that Murano should support. Maintainers can queue it
+        for the agent loop by adding the `agent:todo` label. The loop then finds the reference code,
+        implements it and reviews it (see [AGENTS.md](https://github.com/UKPLab/murano/blob/main/AGENTS.md#13-the-autonomous-loop)).
+
+  - type: input
+    id: paper
+    attributes:
+      label: Paper
+      description: Title, authors, venue and year, with an arXiv or DOI link.
+      placeholder: Interpretability in the Wild. Wang et al. ICLR 2023. arXiv:2211.00593
+    validations:
+      required: true
+
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Official code, project page, notable posts about it.
+      placeholder: https://github.com/redwoodresearch/Easy-Transformer
+    validations:
+      required: false
+
+  - type: textarea
+    id: method
+    attributes:
+      label: Method
+      description: In a few sentences, what does it compute, on which components, and what do you learn from it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: Who would use it, and what can't they do with Murano today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: mapping
+    attributes:
+      label: Murano mapping
+      description: Optional. Which existing steps it would reuse, and what a new step would read and write.
+      render: python
+    validations:
+      required: false

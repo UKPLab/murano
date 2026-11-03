@@ -143,6 +143,10 @@ show_missing = true
 skip_covered = false
 precision = 2
 
+[tool.ruff]
+# Third-party agent skills are vendored verbatim (skills CLI, --copy); keep them byte-identical.
+extend-exclude = [".claude/skills/humanizer"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

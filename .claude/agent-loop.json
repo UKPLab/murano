@@ -1,0 +1,32 @@
+{
+  "schedule_cron": "0 5 * * 6",
+  "schedule_tz": "Europe/Berlin",
+  "scout_min_interval_days": 6,
+  "classics_sweep_every_days": 90,
+  "max_new_issues_per_scout": 3,
+  "backlog_cap": 5,
+  "defer_recheck_days": 90,
+  "max_open_agent_prs": 2,
+  "max_review_rounds": 3,
+  "max_sourcing_per_tick": 2,
+  "max_parallel_subagents": 4,
+  "max_subagents_per_tick": 12,
+  "models": { "cheap": "haiku", "mid": "sonnet", "strong": "inherit" },
+  "accept": { "min_total": 8, "min_impact": 2 },
+  "queries": [
+    "activation patching",
+    "attribution patching",
+    "circuit discovery language model",
+    "steering vector language model",
+    "representation engineering",
+    "linear probe language model representations",
+    "sparse autoencoder interpretability",
+    "transcoder interpretability",
+    "logit lens",
+    "tuned lens",
+    "causal mediation analysis transformer",
+    "causal abstraction interchange intervention",
+    "attention head attribution",
+    "mechanistic interpretability method"
+  ]
+}

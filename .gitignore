@@ -146,3 +146,6 @@ murano_outputs/
 
 # OS files
 .DS_Store
+
+# Agent-loop scouting memory (worktree of the agent-state branch)
+.agent-state/
