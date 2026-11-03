@@ -11,5 +11,6 @@ postponed: ["2610.41445", "2610.37157", "2610.37126", "2610.36797", "2610.31407"
 - OPENALEX_API_KEY lives in .claude/settings.local.json (locally ignored); the cloud routine needs it in its environment.
 - #125 sourced (MIT, pinned cf6fb23): new step plus a `Neuron` type; a hand-written Student-t quantile is planned where a normal approximation may do. Implement waits for a free PR slot.
 - Subagents that check out branches run in isolated worktrees; remove them after the tick.
-- PR #126 at round 2: one finding left (a dead assertion in tests/test_information_flow.py:276-278). Next revise is the last one (round 3); open questions: failed oracle 7, out-of-method edits, dropped layers= argument.
+- PR #126 ready to merge (round 4, 0 findings). Open questions for the maintainer: failed oracle 7, out-of-method edits, dropped layers= argument.
 - PR #127 round 1: 7 findings, revise due next tick. The sign rule is an open question (https://github.com/UKPLab/murano/pull/127#issuecomment-6609544252), provisional = reference rule; finding 1 gets answered by linking it. Its body still says "Needs a maintainer"; the revise rewrites it.
+- Every agent text now goes through .claude/skills/murano-loop/scripts/post.py; dossiers, issue bodies and the #127 open question were rewritten 2026-11-03. The #127 body still fails it; its revise rewrites it.
