@@ -248,7 +248,7 @@ Credit every method in three places:
   cannot. Above the collapsed details, only a plain opening and "Open
   questions", under 150 words. The rules are in
   `.claude/skills/murano-implement/SKILL.md` step 9, and
-  `.claude/skills/murano-implement/scripts/pr_text.py check body` enforces
+  `.claude/skills/murano-loop/scripts/post.py check body` enforces
   them.
 - Before pushing, all of these pass:
   ```bash

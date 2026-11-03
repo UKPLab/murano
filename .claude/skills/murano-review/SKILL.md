@@ -88,7 +88,7 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
      humanizer tells, notebook template compliance, whether the notebook was
      executed, the guide length, the Attribution block, NOTICE, the license
      verdict, and the CHANGELOG bullet. Run
-     `python3 -I .claude/skills/murano-implement/scripts/pr_text.py check body <file>`
+     `python3 -I .claude/skills/murano-loop/scripts/post.py check body <file>`
      on the PR body: every error it prints is one must-fix. Then read the
      visible part as a maintainer who skipped the paper would: jargon or
      symbols they can't parse, a file or test inventory, restated code
@@ -116,7 +116,7 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
    - An unexecuted notebook doesn't block the verdict when it's the only
      issue. List it under "Maintainer action before merge" instead.
 7. **Post** the comment below with
-   `python3 -I .claude/skills/murano-implement/scripts/pr_text.py post review <pr> <file>`
+   `python3 -I .claude/skills/murano-loop/scripts/post.py post review <pr> <file>`
    (it refuses a finding over 45 words; shorten it, don't split it), and set
    the labels: remove `agent:needs-review`,
    add `agent:changes-requested` or `agent:ready-to-merge`. Use a comment and

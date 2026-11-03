@@ -20,6 +20,9 @@ import sys
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+import post  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 CFG = ROOT / ".claude" / "agent-loop.json"
@@ -283,6 +286,7 @@ def clear_wip(dry: bool) -> list[int]:
 
 def end(log: Path, dry: bool) -> dict:
     """Release claims, stamp ``last_tick``, push the memory, post the log comment."""
+    post.require("log", log)
     cleared = clear_wip(dry)
     notes = read_notes()
     notes["last_tick"] = date.today().isoformat()
@@ -312,16 +316,13 @@ def end(log: Path, dry: bool) -> dict:
 
 
 def bad_bodies() -> dict:
-    """Open agent PRs whose body fails ``pr_text.py check body``, with the errors."""
-    sys.path.insert(0, str(ROOT / ".claude/skills/murano-implement/scripts"))
-    import pr_text
-
+    """Open agent PRs whose body fails ``post.py check body``, with the errors."""
     prs = gh_json("pr", "list", "--state", "open", "--json", "number,body,labels")
     return {
         pr["number"]: errs
         for pr in prs
         if any(lab["name"].startswith("agent:") for lab in pr["labels"])
-        and (errs := pr_text.check_body(pr["body"]))
+        and (errs := post.check("body", pr["body"]))
     }
 
 

@@ -12,13 +12,12 @@ sys.path[:0] = [
     str(HERE / "murano-scout" / "scripts"),
     str(HERE / "murano-source" / "scripts"),
     str(HERE / "murano-loop" / "scripts"),
-    str(HERE / "murano-implement" / "scripts"),
 ]
 
 import ledger  # noqa: E402
 import loop  # noqa: E402
 import paper  # noqa: E402
-import pr_text  # noqa: E402
+import post  # noqa: E402
 import repo_check  # noqa: E402
 import scout  # noqa: E402
 
@@ -327,30 +326,73 @@ Adds `X`, which finds the heads that carry a prediction.
 
 
 def test_pr_body_lint_cuts_jargon_and_extra_sections():
-    assert pr_text.check_body(GOOD_BODY) == []
+    assert post.check("body", GOOD_BODY) == []
     moved_out = (
         GOOD_BODY.replace("<details><summary>Details for the reviewer</summary>\n", "")
         + "<details></details>"
     )
-    assert any("move" in e for e in pr_text.check_body(moved_out))
+    assert any("move" in e for e in post.check("body", moved_out))
     long_q = GOOD_BODY.replace("because the paper uses it", "because " + "word " * 40)
-    assert any("open question is" in e for e in pr_text.check_body(long_q))
+    assert any("open question is" in e for e in post.check("body", long_q))
     jargon = GOOD_BODY.replace("which finds", "`a` `b` `c` `d` `e` `f` `g`")
-    assert any("code spans" in e for e in pr_text.check_body(jargon))
+    assert any("code spans" in e for e in post.check("body", jargon))
     no_choice = GOOD_BODY.replace("Provisional: 0.04", "Maybe 0.04")
-    assert any("Provisional" in e for e in pr_text.check_body(no_choice))
+    assert any("Provisional" in e for e in post.check("body", no_choice))
 
 
 def test_reply_and_review_lint():
-    d = pr_text.DISCLAIMER
+    d = post.DISCLAIMER
     assert (
-        pr_text.check_reply(
-            f"{d}\n\n1. Fixed in abc1234 and def5678: docs say two passes.\n2. Not changed: see test_x.\n"
+        post.check(
+            "reply",
+            f"{d}\n\n1. Fixed in abc1234 and def5678: docs say two passes.\n2. Not changed: see test_x.\n",
         )
         == []
     )
-    assert pr_text.check_reply(f"{d}\n1. Fixed in abc1234: ok\nAlso a recap.\n")
-    assert pr_text.check_reply(f"{d}\n1. Fixed in abc1234: " + "w " * 25)
+    assert post.check("reply", f"{d}\n1. Fixed in abc1234: ok\nAlso a recap.\n")
+    assert post.check("reply", f"{d}\n1. Fixed in abc1234: " + "w " * 25)
     review = f"{d}\n<!-- murano-review -->\n## Review, round 1\n\nVERDICT: CHANGES_REQUESTED\n\n1 problem.\n\n### Must fix\n1. `a.py:1`: wrong. Fix: right.\n"
-    assert pr_text.check_review(review) == []
-    assert pr_text.check_review(review.replace("wrong.", "wrong " * 50))
+    assert post.check("review", review) == []
+    assert post.check("review", review.replace("wrong.", "wrong " * 50))
+
+
+def test_dossier_issue_question_and_log_lint():
+    d = post.DISCLAIMER
+    dossier = f"""{d}
+<!-- murano-dossier -->
+## Dossier: LAT
+
+Adds `SteeringVector(method="lat")`, adapted from MIT code.
+
+### Open questions
+None.
+
+<details><summary>Implementation brief</summary>
+
+### Oracles
+1. A planted direction is recovered.
+
+</details>
+"""
+    assert post.check("dossier", dossier) == []
+    assert any(
+        "inside <details>" in e
+        for e in post.check("dossier", dossier.replace("1. A planted", "word " * 600))
+    )
+    assert any(
+        "move" in e
+        for e in post.check(
+            "dossier",
+            dossier.replace(
+                "### Open questions", "### Algorithm\n\n### Open questions"
+            ),
+        )
+    )
+    issue = f"{d}\n\n### Paper\nT. A. arXiv, 2023.\n\n### Method\nIt reads.\n\n<details>\nscores\n</details>\n"
+    assert post.check("issue", issue) == []
+    assert post.check("issue", issue.replace("It reads.", "word " * 130))
+    q = f"{d}\n<!-- murano-open-question -->\nSign rule? Provisional: reference rule, because the code does it."
+    assert post.check("question", q) == []
+    assert post.check("question", q.replace("Provisional:", "Maybe"))
+    assert post.check("log", f"{d}\n- did one thing") == []
+    assert post.check("log", "no disclaimer")
