@@ -87,11 +87,13 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
    - **Docs, prose and attribution:** check `AGENTS.md` §10–11. Look for
      humanizer tells, notebook template compliance, whether the notebook was
      executed, the guide length, the Attribution block, NOTICE, the license
-     verdict, and the CHANGELOG bullet. Check the PR body against
-     `murano-implement` step 9: over 250 words above the checklist, a file or
-     test inventory, restated code comments, an "Open questions" line with no
-     provisional choice, or an "Open questions" item
-     that needs no human is a must-fix.
+     verdict, and the CHANGELOG bullet. Run
+     `python3 -I .claude/skills/murano-implement/scripts/pr_text.py check body <file>`
+     on the PR body: every error it prints is one must-fix. Then read the
+     visible part as a maintainer who skipped the paper would: jargon or
+     symbols they can't parse, a file or test inventory, restated code
+     comments, or an "Open questions" item that needs no human is a
+     must-fix.
 4. **Consolidate.** Flatten every candidate into `(file:line, claim)` pairs.
    One root cause or one fix makes one finding. The same line twice gets
    merged unless you can name two separate defects.
@@ -113,7 +115,10 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
    - Anything else is `CHANGES_REQUESTED`.
    - An unexecuted notebook doesn't block the verdict when it's the only
      issue. List it under "Maintainer action before merge" instead.
-7. **Post** the comment below and set the labels: remove `agent:needs-review`,
+7. **Post** the comment below with
+   `python3 -I .claude/skills/murano-implement/scripts/pr_text.py post review <pr> <file>`
+   (it refuses a finding over 45 words; shorten it, don't split it), and set
+   the labels: remove `agent:needs-review`,
    add `agent:changes-requested` or `agent:ready-to-merge`. Use a comment and
    labels, not `gh pr review`, because GitHub won't let an author approve or
    request changes on their own PR.

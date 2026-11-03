@@ -308,7 +308,21 @@ def end(log: Path, dry: bool) -> dict:
         if logs
         else ""
     )
-    return {"released_wip": cleared, "log_comment": url}
+    return {"released_wip": cleared, "log_comment": url, "bad_bodies": bad_bodies()}
+
+
+def bad_bodies() -> dict:
+    """Open agent PRs whose body fails ``pr_text.py check body``, with the errors."""
+    sys.path.insert(0, str(ROOT / ".claude/skills/murano-implement/scripts"))
+    import pr_text
+
+    prs = gh_json("pr", "list", "--state", "open", "--json", "number,body,labels")
+    return {
+        pr["number"]: errs
+        for pr in prs
+        if any(lab["name"].startswith("agent:") for lab in pr["labels"])
+        and (errs := pr_text.check_body(pr["body"]))
+    }
 
 
 def main(argv: list[str] | None = None) -> None:
