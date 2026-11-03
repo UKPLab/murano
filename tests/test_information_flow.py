@@ -288,8 +288,16 @@ class TestInformationFlowErrors:
 
     def test_padding_start_position(self, gpt2_model_attn):
         # The tokenizer pads on the left, so column 0 of the shorter prompt is padding.
-        with pytest.raises(ValueError, match="is padding"):
+        # The message points at None: -1 is padding under right padding.
+        with pytest.raises(ValueError, match="is padding.*positions=None"):
             _run(gpt2_model_attn, positions=0)
+
+    def test_minus_one_matches_default_unpadded(self, gpt2_model_attn):
+        prompts = ["hello world good bad"]
+        default = _run(gpt2_model_attn, prompts=prompts)
+        last = _run(gpt2_model_attn, prompts=prompts, positions=-1)
+        assert last.positions == default.positions
+        assert last.edges == default.edges
 
     def test_needs_attention_probs(self, murano_model):
         with pytest.raises(RuntimeError, match="enable_attention_probs"):

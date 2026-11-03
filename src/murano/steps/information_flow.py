@@ -201,8 +201,9 @@ class InformationFlow(Step):
     Args:
         model: Model backend loaded with attention weights enabled.
         positions: Token position(s) to start the routes from, in the
-            :func:`~murano.steps.metrics._answer_positions` form; ``None`` uses
-            each prompt's last real token.
+            :func:`~murano.steps.metrics._answer_positions` form. They index the
+            padded batch, so on a padded batch ``-1`` can land on padding;
+            ``None`` uses each prompt's last real token whatever the padding.
         threshold: Importance threshold ``tau`` in ``[0, 1)``. The paper uses
             0.03 for head-frequency plots and 0.04 for route drawings.
         renormalize: When True (the paper's experiments), each node's head
@@ -311,8 +312,9 @@ class InformationFlow(Step):
             hits = (real == targets[b]).nonzero()
             if hits.numel() == 0:
                 raise ValueError(
-                    f"start position {int(targets[b])} of prompt {b} is padding; "
-                    "pass negative positions (-1 is the last real token)."
+                    f"start position {int(targets[b])} of prompt {b} is padding. "
+                    "Positions index the padded batch; pass positions=None to "
+                    "start from each prompt's last real token."
                 )
             start = int(hits.item())
             layers = []
