@@ -377,7 +377,7 @@ None.
     assert post.check("dossier", dossier) == []
     assert any(
         "inside <details>" in e
-        for e in post.check("dossier", dossier.replace("1. A planted", "word " * 600))
+        for e in post.check("dossier", dossier.replace("1. A planted", "word " * 800))
     )
     assert any(
         "move" in e

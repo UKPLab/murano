@@ -41,7 +41,7 @@ LIMITS = {
 # and the headings allowed above <details> (a regex).
 VISIBLE = {
     "body": (150, 60, None, r"Open questions"),
-    "dossier": (120, 70, 600, r"Dossier: .*|Open questions"),
+    "dossier": (120, 70, 800, r"Dossier: .*|Open questions"),
     "issue": (120, 120, 200, r"Paper|Method|Murano mapping"),
 }
 DASHES = re.compile("[–—]| -- ")
