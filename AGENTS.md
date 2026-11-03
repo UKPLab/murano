@@ -162,14 +162,16 @@ must-fix. `tests/test_registration.py` enforces the starred ones.
    only when the result has one sensible default view.
 6. `docs/scripts/gen_api_docs.py` `MODULES`, for every new module. ★
 7. The step tables in `README.md` and `docs/src/content/docs/docs/guides/pipeline.md`.
-8. `_CAUSAL_STEPS` in `tests/test_notebook_structure.py`, if the step runs an
-   intervened forward pass.
+8. `_CAUSAL_STEPS` in `tests/test_notebook_structure.py`, if the step runs the
+   model.
 9. A new notebook goes in `ORDER` in `docs/scripts/gen_notebook_docs.py` and in
    `notebooks/README.md` (test-enforced).
 10. `CHANGELOG.md` `## [Unreleased]` → `### Added`: one bullet that opens with
     the backticked name and says what it lets you do.
 11. A new extra: `pyproject.toml`, the `all` extra, `_optional.EXTRA_IMPORTS` ★,
     `_EXTRA_IMPLIED_BY` in the notebook structure test, and `uv lock`.
+12. `SelectComponents.read_types` in `steps/select.py`, if the result has
+    `contributions`.
 
 ## 9. Tests
 
