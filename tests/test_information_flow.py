@@ -15,7 +15,7 @@ import torch
 
 from murano import Pipeline, keys
 from murano.io import load_information_flow, save_results
-from murano.nodes import MLP, RESID_MID, RESID_POST, SELF_ATTN, Node
+from murano.nodes import MLP, RESID_MID, RESID_POST, RESID_PRE, SELF_ATTN, Node
 from murano.results import Results
 from murano.steps.information_flow import (
     InformationFlow,
@@ -70,21 +70,27 @@ class TestInformationFlowContract:
         # Default start is each prompt's last real token, padding excluded.
         assert result.positions == [len(t) - 1 for t in result.tokens]
 
-    def test_select_components_ranks_contributions(self, gpt2_model_attn):
-        out = Pipeline(
-            [
-                LoadPrompts(PROMPTS),
-                InformationFlow(gpt2_model_attn, threshold=0.0),
-                SelectComponents(keys.INFORMATION_FLOW, top_k=3, modules=SELF_ATTN),
-            ]
-        ).run()
-        selection = out[keys.SELECTION]
-        flow = out[keys.INFORMATION_FLOW]
-        top = sorted(
-            (v for n, v in flow.contributions.items() if n.module == SELF_ATTN),
-            reverse=True,
-        )[:3]
-        assert sorted(selection.scores.values(), reverse=True) == top
+    def test_select_components_ranks_contributions(self):
+        # Distinct frequencies, so exactly one top-3 set exists.
+        scores = [0.1, 0.9, 0.3, 0.7, 0.5, 0.2, 0.8, 0.4]
+        contributions = {
+            Node(i // 4, SELF_ATTN, head=i % 4): v for i, v in enumerate(scores)
+        } | {Node(0, MLP): 1.0}
+        results = Results()
+        results[keys.INFORMATION_FLOW] = InformationFlowResult(
+            contributions=contributions,
+            head_importance={},
+            edges=[],
+            tokens=[],
+            positions=[],
+            threshold=0.03,
+        )
+        step = SelectComponents(keys.INFORMATION_FLOW, top_k=3, modules=SELF_ATTN)
+        selection = step(results)[keys.SELECTION]
+        heads = [n for n in contributions if n.module == SELF_ATTN]
+        top = sorted(heads, key=contributions.__getitem__, reverse=True)[:3]
+        assert set(selection.scores) == set(top)
+        assert {n.head for n in top} == {1, 2, 3}  # the 0.9, 0.8, 0.7 heads
 
 
 class TestInformationFlowMechanism:
@@ -224,6 +230,57 @@ class TestInformationFlowMechanism:
                 assert _edge_set(high, index) <= _edge_set(low, index)
         assert all(e.importance > 0.1 for edges in high.edges for e in edges)
 
+    def test_norm_order_two_runs_through_the_step(self, gpt2_model_attn):
+        def weights(result):
+            return {
+                (e.source, e.source_pos, e.dest, e.dest_pos): e.importance
+                for e in result.edges[0]
+            }
+
+        kwargs = dict(prompts=PROMPTS[:1], threshold=0.0, renormalize=False)
+        l1 = _run(gpt2_model_attn, norm_order=1, **kwargs)
+        l2 = _run(gpt2_model_attn, norm_order=2, **kwargs)
+        incoming: dict = {}
+        for e in l2.edges[0]:
+            if e.dest.module != MLP:
+                key = (e.dest, e.dest_pos)
+                incoming[key] = incoming.get(key, 0.0) + e.importance
+        # Oracle 1 holds under L2 too.
+        assert all(t == pytest.approx(1.0, abs=1e-4) for t in incoming.values())
+        # The distance norm changes both the attention and the FFN importances.
+        w1, w2 = weights(l1), weights(l2)
+        for module in (RESID_MID, RESID_POST):
+            assert any(
+                k[2].module == module and k in w1 and abs(w1[k] - v) > 1e-4
+                for k, v in w2.items()
+            )
+
+    def test_ffn_pair_renormalized(self, gpt2_model_attn):
+        result = _run(gpt2_model_attn, threshold=0.3, renormalize=True)
+        incoming: dict = {}
+        for edges in result.edges:
+            for e in edges:
+                if e.dest.module == RESID_POST:
+                    incoming.setdefault((e.dest, e.dest_pos), []).append(e.importance)
+        # Precondition: tau drops one of the (FFN, residual) pair somewhere, so
+        # the kept importance only reaches 1 through renormalization.
+        assert any(len(w) == 1 for w in incoming.values())
+        for kept in incoming.values():
+            assert sum(kept) == pytest.approx(1.0, abs=1e-5)
+
+    def test_padded_prompt_matches_single_run(self, murano_model_attn):
+        batch = _run(murano_model_attn, prompts=PROMPTS)
+        tokens = murano_model_attn.tokenizer(PROMPTS, padding=True)["attention_mask"]
+        # Precondition: the batch is padded.
+        assert len({sum(m) for m in tokens}) > 1
+        for index, prompt in enumerate(PROMPTS):
+            alone = _run(murano_model_attn, prompts=[prompt])
+            assert batch.tokens[index] == alone.tokens[0]
+            assert batch.positions[index] == alone.positions[0]
+            assert _edge_set(batch, index) == _edge_set(alone)
+            for got, want in zip(batch.edges[index], alone.edges[0]):
+                assert got.importance == pytest.approx(want.importance, abs=1e-5)
+
     def test_mlp_frequency_counts_prompts_through_the_mlp(self, gpt2_model_attn):
         result = _run(gpt2_model_attn, threshold=0.02)
         for layer in range(gpt2_model_attn.n_layers):
@@ -243,6 +300,74 @@ class TestInformationFlowMechanism:
             )
             > 1
         )
+
+
+# Hand-built two-layer, two-token, two-head case for the route walk at tau = 0.25
+# (every value is exact in float32). Per layer: heads [query, key, head],
+# head-summed edge with the residual on the diagonal [query, key], and the
+# (FFN, residual) pair [pos, 2].
+TAU = 0.25
+LAYERS = [
+    (  # layer 0
+        torch.tensor([[[0.5, 0.5], [0.0, 0.0]], [[0.375, 0.125], [0.5, 0.0]]]),
+        torch.tensor([[1.0, 0.0], [0.5, 0.5]]),
+        torch.tensor([[0.5, 0.5], [0.125, 0.875]]),
+    ),
+    (  # layer 1
+        torch.tensor([[[0.5, 0.5], [0.0, 0.0]], [[0.125, 0.125], [0.5, 0.25]]]),
+        torch.tensor([[1.0, 0.0], [0.25, 0.75]]),
+        torch.tensor([[0.5, 0.5], [0.5, 0.5]]),
+    ),
+]
+
+
+class TestInformationFlowRoutes:
+    def test_hand_built_walk(self, murano_model_attn):
+        step = InformationFlow(murano_model_attn, threshold=TAU)
+        edges, used_heads, used_mlps = step._routes(LAYERS, start=1)
+        mid0, post0, mid1, post1 = (
+            Node(0, RESID_MID),
+            Node(0, RESID_POST),
+            Node(1, RESID_MID),
+            Node(1, RESID_POST),
+        )
+        assert {
+            (e.source, e.source_pos, e.dest, e.dest_pos, e.importance) for e in edges
+        } == {
+            (mid1, 1, Node(1, MLP), 1, 0.5),
+            (Node(1, MLP), 1, post1, 1, 0.5),
+            (mid1, 1, post1, 1, 0.5),
+            (post0, 1, mid1, 1, 0.75),
+            # Layer 1's edge from token 0 equals tau exactly, so it is dropped
+            # and token 0 is never reached through resid_post of layer 0.
+            (mid0, 1, post0, 1, 0.875),  # FFN at 0.125 is below tau
+            (Node(0, RESID_PRE), 0, mid0, 1, 0.5),
+            (Node(0, RESID_PRE), 1, mid0, 1, 0.5),
+        }
+        # Head (1, 1)'s sub-edge equals tau inside a kept edge: not active.
+        # Head (0, 1)'s sub-edges (0.125, 0.0) sit inside kept edges: not active.
+        assert used_heads == {
+            Node(1, SELF_ATTN, head=0): [0.5],
+            Node(0, SELF_ATTN, head=0): [0.375, 0.5],
+        }
+        assert used_mlps == {Node(1, MLP)}
+
+    def test_head_importance_is_mean_in_route_sub_edge(
+        self, murano_model_attn, monkeypatch
+    ):
+        real = InformationFlow._routes
+        monkeypatch.setattr(
+            InformationFlow,
+            "_routes",
+            lambda self, layers, start: real(self, LAYERS, 1),
+        )
+        result = _run(murano_model_attn, threshold=TAU)
+        expected = {Node(0, SELF_ATTN, head=0): 0.4375, Node(1, SELF_ATTN, head=0): 0.5}
+        for node, value in result.head_importance.items():
+            assert value == pytest.approx(expected.get(node, 0.0))
+        for node, value in result.contributions.items():
+            used = node in expected or node == Node(1, MLP)
+            assert value == (1.0 if used else 0.0)
 
 
 class TestInformationFlowSave:
@@ -298,6 +423,13 @@ class TestInformationFlowErrors:
         last = _run(gpt2_model_attn, prompts=prompts, positions=-1)
         assert last.positions == default.positions
         assert last.edges == default.edges
+
+    def test_sandwich_norm(self, murano_model_attn, monkeypatch):
+        monkeypatch.setattr(
+            "murano.steps.information_flow._is_sandwich_norm", lambda *_: True
+        )
+        with pytest.raises(ValueError, match="sandwich-norm"):
+            _run(murano_model_attn)
 
     def test_needs_attention_probs(self, murano_model):
         with pytest.raises(RuntimeError, match="enable_attention_probs"):
