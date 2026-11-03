@@ -78,6 +78,10 @@ def _importance(parts: Tensor, whole: Tensor, order: int = 1) -> Tensor:
         proximity is 0).
     """
     whole = whole.unsqueeze(-2)
+    # Differs from facebookresearch/llm-transparency-tool@f1340f0 routes/contributions.py
+    # get_contributions: takes the norm of whole - parts directly instead of
+    # torch.nn.functional.pairwise_distance, which adds eps=1e-6 to every
+    # coordinate first, because Eq. 1 has no eps and it only shifts the distance.
     proximity = whole.norm(p=order, dim=-1) - (whole - parts).norm(p=order, dim=-1)
     # Differs from facebookresearch/llm-transparency-tool@f1340f0 routes/contributions.py:
     # clips the proximity at 0 instead of EPS=1e-5, because the paper's Eq. 1 uses
