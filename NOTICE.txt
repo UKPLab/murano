@@ -37,4 +37,8 @@ a third-party reference implementation. One entry per method, in the form:
     Reference code: <repo URL>@<commit SHA> (<SPDX license>);
     adapted: <what was adapted> | used as a test oracle only.
 
-(none yet)
+  - murano.steps.train (SteeringVector, method="lat"): Zou, Phan, Chen,
+    Campbell et al. (2023), "Representation Engineering: A Top-Down Approach
+    to AI Transparency".
+    Reference code: https://github.com/andyzoujm/representation-engineering@5455d8a375d5fb1cb191f9ebcd089b7c21e9a31e (MIT);
+    adapted: PCARepReader direction and sign rule (repe/rep_readers.py).
