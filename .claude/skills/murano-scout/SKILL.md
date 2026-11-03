@@ -17,10 +17,16 @@ Scripts (stdlib, run with `python3 -I`):
 - `scripts/ledger.py`: `filter`, `add`, `due`, `sync-issues`. Always pass
   `--ledger .agent-state/scouted.jsonl`.
 
-`S2_API_KEY` must be set. Keyless Semantic Scholar is throttled to near zero.
-When a call prints `{"error": "s2_unavailable"}`, the paper counts as not
-screened: write no ledger row and add it to `postponed` in
-`.agent-state/notes.md`, so the next scout picks it up.
+Sources: OpenAlex (the default `search`, fast and keyless) and the arXiv API
+cover the window. Semantic Scholar does the classics sweep and every `impact`
+call, because OpenAlex undercounts arXiv citations several-fold. `meta` falls
+back to OpenAlex when S2 throttles, with `citationCount` set to null.
+
+Set `S2_API_KEY`: keyless Semantic Scholar is throttled to near zero.
+`OPENALEX_API_KEY` is optional. When a call prints
+`{"error": "s2_unavailable"}`, the paper counts as not screened: write no
+ledger row and add it to `postponed` in `.agent-state/notes.md`, so the next
+scout picks it up.
 
 ## No paper is screened twice
 
@@ -40,9 +46,12 @@ The ledger runs before any model reads anything:
    first run, use 90 days ago.
 2. **Collect IDs, not text.** Append to `candidates.jsonl` in the scratchpad:
    - For each query in `cfg.queries`, run `paper.py search "<q>" --since <since>`
-     and `paper.py search "<q>" --source arxiv --since <since>`.
+     (OpenAlex) and `paper.py search "<q>" --source arxiv --since <since>`.
+     Pause 3 s between arXiv calls (its API etiquette). Run the loop under
+     `bash`: zsh doesn't word-split `$args`, so flags kept in a variable
+     arrive as one argument.
    - If the classics sweep is due, also run
-     `paper.py search "<q>" --min-citations 100` with no `--since`.
+     `paper.py search "<q>" --source s2 --min-citations 100` with no `--since`.
    - Add the IDs in `postponed` from the notes.
    - Use WebSearch, limited to the window, for method posts on
      transformer-circuits.pub, the Anthropic, Google DeepMind and OpenAI

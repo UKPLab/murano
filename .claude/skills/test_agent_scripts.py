@@ -59,6 +59,28 @@ def test_top_venue_abbrev_is_whole_word():
     assert not paper.is_top_venue("EACL")
 
 
+def test_openalex_candidate_finds_arxiv_id():
+    by_doi = {"doi": "https://doi.org/10.48550/arXiv.2610.32866", "title": "T"}
+    assert paper._openalex_candidate(by_doi)["arxiv"] == "2610.32866"
+    venue_doi = {
+        "doi": "https://doi.org/10.18653/v1/2025.acl-long.1",
+        "locations": [
+            {"landing_page_url": "https://aclanthology.org/2025.acl-long.1"},
+            {
+                "landing_page_url": "https://arxiv.org/abs/2502.01234v2",
+                "source": {"display_name": "arXiv"},
+            },
+        ],
+    }
+    cand = paper._openalex_candidate(venue_doi)
+    assert (cand["arxiv"], cand["doi"], cand["venue"]) == (
+        "2502.01234",
+        "10.18653/v1/2025.acl-long.1",
+        "arXiv",
+    )
+    assert paper._openalex_candidate({"doi": None})["arxiv"] is None
+
+
 def test_ledger_dedups_aliases_versions_and_titles():
     rows = []
     ledger.upsert(

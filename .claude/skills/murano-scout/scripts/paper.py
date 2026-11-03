@@ -4,15 +4,22 @@ Stdlib only, so it runs anywhere the loop runs. Every subcommand prints JSON
 (``search`` prints JSON Lines, one candidate per line, ready for
 ``ledger.py filter``).
 
-    python paper.py search "activation patching" --since 2026-10-01 [--min-citations 0]
+    python paper.py search "activation patching" --since 2026-10-01
     python paper.py search "sparse autoencoder" --source arxiv --since 2026-10-01
+    python paper.py search "logit lens" --source s2 --min-citations 100
     python paper.py meta ARXIV:2211.00593
     python paper.py impact ARXIV:2211.00593 [--viral]
     python paper.py code-links 2211.00593
 
-Semantic Scholar is queried without a key at the shared public rate; set
-``S2_API_KEY`` for a dedicated one. Field sets and ID formats follow the S2
-Graph API (the same ones allenai/asta-plugins' semantic-scholar skill uses).
+Sources: OpenAlex (default search; fast, keyless) and the arXiv API cover the
+recent window. Semantic Scholar does the citation-sorted classics sweep and is
+the only source ``impact`` trusts: OpenAlex splits an arXiv paper's citations
+across its preprint and venue records and undercounts them several-fold.
+``meta`` falls back to OpenAlex (citation count withheld) when S2 throttles.
+
+S2 runs keyless at the shared public rate; set ``S2_API_KEY`` for a dedicated
+one, and optionally ``OPENALEX_API_KEY``. Field sets and ID formats follow the
+S2 Graph API (the same ones allenai/asta-plugins' semantic-scholar skill uses).
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ import xml.etree.ElementTree as ET
 from datetime import date
 
 S2 = "https://api.semanticscholar.org/graph/v1"
+OPENALEX = "https://api.openalex.org/works"
 FIELDS = (
     "paperId,externalIds,title,abstract,year,publicationDate,venue,"
     "publicationVenue,citationCount,influentialCitationCount,url,authors.name"
@@ -135,6 +143,77 @@ def search_s2(
     return [_candidate(p) for p in (data.get("data") or [])[:limit]]
 
 
+def _openalex(path: str = "", **params: str) -> dict:
+    if os.environ.get("OPENALEX_API_KEY"):
+        params["api_key"] = os.environ["OPENALEX_API_KEY"]
+    return json.loads(_get(f"{OPENALEX}{path}?{urllib.parse.urlencode(params)}"))
+
+
+def _openalex_candidate(w: dict) -> dict:
+    doi = (w.get("doi") or "").lower().removeprefix("https://doi.org/") or None
+    locs = w.get("locations") or []
+    urls = [doi or ""] + [loc.get("landing_page_url") or "" for loc in locs]
+    m = next(
+        (m for u in urls if "arxiv" in u.lower() and (m := _ARXIV.search(u))), None
+    )
+    venues = [(loc.get("source") or {}).get("display_name") for loc in locs]
+    return {
+        "paperId": None,
+        "arxiv": m.group(1) if m else None,
+        "doi": doi,
+        "title": w.get("title"),
+        "year": w.get("publication_year"),
+        "publicationDate": w.get("publication_date"),
+        "venue": next((v for v in venues if v), None),
+        "citationCount": w.get("cited_by_count"),
+    }
+
+
+def search_openalex(query: str, since: str | None, limit: int) -> list[dict]:
+    """Title-and-abstract search over OpenAlex, most relevant first."""
+    # Same AND semantics as search_arxiv; relevance order, since citation order
+    # surfaces long off-topic abstracts that merely contain every word.
+    terms = " AND ".join(f'"{t}"' if " " in t else t for t in shlex.split(query))
+    filters = [f"title_and_abstract.search:{terms}"]
+    if since:
+        filters.append(f"from_publication_date:{since}")
+    data = _openalex(filter=",".join(filters), per_page=str(min(limit, 200)))
+    return [_openalex_candidate(w) for w in data.get("results") or []]
+
+
+def meta_openalex(paper_id: str) -> dict:
+    """Metadata for screening when S2 throttles; citationCount is withheld (see module doc)."""
+    nid = normalize_id(paper_id)
+    if nid.startswith("ARXIV:"):
+        key = f"doi:10.48550/arxiv.{nid.removeprefix('ARXIV:')}"
+    elif nid.startswith("DOI:"):
+        key = f"doi:{nid.removeprefix('DOI:')}"
+    else:
+        raise S2Unavailable(f"S2 throttled and OpenAlex cannot resolve {paper_id}")
+    try:
+        w = _openalex(f"/{urllib.parse.quote(key, safe=':/')}")
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise
+        raise S2Unavailable(f"S2 throttled and OpenAlex has no {paper_id}") from e
+    out = {**_openalex_candidate(w), "citationCount": None}
+    inv = w.get("abstract_inverted_index") or {}
+    words = {i: word for word, idxs in inv.items() for i in idxs}
+    out["abstract"] = " ".join(words[i] for i in sorted(words)) or None
+    out["influentialCitationCount"] = None
+    venues = {
+        (loc.get("source") or {}).get("display_name")
+        for loc in w.get("locations") or []
+    }
+    out["publicationVenue"] = "; ".join(sorted(v for v in venues if v)) or None
+    out["authors"] = [
+        (a.get("author") or {}).get("display_name") for a in w.get("authorships") or []
+    ]
+    out["url"] = w.get("id")
+    out["source"] = "openalex"
+    return out
+
+
 def search_arxiv(query: str, since: str | None, limit: int) -> list[dict]:
     """Recent preprints S2 may not have indexed yet, newest first."""
     # arXiv ORs bare words; AND them and stay inside the ML/NLP categories.
@@ -172,19 +251,26 @@ def search_arxiv(query: str, since: str | None, limit: int) -> list[dict]:
     return out
 
 
-def meta(paper_id: str, today: date | None = None) -> dict:
-    p = json.loads(
-        _get(
-            f"{S2}/paper/{urllib.parse.quote(normalize_id(paper_id), safe=':')}?fields={FIELDS}",
-            s2=True,
+def meta(paper_id: str, today: date | None = None, *, s2_only: bool = False) -> dict:
+    try:
+        p = json.loads(
+            _get(
+                f"{S2}/paper/{urllib.parse.quote(normalize_id(paper_id), safe=':')}?fields={FIELDS}",
+                s2=True,
+            )
         )
-    )
-    out = _candidate(p)
-    out["abstract"] = p.get("abstract")
-    out["influentialCitationCount"] = p.get("influentialCitationCount")
-    out["publicationVenue"] = (p.get("publicationVenue") or {}).get("name")
-    out["authors"] = [a.get("name") for a in p.get("authors") or []]
-    out["url"] = p.get("url")
+    except S2Unavailable:
+        if s2_only:
+            raise
+        out = meta_openalex(paper_id)
+    else:
+        out = _candidate(p)
+        out["abstract"] = p.get("abstract")
+        out["influentialCitationCount"] = p.get("influentialCitationCount")
+        out["publicationVenue"] = (p.get("publicationVenue") or {}).get("name")
+        out["authors"] = [a.get("name") for a in p.get("authors") or []]
+        out["url"] = p.get("url")
+        out["source"] = "s2"
     out["months"] = months_since(out["publicationDate"], out["year"], today)
     return out
 
@@ -288,7 +374,7 @@ def main(argv: list[str] | None = None) -> int | None:
     s.add_argument("--since", help="YYYY-MM-DD; only papers published on or after")
     s.add_argument("--min-citations", type=int, default=0)
     s.add_argument("--limit", type=int, default=50)
-    s.add_argument("--source", choices=("s2", "arxiv"), default="s2")
+    s.add_argument("--source", choices=("openalex", "arxiv", "s2"), default="openalex")
     for name in ("meta", "impact", "code-links"):
         p = sub.add_parser(name)
         p.add_argument("id")
@@ -307,17 +393,22 @@ def main(argv: list[str] | None = None) -> int | None:
 
 def _run(a: argparse.Namespace) -> None:
     if a.cmd == "search":
-        rows = (
-            search_arxiv(a.query, a.since, a.limit)
-            if a.source == "arxiv"
-            else search_s2(a.query, a.since, a.min_citations, a.limit)
-        )
+        if a.source == "s2":
+            rows = search_s2(a.query, a.since, a.min_citations, a.limit)
+        elif a.min_citations:
+            sys.exit(
+                "--min-citations needs --source s2 (citation counts elsewhere are unreliable)"
+            )
+        elif a.source == "arxiv":
+            rows = search_arxiv(a.query, a.since, a.limit)
+        else:
+            rows = search_openalex(a.query, a.since, a.limit)
         for row in rows:
             print(json.dumps(row))
     elif a.cmd == "meta":
         print(json.dumps(meta(a.id), indent=2))
     elif a.cmd == "impact":
-        m = meta(a.id)
+        m = meta(a.id, s2_only=True)
         print(
             json.dumps(
                 {"id": a.id, "title": m["title"], **impact_score(m, a.viral)}, indent=2
