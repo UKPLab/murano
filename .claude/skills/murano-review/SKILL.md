@@ -62,9 +62,21 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
      `# Differs from ...` comment at the line with its reason, and a matching
      bullet under "Differences from the reference code" in the PR body. A
      missing or unexplained one is a must-fix.
-   - **Tests:** check against `murano-test`. Does each oracle have a test? Can
-     each mechanism test fail? Are there shape-only "mechanism" tests, missing
-     error paths, or Hub downloads?
+   - **Tests:** check against `murano-test`. Does each oracle have a test?
+     Are there shape-only "mechanism" tests, missing error paths, or Hub
+     downloads? Then run one full mutation sweep, not a sample, so every gap
+     surfaces in this round instead of one per round:
+     - Mutate every line the PR adds or changes under `src/`, one mutant at
+       a time: flip each comparison (`>`/`>=`, `<`/`<=`, `==`/`!=`), zero or
+       negate each arithmetic term, delete each call or assignment whose
+       effect is used, and shift each index or slice bound by one.
+     - After each mutant, run the PR's test module and the tests of any
+       module that imports the changed one, then restore the file with
+       `git checkout -- <file>`. Never commit a mutant.
+     - Every mutant that survives is a gap. Group survivors into one finding
+       per missing test, listing the mutated lines.
+     - In round 2 and later, sweep only the lines changed since the previous
+       review. Lines the earlier sweep passed are settled.
    - **Conventions and reuse:** check `AGENTS.md` §2–8. Grep for every new
      private helper and see whether an existing one does the same job. Check
      backend-only model access, key handling, docstring shape, every
@@ -133,9 +145,11 @@ VERDICT: CHANGES_REQUESTED | READY_TO_MERGE
 ```
 
 Leave out any heading that has nothing under it, except VERDICT. Each
-finding fits on one or two lines: where, what is wrong, the exact fix. Give
-the consequence only when it isn't obvious from the problem. No summary of
-the PR, no praise, no closing remarks.
+finding is at most about 40 words: where, what is wrong, the exact fix. Give
+the consequence only when it isn't obvious from the problem. The line under
+VERDICT is the problem count, plus one sentence in later rounds on whether
+the previous findings are fixed. No summary of the PR, no praise, no closing
+remarks.
 
 ## Return
 
