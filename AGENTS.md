@@ -277,6 +277,9 @@ How humans steer it:
 - To pause anything, add `agent:hold`.
 - To require a change on an agent PR, comment on it. The next review counts
   unaddressed maintainer comments as must-fixes.
+- To settle an open question, reply on the PR. The loop never waits for an
+  answer: it ships a provisional decision, listed under "Open questions" in
+  the PR body, and your reply overrides it in the next round.
 
 Tunables (cadence, caps, thresholds, model tiers) live in
 `.claude/agent-loop.json`. To change how often it runs, edit `schedule_cron` and

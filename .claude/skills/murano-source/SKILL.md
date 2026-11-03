@@ -78,9 +78,14 @@ Script: `scripts/repo_check.py <github-url> --authors "A B,C D"` (needs `gh`).
    numbers and paths stay as they are. Then remove `agent:todo` and
    `agent:wip`, and add `agent:sourced`.
 
-Block (`agent:blocked`, with a comment saying what is missing) when the paper
-leaves out a detail the method needs and no reference code settles it. Don't
-guess.
+When the paper leaves out a detail and no reference code settles it, don't
+block and don't invent a value silently. Take a provisional decision (the most
+conservative option, or a value the paper uses elsewhere), write it into the
+algorithm, and list it under "Open questions" in the dossier as
+`<question> Provisional: <choice>, because <why>.` The implementer carries it
+into the PR. Block (`agent:blocked`) only when no provisional choice can be
+built: a backend extension, a Step-protocol change, a new base dependency, or
+a license that forbids the work.
 
 ## Dossier template
 
@@ -117,6 +122,9 @@ Plot: <default view or "none, call plot_<x> directly"> · Extra: <none | name>
 ### Notebooks
 Application: `notebooks/applications/<x>.ipynb`, showing <the one question it answers>
 Reproduction: <`notebooks/reproductions/<author><year>_<slug>.ipynb` reproducing <figure/table>> | none (<why>)
+
+### Open questions
+<question> Provisional: <choice>, because <why>. | None.
 
 ### Risks
 <what could make the implementation wrong or slow>

@@ -58,11 +58,13 @@ The rules are in `AGENTS.md`, and every section of it applies. The plan is the
    - Everything above the collapsed checklist stays under 250 words. Being
      over means you are restating the diff, not that the PR is special.
    - The opening says what and why in one to three sentences.
-   - "Needs a maintainer" holds only what a human must decide or check: a
+   - "Open questions" holds only what a human must decide or check: a
      judgment call with a real alternative, an oracle that failed, something
-     you could not run, a change outside the method's new files. One line
-     each, naming the file or symbol. Everything you merely chose goes in a
-     code comment or nowhere.
+     you could not run, a change outside the method's new files. Never wait
+     for an answer: implement a provisional decision and write
+     `<question> Provisional: <what the PR does>, because <why>.`, naming the
+     file or symbol. Everything you merely chose goes in a code comment or
+     nowhere.
    - "Differences from the reference code": one line each, what and why,
      matching the `# Differs from` comments from step 4. The detail stays in
      the comments.
@@ -76,8 +78,12 @@ The rules are in `AGENTS.md`, and every section of it applies. The plan is the
    - Labels: `enhancement`, `agent:needs-review`. On the issue, add `has-pr`
      and remove `agent:wip`.
 
-Stop and label the issue `agent:blocked`, with a comment, when the dossier
-turns out to be wrong or incomplete in a way you would have to guess around.
+When the dossier turns out to be wrong or incomplete, don't stop. Take the
+provisional decision the loop's rules give (the reference code's behaviour,
+else the most conservative option), implement it, and list it under "Open
+questions". Label the issue `agent:blocked` only when no provisional choice
+can be built (a backend extension, a new base dependency, a license that
+forbids it).
 
 ## Revise mode (PR `agent:changes-requested`)
 
@@ -93,6 +99,13 @@ turns out to be wrong or incomplete in a way you would have to guess around.
    3. If it doesn't hold, don't change code. Prepare a reply with evidence:
       file:line, a test that shows the behaviour, or the dossier or paper
       passage.
+   4. If it asks to change a decision recorded as an open question (in the PR
+      body or a `<!-- murano-open-question -->` comment) and no maintainer has
+      answered that question, keep the provisional decision and reply
+      `Not changed: open question <link>`. A maintainer's answer, once posted,
+      is a requirement like any other maintainer comment.
+   5. If a finding needs a human decision nobody has recorded yet, take the
+      provisional decision, implement it, and add it under "Open questions".
    - Don't fix findings from memory, don't batch unrelated fixes into one
      opaque commit, and don't "improve" code outside the findings.
 4. Run every check in `AGENTS.md` §12, then push with no force.

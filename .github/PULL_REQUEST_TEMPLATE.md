@@ -2,9 +2,9 @@ Closes #
 
 <!-- One to three sentences: what this adds or fixes and why. A reviewer who reads only this decides whether the PR is theirs. Give the reviewer what the diff cannot; never list files or tests. -->
 
-### Needs a maintainer
+### Open questions
 
-<!-- Only what a human has to decide or check: a call that could reasonably go the other way, something you could not verify, a change outside the PR's own new files. One line each, with the file or symbol. "Nothing." if empty. -->
+<!-- Decisions a maintainer may want to overturn, already taken provisionally so the loop never waits. One line each: "<question> Provisional: <what the PR does>, because <why>." Add one line of context only when the question needs it. Also list what a human must check: something you could not run, a change outside the PR's own new files. A maintainer answers in a PR comment. "None." if empty. -->
 
 ### Differences from the reference code
 

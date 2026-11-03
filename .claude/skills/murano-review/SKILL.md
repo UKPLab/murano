@@ -77,7 +77,8 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
      executed, the guide length, the Attribution block, NOTICE, the license
      verdict, and the CHANGELOG bullet. Check the PR body against
      `murano-implement` step 9: over 250 words above the checklist, a file or
-     test inventory, restated code comments, or a "Needs a maintainer" item
+     test inventory, restated code comments, an "Open questions" line with no
+     provisional choice, or an "Open questions" item
      that needs no human is a must-fix.
 4. **Consolidate.** Flatten every candidate into `(file:line, claim)` pairs.
    One root cause or one fix makes one finding. The same line twice gets
@@ -89,6 +90,14 @@ comment and `AGENTS.md` yourself. Don't take the PR's own summary on trust.
 6. **Verdict.**
    - `READY_TO_MERGE` needs all of: zero findings, green checks, and every
      maintainer comment addressed.
+   - Open questions don't block. A decision the PR records as an open
+     question (PR body or a `<!-- murano-open-question -->` comment) with a
+     provisional choice is not a finding, even when it departs from earlier
+     guidance, as long as no maintainer has answered it. Check that the code
+     does what the provisional choice says. Once a maintainer answers, the
+     answer is a requirement. When you find a decision that needs a human and
+     isn't recorded, the finding is to record it as an open question with a
+     provisional choice, not to wait.
    - Anything else is `CHANGES_REQUESTED`.
    - An unexecuted notebook doesn't block the verdict when it's the only
      issue. List it under "Maintainer action before merge" instead.
