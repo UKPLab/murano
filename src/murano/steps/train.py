@@ -161,8 +161,11 @@ def _lat_direction(pos_acts: Tensor, neg_acts: Tensor, key: Node) -> Tensor:
         )
     diffs = pos_acts - neg_acts
     if diffs.norm() < 1e-10:
-        # No pair differs, so any singular vector would be arbitrary. A zero
-        # direction takes the near-zero warning path, as mean-diff does.
+        # Differs from andyzoujm/representation-engineering@5455d8a
+        # repe/rep_readers.py PCARepReader.get_rep_directions: returns a zero
+        # vector, not the PCA's arbitrary unit vector, when no pair differs,
+        # because a zero direction takes the near-zero warning path, as
+        # mean-diff does.
         return diffs.new_zeros(diffs.shape[1])
     # Differs from andyzoujm/representation-engineering@5455d8a
     # repe/rep_readers.py PCARepReader.get_rep_directions: an uncentered SVD of
