@@ -9,8 +9,9 @@ postponed: ["2610.41445", "2610.37157", "2610.37126", "2610.36797", "2610.31407"
 - Loop runs against the `dev-loop` branch (not main): agent branches start from it, PRs target it.
 - Tuned Lens 2303.08112, Nullify 2610.10655 and ALTI 2203.04212 were accepted on score but deferred 7 days for the backlog cap; they come back through `ledger.py due`. ALTI shares the contribution decomposition with #123.
 - OPENALEX_API_KEY lives in .claude/settings.local.json (locally ignored); the cloud routine needs it in its environment.
-- #125 sourced (MIT, pinned cf6fb23): new step plus a `Neuron` type; a hand-written Student-t quantile is planned where a normal approximation may do. Implement waits for a free PR slot.
+- #125 implemented as PR #128 (RACE). Review round 1 asked for 19 changes (https://github.com/UKPLab/murano/pull/128#issuecomment-6636570958). Revise is due. The PR has 3 open questions: stdlib Student-t quantile, single-neuron zeroing left for follow-up, new Neuron/NeuronSelection types.
 - Subagents that check out branches run in isolated worktrees; remove them after the tick.
 - PR #126 ready to merge (round 4, 0 findings). Open questions for the maintainer: failed oracle 7, out-of-method edits, dropped layers= argument.
-- PR #127 round 2: 4 small findings (zero-direction guard needs a `# Differs from` comment and PR bullet, CHANGELOG/steer.md overstate the sign rule, oracle label 3 should be 5, reply to the stale open question 6609544252). Revise due next tick. The sign rule follows the maintainer's "fewer than half" on #124.
+- PR #127: the round-2 findings are fixed. The round-3 review found 1 issue: the train.py:76-77 normalize docstring says "unit norm either way", but a zero vector is possible. The body marker says round 2, so one revise is left before the cap.
 - Every agent text goes through .claude/skills/murano-loop/scripts/post.py. The script exists only on dev-loop, so brief implementers to work in a separate worktree and leave the main checkout on dev-loop. The #127 implementer forgot.
+- The session /loop runs every 15 min, but a full review of a large PR takes about 60 min. A fire that comes while a tick still holds agent:wip is skipped and does not run preflight.
