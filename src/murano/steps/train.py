@@ -50,8 +50,8 @@ class SteeringVector(Step):
     second moment ``mean(D) mean(D)^T + Cov(D)``. With a consistent shift
     between the sides the two agree; when the differences also vary strongly
     along another axis, LAT follows that axis. The singular vector's sign is
-    arbitrary, so LAT flips it when fewer pairs project positive above negative
-    than the reverse.
+    arbitrary, so LAT flips it when fewer than half of the pairs project
+    positive above negative.
 
     Reads from results:
         results['record']: ActivationStore (must have .positive and .negative)
@@ -171,7 +171,10 @@ def _lat_direction(pos_acts: Tensor, neg_acts: Tensor, key: Node) -> Tensor:
     # their difference, not through raw states recentered on the training mean,
     # because the shared shift cancels in every within-pair comparison.
     proj = diffs @ direction
-    # Ties count for neither side and keep the sign, as in the reference.
-    if (proj > 0).sum() < (proj < 0).sum():
+    # Differs from andyzoujm/representation-engineering@5455d8a
+    # repe/rep_readers.py PCARepReader.get_signs: a tied pair counts against the
+    # positive side, because the maintainer decision on #124 flips when fewer
+    # than half of the pairs project positive.
+    if 2 * (proj > 0).sum() < proj.numel():
         direction = -direction
     return direction

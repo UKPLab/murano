@@ -480,6 +480,45 @@ class TestSteeringVectorLATMechanism:
         assert _cos(mean_diff, u) > 0.99 and abs(_cos(mean_diff, w)) < 1e-4
         assert abs(_cos(lat, w)) > 0.99
 
+    # Pair i differs by proj[i] * u. Each case is run with the SVD's raw sign
+    # forced to +u and to -u; expected is the result for each raw sign.
+    @pytest.mark.parametrize(
+        ("proj", "expected"),
+        [
+            # 3 of 4 pairs positive: keep +u, though the summed projection is
+            # negative (kills "always flip", "never flip" and "flip on sum < 0").
+            ([1.0, 1.0, 1.0, -10.0], (1.0, 1.0)),
+            # Exactly half positive keeps the raw sign (kills "flip on <= half").
+            ([1.0, 1.0, -1.0, -1.0], (1.0, -1.0)),
+            # Tied pairs count against the positive side, so one positive out
+            # of three always flips (kills "ties count for neither side").
+            ([1.0, 0.0, 0.0], (-1.0, 1.0)),
+        ],
+    )
+    @pytest.mark.parametrize("raw_sign", [1.0, -1.0])
+    def test_sign_rule_flips_below_half_positive(
+        self, monkeypatch, proj, expected, raw_sign
+    ):
+        u, _ = _orthonormal_pair(8)
+        real_svd = torch.linalg.svd
+
+        def svd_with_raw_sign(a, full_matrices=True):
+            out = real_svd(a, full_matrices=full_matrices)
+            vh = out.Vh.clone()
+            vh[0] *= raw_sign * torch.sign(vh[0] @ u)
+            return type(out)((out.U, out.S, vh))
+
+        monkeypatch.setattr(torch.linalg, "svd", svd_with_raw_sign)
+        # Precondition: the raw singular vector is the forced +-u.
+        diffs = torch.tensor(proj).unsqueeze(1) * u
+        raw = torch.linalg.svd(diffs, full_matrices=False).Vh[0]
+        assert _cos(raw, u) == pytest.approx(raw_sign, abs=1e-5)
+
+        neg = torch.zeros(len(proj), 8)
+        lat = _direction(neg + diffs, neg, "lat")
+        want = expected[0] if raw_sign > 0 else expected[1]
+        assert _cos(lat, u) == pytest.approx(want, abs=1e-5)
+
 
 class TestSteeringVectorLATErrors:
     def test_unknown_method_lists_lat(self):

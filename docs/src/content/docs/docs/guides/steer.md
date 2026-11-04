@@ -73,7 +73,7 @@ print(steering.direction_per_layer[steering.best_layer].shape)  # [d_model]
 
 ### LAT reading vectors
 
-`SteeringVector(method="lat")` computes the reading vector of Representation Engineering ([Zou et al., 2023](https://arxiv.org/abs/2310.01405)). The i-th positive and i-th negative prompts form a pair, and the direction is the top singular vector of the pair differences `positive - negative`. Its sign is chosen so that most pairs project higher on the positive side.
+`SteeringVector(method="lat")` computes the reading vector of Representation Engineering ([Zou et al., 2023](https://arxiv.org/abs/2310.01405)). The i-th positive and i-th negative prompts form a pair, and the direction is the top singular vector of the pair differences `positive - negative`. Its sign is chosen so that at least half of the pairs project higher on the positive side.
 
 ```python
 results = Pipeline([
