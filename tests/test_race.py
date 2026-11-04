@@ -162,6 +162,21 @@ class TestRACEMechanism:
         norm_bad = (a @ w_bad.T).norm(dim=-1)
         assert not torch.allclose(_evidence(a, w).sum(-1), norm_bad, atol=1e-2)
 
+    def test_eps_stabilises_the_update_norm(self, murano_model):
+        torch.manual_seed(0)
+        a = torch.randn(50, 6, dtype=torch.float64)
+        w = torch.randn(4, 6, dtype=torch.float64)
+        norm = (a @ w.T).norm(dim=-1)
+        # With a large eps the rows sum visibly below the update norm.
+        expected = norm.pow(2) / (norm + 1.0)
+        assert torch.allclose(_evidence(a, w, eps=1.0).sum(-1), expected)
+        assert not torch.allclose(expected, norm, rtol=1e-2)  # precondition
+        assert torch.equal(_evidence(a, w), _evidence(a, w, eps=1e-8))
+        assert RACE(murano_model).eps == 1e-8
+        # A silent neuron set gives finite zeros, not 0 / 0.
+        silent = _evidence(torch.zeros(3, 6, dtype=torch.float64), w)
+        assert torch.equal(silent, torch.zeros_like(silent))
+
     @pytest.mark.parametrize("module", [MLP, SELF_ATTN])
     def test_mean_evidence_equals_mean_update_norm(self, murano_model, module):
         # Dossier oracle 2: per non-padding position the evidence sums to the
