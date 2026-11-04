@@ -115,6 +115,19 @@ class TestRACEContract:
         assert all(isinstance(n, Neuron) for n in selection)
         assert set(selection.scores) == set(selection.neurons)
 
+    def test_neuron_selection_canonicalises_addresses(self):
+        selection = NeuronSelection(
+            neurons=["L0.mlp#3", Neuron(Node(1, SELF_ATTN), 2)],
+            scores={"L0.mlp#3": 1.5},
+        )
+        assert selection.neurons == [Neuron(Node(0, MLP), 3), Neuron("L1.self_attn", 2)]
+        assert selection.scores == {Neuron(Node(0, MLP), 3): 1.5}
+        assert "L0.mlp#3" in selection
+        assert Neuron(Node(0, MLP), 3) in selection
+        assert "L0.mlp#4" not in selection
+        assert "not a neuron" not in selection
+        assert 3 not in selection
+
     def test_gpt2_runs(self, gpt2_model):
         result = _run(gpt2_model)
         assert result.mean[Node(0, MLP)].shape == (128,)  # GPT-2 4 * n_embd

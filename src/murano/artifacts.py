@@ -120,6 +120,10 @@ class NeuronSelection:
     scores: dict[Neuron, float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        self.neurons = [_coerce_neuron(n) for n in self.neurons]
+        self.scores = {_coerce_neuron(n): v for n, v in self.scores.items()}
+
     def __iter__(self):
         return iter(self.neurons)
 
@@ -127,7 +131,19 @@ class NeuronSelection:
         return len(self.neurons)
 
     def __contains__(self, neuron: object) -> bool:
-        return neuron in self.neurons
+        try:
+            return _coerce_neuron(neuron) in self.neurons
+        except (TypeError, ValueError):
+            return False
+
+
+def _coerce_neuron(neuron: object) -> Neuron:
+    """Accept a :class:`Neuron` or its ``"L5.mlp#12"`` string form."""
+    if isinstance(neuron, Neuron):
+        return neuron
+    if isinstance(neuron, str):
+        return Neuron.parse(neuron)
+    raise TypeError(f"expected a Neuron or 'L<layer>.<module>#<index>', got {neuron!r}")
 
 
 @dataclass
