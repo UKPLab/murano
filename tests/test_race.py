@@ -366,6 +366,21 @@ class TestRACEMechanism:
         assert [n.index for n in short] == [4, 5]
         assert "keeps 2/3" in caplog.text
 
+    def test_empty_batches_leave_moments_unchanged(self, murano_model):
+        mean = torch.tensor([1.0, 2.0], dtype=torch.float64)
+        ss = torch.tensor([3.0, 4.0], dtype=torch.float64)
+        n, merged_mean, merged_ss = _merge_moments(4, mean, ss, torch.empty(0, 2))
+        assert n == 4
+        assert torch.equal(merged_mean, mean) and torch.equal(merged_ss, ss)
+        # Every prompt is shorter than the start: nothing is observed.
+        skipped = _run(murano_model, start_positions=10)
+        assert skipped.n == 0
+        for node, value in skipped.mean.items():
+            assert torch.equal(value, torch.zeros_like(value))
+            assert torch.equal(skipped.cam()[node], torch.zeros_like(value))
+        no_prompts = _run(murano_model, prompts=[])
+        assert no_prompts.n == 0 and not no_prompts.mean
+
     def test_select_metadata_ties_and_full_fraction(self):
         node = Node(0, MLP)
         # Enough ties that an unstable sort would reorder them.
