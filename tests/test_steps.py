@@ -327,7 +327,7 @@ class TestSteeringVector:
     """Shape tests for SteeringVector (contrastive mean diff)."""
 
     def test_unknown_method_raises(self):
-        with pytest.raises(ValueError, match="contrastive_mean_diff"):
+        with pytest.raises(ValueError, match="contrastive_mean_diff.*'lat'"):
             SteeringVector(method="pca")
 
     def test_output_type(self, results_with_activations):
@@ -521,10 +521,6 @@ class TestSteeringVectorLATMechanism:
 
 
 class TestSteeringVectorLATErrors:
-    def test_unknown_method_lists_lat(self):
-        with pytest.raises(ValueError, match="'lat'"):
-            SteeringVector(method="pca")
-
     def test_identical_sides_give_zero_direction(self):
         acts = torch.randn(6, 8, generator=torch.Generator().manual_seed(0))
         # Precondition: the raw SVD still returns a unit vector here.
