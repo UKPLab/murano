@@ -525,6 +525,12 @@ class TestSteeringVectorLATErrors:
         with pytest.raises(ValueError, match="'lat'"):
             SteeringVector(method="pca")
 
+    def test_identical_sides_give_zero_direction(self):
+        acts = torch.randn(6, 8, generator=torch.Generator().manual_seed(0))
+        # Precondition: the raw SVD still returns a unit vector here.
+        assert torch.linalg.svd(acts - acts, full_matrices=False).Vh[0].norm() > 0.5
+        assert torch.equal(_direction(acts, acts.clone(), "lat"), torch.zeros(8))
+
     def test_unpaired_counts_raise(self):
         r = _lat_results(torch.randn(5, 8), torch.randn(4, 8))
         with pytest.raises(ValueError, match="row-aligned pairs"):
