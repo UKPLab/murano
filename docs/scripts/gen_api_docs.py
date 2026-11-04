@@ -52,6 +52,7 @@ MODULES = [
     ("murano.steps.metrics", "steps/metrics"),
     ("murano.steps.select", "steps/select"),
     ("murano.steps.sweep", "steps/sweep"),
+    ("murano.steps.race", "steps/race"),
     ("murano.plotting.activations", "plotting/activations"),
     ("murano.plotting.steering", "plotting/steering"),
     ("murano.plotting.probing", "plotting/probing"),
@@ -60,6 +61,7 @@ MODULES = [
     ("murano.plotting.attention", "plotting/attention"),
     ("murano.plotting.sae", "plotting/sae"),
     ("murano.plotting.sweep", "plotting/sweep"),
+    ("murano.plotting.race", "plotting/race"),
     ("murano.plotting.plotly_utils", "plotting/plotly_utils"),
 ]
 

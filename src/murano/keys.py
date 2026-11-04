@@ -26,6 +26,7 @@ SELECTION: Final = "selection"
 SWEEP: Final = "sweep"
 METRIC: Final = "metric"
 WEIGHT_ABLATION: Final = "weight_ablation"
+RACE: Final = "race"
 OUTPUT_DIR: Final = "output_dir"
 
 # Default base directory (relative to the current working directory) for saved

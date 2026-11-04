@@ -20,6 +20,7 @@ def test_core_key_values():
     assert keys.FEATURE_EXAMPLES == "feature_examples"
     assert keys.METRIC == "metric"
     assert keys.WEIGHT_ABLATION == "weight_ablation"
+    assert keys.RACE == "race"
     assert keys.OUTPUT_DIR == "output_dir"
 
 

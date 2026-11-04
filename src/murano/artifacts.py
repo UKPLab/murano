@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from murano.nodes import SELF_ATTN, Node, NodeDict
+from murano.nodes import SELF_ATTN, Neuron, Node, NodeDict
 
 
 @dataclass
@@ -101,6 +101,49 @@ class ComponentSelection:
             return Node.coerce(node) in self.nodes  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return False
+
+
+@dataclass
+class NeuronSelection:
+    """An ordered, scored set of neurons chosen by a neuron-ranking step.
+
+    The neuron-level counterpart of :class:`ComponentSelection`. It iterates
+    over :attr:`neurons` in selection order.
+
+    Attributes:
+        neurons: Selected neurons, grouped by module, best first within each.
+        scores: ``{Neuron: float}`` ranking score behind each selected neuron.
+        metadata: Provenance (score name, budget, filtering).
+    """
+
+    neurons: list[Neuron]
+    scores: dict[Neuron, float] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.neurons = [_coerce_neuron(n) for n in self.neurons]
+        self.scores = {_coerce_neuron(n): v for n, v in self.scores.items()}
+
+    def __iter__(self):
+        return iter(self.neurons)
+
+    def __len__(self) -> int:
+        return len(self.neurons)
+
+    def __contains__(self, neuron: object) -> bool:
+        try:
+            return _coerce_neuron(neuron) in self.neurons
+        except (TypeError, ValueError):
+            return False
+
+
+def _coerce_neuron(neuron: object) -> Neuron:
+    """Accept a :class:`Neuron` or its ``"L5.mlp#12"`` string form."""
+    if isinstance(neuron, Neuron):
+        return neuron
+    if isinstance(neuron, str):
+        return Neuron.parse(neuron)
+    raise TypeError(f"expected a Neuron or 'L<layer>.<module>#<index>', got {neuron!r}")
 
 
 @dataclass

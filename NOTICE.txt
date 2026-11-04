@@ -37,4 +37,8 @@ a third-party reference implementation. One entry per method, in the form:
     Reference code: <repo URL>@<commit SHA> (<SPDX license>);
     adapted: <what was adapted> | used as a test oracle only.
 
-(none yet)
+  - murano.steps.race: Wang, Liu, Zhang, Han et al. (2026), "RACE: Scalable
+    Statistical Estimation of Functional Consistency in LLM Neurons".
+    Reference code: https://github.com/Nexround/RACE@cf6fb23c22190c1c233f85256931e41441eda8a5 (MIT);
+    adapted: residual-direction alignment evidence, the Normal-Inverse-Gamma
+    posterior and CAM score, and reference-set filtering.

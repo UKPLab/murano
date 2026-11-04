@@ -49,6 +49,8 @@ class Plot(Step):
         results['sweep']: SweepResult
             sweep, drawn as a layer-by-head heatmap when the sweep ranged over
             attention heads and as one bar per item otherwise
+        results['race']: RACEResult
+            race_layers
 
     Attention, SAE, and activation-projection plots are not auto-dispatched:
     they need an explicit head, feature, or reducer choice with no sensible
@@ -153,6 +155,11 @@ class Plot(Step):
             from murano.plotting import plot_sweep
 
             self._emit(plot_sweep(results[keys.SWEEP]), plots_dir, "sweep")
+
+        if keys.RACE in results:
+            from murano.plotting import plot_race_layers
+
+            self._emit(plot_race_layers(results[keys.RACE]), plots_dir, "race_layers")
 
         logger.info("Plots saved to %s", plots_dir)
         return results

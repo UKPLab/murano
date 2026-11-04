@@ -24,6 +24,7 @@ from murano.nodes import (
     SELF_ATTN,
     AddressLike,
     Edge,
+    Neuron,
     Node,
     NodeDict,
     NodeSet,
@@ -348,6 +349,22 @@ def test_edge_rejects_non_node_fields():
         Edge("L5.mlp", "L8.mlp")
     with pytest.raises(TypeError, match="must be a Node"):
         Edge(Node(5, MLP), "L8.mlp")
+
+
+# ── Neurons ───────────────────────────────────────────────────────────
+def test_neuron_str_parse_and_pickle_round_trip():
+    neuron = Neuron("L5.mlp", 1234)
+    assert neuron.node == Node(5, MLP)
+    assert str(neuron) == "L5.mlp#1234"
+    assert Neuron.parse(str(neuron)) == neuron
+    assert pickle.loads(pickle.dumps(neuron)) == neuron
+
+
+def test_neuron_rejects_bad_index_and_text():
+    with pytest.raises(ValueError, match="index must be >= 0"):
+        Neuron(Node(5, MLP), -1)
+    with pytest.raises(ValueError, match="<node>#<index>"):
+        Neuron.parse("L5.mlp")
 
 
 def test_address_like_is_a_runtime_type():

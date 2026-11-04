@@ -141,6 +141,7 @@ caught up-front.
 | `LogitAttribution` ‡ | `prompts`           | `logit_attribution`            | Decompose a logit (difference) into per-component contributions (DLA). |
 | `SelectComponents` ‡ | `logit_attribution` (or `sweep`) | `selection`          | Rank per-component scores and keep the strongest as a target set. |
 | `LogitLens`        | `prompts`             | `logit_lens`                   | Project each layer's residual onto the vocabulary. |
+| `RACE`             | `prompts`             | `race`                         | Rank neurons by how consistently they drive their module's update over a domain. |
 | `Sweep` ‡          | (the swept chain's)   | `sweep`                        | Run a step chain once per item and harvest a metric into a `SweepResult`. |
 | `Probe` §          | `record`              | `probe`                        | Train a linear probe per layer via cross-validation.     |
 | `GenerationMetric` | `intervene`           | `metric`                       | Score baseline vs modified outputs with a user metric.   |
@@ -148,7 +149,7 @@ caught up-front.
 | `Save`             | (any present)         | `output_dir`                   | Persist all results to organized subdirectories.         |
 | `SAEEncode` †      | `prompts`             | `sae_record`                   | Encode residuals through an SAE loaded from HuggingFace. |
 | `SAETopActivations` | `sae_record`         | `feature_examples`             | Rank the top-K activating contexts per SAE feature.      |
-| `Plot` \*          | (optional)            | —                              | Render plots for whatever results are present (steering, probe, logit lens, logit attribution). |
+| `Plot` \*          | (optional)            | —                              | Render plots for whatever results are present (steering, probe, logit lens, logit attribution, RACE). |
 
 \* Requires the `[plot]` extra: `pip install -e .[plot]`.
 † Requires the `[sae]` extra: `pip install -e .[sae]`.

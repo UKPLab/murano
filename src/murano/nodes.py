@@ -459,6 +459,48 @@ class Edge:
 
 
 @dataclass(frozen=True, slots=True)
+class Neuron:
+    """One neuron: an input channel of a module's output projection.
+
+    Composed on a :class:`Node` rather than added to it, as a neuron is a
+    different kind of object from a module activation. ``Neuron(Node(5, "mlp"),
+    12)`` is channel 12 of layer 5's MLP down-projection input, printed
+    ``L5.mlp#12``.
+
+    Attributes:
+        node: The module the neuron belongs to (shorthand is coerced).
+        index: Channel index (``>= 0``).
+    """
+
+    node: Node
+    index: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "node", Node.coerce(self.node))
+        object.__setattr__(
+            self, "index", _validated_int(self.index, "index", allow_negative=False)
+        )
+
+    def __str__(self) -> str:
+        return f"{self.node}#{self.index}"
+
+    def __reduce__(self):
+        return (self.__class__, (self.node, self.index))
+
+    @classmethod
+    def parse(cls, text: str) -> Neuron:
+        """Parse ``"<node>#<index>"``, e.g. ``"L5.mlp#12"``, into a :class:`Neuron`.
+
+        Raises:
+            ValueError: If ``text`` has no ``#`` or a non-integer index.
+        """
+        node, sep, index = text.rpartition("#")
+        if not sep:
+            raise ValueError(f"neuron must look like '<node>#<index>': {text!r}")
+        return cls(Node.parse(node), _parse_int(index, "index", text))
+
+
+@dataclass(frozen=True, slots=True)
 class NodeSet:
     """An ordered, de-duplicated collection of :class:`Node` addresses.
 
@@ -657,6 +699,7 @@ __all__ = [
     "SELF_ATTN",
     "AddressLike",
     "Edge",
+    "Neuron",
     "Node",
     "NodeDict",
     "NodeSet",

@@ -139,6 +139,7 @@ my_experiment/
 | `Intervene` | `prompts` | `intervene` | Generates with activation patching |
 | `WeightAblation` | `prompts`, `steering` | `intervene`, `weight_ablation` | Ablates via weight projection |
 | `Probe` | `record` | `probe` | Linear probe per layer |
+| `RACE` | `prompts` | `race` | Ranks neurons by how consistently they drive their module's update |
 | `GenerationMetric` | `intervene` | `metric` | Custom evaluation metric |
 | `Save` | — | `output_dir` | Saves all results to disk |
 
