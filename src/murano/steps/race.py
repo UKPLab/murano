@@ -56,6 +56,10 @@ if TYPE_CHECKING:
 # GPT-NeoX/Falcon, original Llama ``feed_forward.w2``).
 _DOWN_PROJ_NAMES = ("down_proj", "c_proj", "fc2", "dense_4h_to_h", "w2")
 
+# Differs from Nexround/RACE@cf6fb23 packages/race/src/race/core/analyzer.py
+# NIGPosterior: no empirical_mean / empirical_snr baselines and no bare "lcb"
+# metric name, because they are the paper's ablation baselines and an alias of
+# CAM, not the method.
 _SCORES = ("cam", "neg_cam", "posterior_mean")
 
 
@@ -317,6 +321,9 @@ class RACEResult:
             ValueError: If a budget is not positive, both reference budgets are
                 given, or ``exclude`` covers different modules or widths.
         """
+        # Differs from Nexround/RACE@cf6fb23 packages/race-eval/src/race_eval/ablation/
+        # plan.py _resolve_llm_layer_k: a budget below one raises instead of
+        # returning an empty selection, because an empty pick is a caller error.
         if top_k is not None and top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {top_k}.")
         if not 0.0 < fraction <= 1.0:
@@ -332,6 +339,10 @@ class RACEResult:
 
         target = self.scores(score, gamma)
         reference = None if exclude is None else exclude.scores(score, gamma)
+        # Differs from Nexround/RACE@cf6fb23 packages/race-eval/src/race_eval/
+        # ablation/plan.py create_reference_filtered_ablation_plan: requires the
+        # same modules on both sides, where the code accepts extra reference
+        # layers, because a mismatch here means two differently configured runs.
         if reference is not None and set(reference) != set(target):
             raise ValueError(
                 "exclude must cover the same modules as this result; got "
@@ -344,6 +355,9 @@ class RACEResult:
             scores = target[node]
             size = scores.numel()
             k = _budget(size, top_k, fraction)
+            # Differs from Nexround/RACE@cf6fb23 packages/race-eval/src/race_eval/
+            # ablation/plan.py _ranked_neuron_indices_llm: no lcb_min_score
+            # candidate filter, because the paper protocol leaves it unset.
             ranking = _ranking(scores)
             if reference is not None:
                 if reference[node].numel() != size:
