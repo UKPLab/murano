@@ -83,7 +83,7 @@ results = Pipeline([
 ]).run()
 ```
 
-The output is the same `SteeringResult`, so `best_layer`, `separation_scores` and `Intervene(direction_key="steering")` work as before. If every pair differs by about the same shift, LAT and the mean difference return the same direction. If the differences also vary a lot along another axis, with a sign that changes from pair to pair, LAT follows that axis and the mean difference averages it out. A much lower LAT separation score at a layer points to that case. LAT raises `ValueError` when the two sides have different counts.
+The output is the same `SteeringResult`, so `best_layer`, `separation_scores` and `Intervene(direction_key="steering")` work as before. If every pair differs by about the same shift, LAT and the mean difference return the same direction. If the differences also vary a lot along another axis, with a sign that changes from pair to pair, LAT follows that axis and the mean difference averages it out. A LAT separation score much lower than the `contrastive_mean_diff` score at the same layer points to that case. LAT raises `ValueError` when the two sides have different counts.
 
 ### Saving and loading directions
 
