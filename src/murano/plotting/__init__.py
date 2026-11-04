@@ -9,6 +9,7 @@ from murano.plotting.logit_lens import plot_logit_lens
 from murano.plotting.logit_attribution import plot_logit_attribution
 from murano.plotting.probing import plot_confusion_matrix, plot_probe_accuracy
 from murano.plotting.attention import plot_attention_pattern, plot_head_matrix
+from murano.plotting.race import plot_race_layers
 from murano.plotting.sweep import plot_sweep
 from murano.plotting.plotly_utils import (
     plot_heatmap,
@@ -35,5 +36,6 @@ __all__ = [
     "plot_probe_accuracy",
     "plot_attention_pattern",
     "plot_head_matrix",
+    "plot_race_layers",
     "plot_sweep",
 ]

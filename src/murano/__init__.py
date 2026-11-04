@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         MetricScore,
         GenerationComparison,
         MetricComparison,
+        NeuronSelection,
         PromptBatch,
         SweepResult,
     )
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
         load_metric_score,
         load_labeled_activation_store,
         load_logit_lens,
+        load_race,
         load_sae_activations,
         load_sae_examples,
         load_sae_labels,
@@ -41,6 +43,7 @@ if TYPE_CHECKING:
     from murano.nodes import (
         AddressLike,
         Edge,
+        Neuron,
         Node,
         NodeDict,
         NodeSet,
@@ -56,6 +59,7 @@ if TYPE_CHECKING:
     )
     from murano.steps.logit_lens import LogitLens, LogitLensResult
     from murano.steps.logits import Logits
+    from murano.steps.race import RACE, RACEResult
     from murano.steps.select import SelectComponents
     from murano.steps.sae import (
         SAEActivationStore,
@@ -77,6 +81,7 @@ _LAZY_ATTRS = {
     "Node": ("murano.nodes", "Node"),
     "Side": ("murano.nodes", "Side"),
     "Edge": ("murano.nodes", "Edge"),
+    "Neuron": ("murano.nodes", "Neuron"),
     "NodeSet": ("murano.nodes", "NodeSet"),
     "NodeDict": ("murano.nodes", "NodeDict"),
     "AddressLike": ("murano.nodes", "AddressLike"),
@@ -86,6 +91,7 @@ _LAZY_ATTRS = {
     "MetricScore": ("murano.artifacts", "MetricScore"),
     "ComponentSelection": ("murano.artifacts", "ComponentSelection"),
     "SweepResult": ("murano.artifacts", "SweepResult"),
+    "NeuronSelection": ("murano.artifacts", "NeuronSelection"),
     "SelectComponents": ("murano.steps.select", "SelectComponents"),
     "MuranoDataset": ("murano.dataset", "MuranoDataset"),
     "LabeledDataset": ("murano.dataset", "LabeledDataset"),
@@ -102,6 +108,8 @@ _LAZY_ATTRS = {
     "LogitLensResult": ("murano.steps.logit_lens", "LogitLensResult"),
     "AttentionResult": ("murano.steps.attention", "AttentionResult"),
     "Logits": ("murano.steps.logits", "Logits"),
+    "RACE": ("murano.steps.race", "RACE"),
+    "RACEResult": ("murano.steps.race", "RACEResult"),
     "SAEEncode": ("murano.steps.sae", "SAEEncode"),
     "SAEActivationStore": ("murano.steps.sae", "SAEActivationStore"),
     "SAEModel": ("murano.steps.sae", "SAEModel"),
@@ -115,6 +123,7 @@ _LAZY_ATTRS = {
     "save_results": ("murano.io", "save_results"),
     "load_steering": ("murano.io", "load_steering"),
     "load_logit_lens": ("murano.io", "load_logit_lens"),
+    "load_race": ("murano.io", "load_race"),
     "load_attention": ("murano.io", "load_attention"),
     "load_activation_store": ("murano.io", "load_activation_store"),
     "load_labeled_activation_store": ("murano.io", "load_labeled_activation_store"),
@@ -132,6 +141,7 @@ __all__ = [
     "Node",
     "Side",
     "Edge",
+    "Neuron",
     "NodeSet",
     "NodeDict",
     "AddressLike",
@@ -141,6 +151,7 @@ __all__ = [
     "MetricScore",
     "ComponentSelection",
     "SweepResult",
+    "NeuronSelection",
     "SelectComponents",
     "MuranoDataset",
     "LabeledDataset",
@@ -154,6 +165,8 @@ __all__ = [
     "LogitLensResult",
     "AttentionResult",
     "Logits",
+    "RACE",
+    "RACEResult",
     "SAEActivationStore",
     "SAEEncode",
     "SAEFeatureExamples",
@@ -169,6 +182,7 @@ __all__ = [
     "save_results",
     "load_steering",
     "load_logit_lens",
+    "load_race",
     "load_attention",
     "load_activation_store",
     "load_labeled_activation_store",

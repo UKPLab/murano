@@ -26,6 +26,7 @@ from murano.steps.plot import Plot
 from murano.steps.logit_lens import LogitLens, LogitLensResult
 from murano.steps.logit_attribution import LogitAttribution, LogitAttributionResult
 from murano.steps.logits import Logits
+from murano.steps.race import RACE, RACEResult
 from murano.steps.sae import (
     SAEActivationStore,
     SAEEncode,
@@ -76,6 +77,8 @@ __all__ = [
     "LogitAttribution",
     "LogitAttributionResult",
     "Logits",
+    "RACE",
+    "RACEResult",
     "SAEActivationStore",
     "SAEEncode",
     "SAEFeatureExamples",

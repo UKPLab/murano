@@ -39,6 +39,7 @@ ORDER = [
     "applications/ablation.ipynb",
     "applications/activation_patching.ipynb",
     "applications/circuit_discovery.ipynb",
+    "applications/race.ipynb",
     "applications/metrics.ipynb",
     "applications/custom_pipeline.ipynb",
     "applications/weight_ablation.ipynb",

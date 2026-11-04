@@ -62,6 +62,9 @@ a minute each, dominated by loading the model; the exceptions are called out bel
 - [`applications/circuit_discovery.ipynb`](applications/circuit_discovery.ipynb)
   — compose attribution, sweeping, selection and path patching into one experiment
   that recovers the indirect-object-identification circuit. Extras: `[plot]`.
+- [`applications/race.ipynb`](applications/race.ipynb) — rank single neurons by
+  how consistently they drive their layer's update on a domain, then drop the
+  ones a generic reference domain ranks high too. Extras: `[plot]`.
 
 **Measuring and composing**
 

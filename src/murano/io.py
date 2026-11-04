@@ -481,6 +481,58 @@ def load_component_selection(path: str | Path) -> Any:
     )
 
 
+def save_race(result: Any, path: Path) -> None:
+    """Save a RACEResult to a .pt file.
+
+    Statistics are keyed by their string address and hold only tensors and
+    plain values, so :func:`load_race` reads them with the safe
+    ``weights_only=True`` loader.
+
+    Args:
+        result: RACEResult to serialize.
+        path: Output path. Parent directory is created if missing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "n": result.n,
+            "mean": {str(k): v for k, v in result.mean.items()},
+            "ss": {str(k): v for k, v in result.ss.items()},
+            "prior": [result.mu_0, result.lambda_0, result.alpha_0, result.beta_0],
+            "gamma": result.gamma,
+            "metadata": result.metadata,
+        },
+        path,
+    )
+    logger.info("Saved RACE result to %s", path)
+
+
+def load_race(path: str | Path) -> Any:
+    """Load a RACEResult from a file written by :func:`save_race`.
+
+    Args:
+        path: Path to the race.pt file.
+
+    Returns:
+        RACEResult with string addresses coerced back to Node keys.
+    """
+    from murano.steps.race import RACEResult
+
+    data = torch.load(path, weights_only=True)
+    mu_0, lambda_0, alpha_0, beta_0 = data["prior"]
+    return RACEResult(
+        n=data["n"],
+        mean=data["mean"],
+        ss=data["ss"],
+        mu_0=mu_0,
+        lambda_0=lambda_0,
+        alpha_0=alpha_0,
+        beta_0=beta_0,
+        gamma=data["gamma"],
+        metadata=data.get("metadata", {}),
+    )
+
+
 def save_sweep_result(sweep: Any, path: Path) -> None:
     """Save a SweepResult to a JSON file.
 
@@ -856,6 +908,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
     from murano.steps.logit_attribution import LogitAttributionResult
     from murano.steps.logit_lens import LogitLensResult
     from murano.steps.probe import ProbeResult
+    from murano.steps.race import RACEResult
     from murano.steps.record import ActivationStore, LabeledActivationStore
     from murano.steps.sae import (
         SAEActivationStore,
@@ -1028,6 +1081,21 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
             "metadata": selection.metadata,
         }
 
+    def serialize_race(
+        key: str,
+        race: Any,
+        out: Path,
+        _results: Any,
+        metadata: dict[str, Any],
+    ) -> None:
+        filename = "race.pt" if key == keys.RACE else f"{key}.pt"
+        save_race(race, out / "race" / filename)
+        metadata[key] = {
+            "n": race.n,
+            "modules": [str(node) for node in race.mean],
+            "gamma": race.gamma,
+        }
+
     def serialize_sweep_result(
         key: str,
         sweep: Any,
@@ -1151,6 +1219,7 @@ def _serializer_registry() -> list[tuple[type, ArtifactSerializer]]:
         registry, ComponentSelection, serialize_component_selection
     )
     register_artifact_serializer(registry, SweepResult, serialize_sweep_result)
+    register_artifact_serializer(registry, RACEResult, serialize_race)
     register_artifact_serializer(registry, ActivationStore, serialize_activation_store)
     register_artifact_serializer(
         registry, LabeledActivationStore, serialize_labeled_activation_store

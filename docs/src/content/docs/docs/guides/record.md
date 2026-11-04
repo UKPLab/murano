@@ -105,3 +105,20 @@ train_ds, eval_ds = MuranoDataset.from_hub(
 ```
 
 The tuple format is `(dataset_name, config, column)` or `(dataset_name, column)`.
+
+## Ranking neurons with RACE
+
+`RACE` asks which single neurons a domain keeps using. A neuron here is one input channel of a module's output projection: an MLP down-projection channel or one channel of the concatenated head outputs. On every token, RACE measures how much of the neuron's write points along its module's whole update. It pools these scores over the prompts and ranks each neuron by a lower credible bound on its mean, so a neuron that pushes hard on a few tokens and idles on the rest ranks below a steady one.
+
+```python
+from murano import Pipeline
+from murano.steps import LoadPrompts, RACE
+
+code = Pipeline([LoadPrompts(code_texts), RACE(model)]).run()["race"]
+general = Pipeline([LoadPrompts(wiki_texts), RACE(model)]).run()["race"]
+
+neurons = code.select(fraction=0.01, exclude=general)
+print([str(n) for n in neurons][:3])  # e.g. ['L0.mlp#1844', 'L0.mlp#623', ...]
+```
+
+`select` keeps the top 1% of each layer and module, because score scales differ between layers. With `exclude=`, it skips the neurons the reference run puts in its own top 1%, which leaves the ones specific to the target domain. The result stores per-neuron counts, means and spreads, so `result.cam(gamma=0.1)` needs no new forward pass. `plot_race_layers` draws each layer's score distribution. The method comes from Wang et al. (2026), [arXiv:2608.24758](https://arxiv.org/abs/2608.24758).
