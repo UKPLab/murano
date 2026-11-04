@@ -54,6 +54,7 @@ _CAUSAL_STEPS = {
     "PathPatch",
     "Patch",
     "Probe",
+    "RACE",
     "Record",
     "RecordAttention",
     "SAEEncode",
