@@ -83,12 +83,15 @@ class TestRACEContract:
         step = RACE(murano_model)
         assert step.reads == [keys.PROMPTS]
         assert step.writes == [keys.RACE]
-        assert step.write_types[keys.RACE] is RACEResult
+        assert step.read_types == {keys.PROMPTS: PromptBatch}
+        assert step.write_types == {keys.RACE: RACEResult}
 
     def test_custom_keys(self, murano_model):
         step = RACE(murano_model, prompts_key="p", output_key="r")
         assert step.reads == ["p"]
         assert step.writes == ["r"]
+        assert step.read_types == {"p": PromptBatch}
+        assert step.write_types == {"r": RACEResult}
 
     def test_pipeline_shapes_and_count(self, murano_model):
         out = Pipeline([LoadPrompts(PROMPTS), RACE(murano_model)]).run()
@@ -490,6 +493,25 @@ class TestRACEPlot:
         cam = result.cam()[Node(0, MLP)]
         first = fig["data"][0]["x"]
         assert max(first) == pytest.approx(cam.max().log10().item())
+
+    def test_skips_zero_layers_and_subsamples(self):
+        pytest.importorskip("plotly")
+        from murano.plotting import plot_race_layers
+
+        steady = torch.linspace(1.0, 5.0, 500, dtype=torch.float64)
+        silent = torch.zeros(500, dtype=torch.float64)
+        result = RACEResult(
+            n=100,
+            mean={"L0.mlp": steady, "L1.mlp": silent},
+            ss={"L0.mlp": torch.zeros_like(steady), "L1.mlp": silent},
+        )
+        assert (result.cam()[Node(0, MLP)] > 0).all()  # precondition
+        fig = plot_race_layers(result, max_points=10).to_dict()
+        assert len(fig["data"]) == 1  # the all-zero layer has no trace
+        trace = fig["data"][0]
+        assert trace["name"] == "L0 (500 > 0)"
+        assert 2 <= len(trace["x"]) <= 10
+        assert trace["showlegend"] is False
 
     def test_plot_step_writes_file(self, murano_model, tmp_path):
         pytest.importorskip("plotly")
