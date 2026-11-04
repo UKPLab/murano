@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import math
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -447,9 +448,12 @@ class TestRACEErrors:
             ({"modules": []}, "modules must be"),
             ({"layers": "some"}, "must be 'all'"),
             ({"layers": [5]}, "layers must be"),
+            ({"layers": []}, "layers must be a non-empty list"),
             ({"gamma": 0.0}, "gamma must be"),
             ({"alpha_0": 0.0}, "alpha_0 must be > 0"),
             ({"lambda_0": -1.0}, "lambda_0 must be > 0"),
+            ({"beta_0": 0.0}, "beta_0 must be > 0"),
+            ({"eps": -1.0}, "eps must be >= 0"),
             ({"batch_size": 0}, "batch_size must be"),
             ({"start_positions": -1}, "start_positions must be"),
         ],
@@ -465,6 +469,12 @@ class TestRACEErrors:
     def test_unknown_down_projection(self, murano_model, monkeypatch):
         monkeypatch.setattr("murano.steps.race._DOWN_PROJ_NAMES", ("nope",))
         with pytest.raises(NotImplementedError, match="no down projection"):
+            _run(murano_model, modules="mlp")
+
+    def test_mixture_of_experts_mlp(self, murano_model, monkeypatch):
+        moe = SimpleNamespace(experts=[], down_proj=None)
+        monkeypatch.setattr(murano_model, "raw_module", lambda layer, module: moe)
+        with pytest.raises(NotImplementedError, match="mixture-of-experts"):
             _run(murano_model, modules="mlp")
 
     def test_select_arguments(self):
