@@ -12,6 +12,6 @@ postponed: ["2610.41445", "2610.37157", "2610.37126", "2610.36797", "2610.31407"
 - #125 implemented as PR #128 (RACE). Review round 1 asked for 19 changes (https://github.com/UKPLab/murano/pull/128#issuecomment-6636570958). Revise is due. The PR has 3 open questions: stdlib Student-t quantile, single-neuron zeroing left for follow-up, new Neuron/NeuronSelection types.
 - Subagents that check out branches run in isolated worktrees; remove them after the tick.
 - PR #126 ready to merge (round 4, 0 findings). Open questions for the maintainer: failed oracle 7, out-of-method edits, dropped layers= argument.
-- PR #127: the round-2 findings are fixed. The round-3 review found 1 issue: the train.py:76-77 normalize docstring says "unit norm either way", but a zero vector is possible. The body marker says round 2, so one revise is left before the cap.
+- PR #127 ready to merge (round 3 of 3, 0 findings). There are no open questions.
 - Every agent text goes through .claude/skills/murano-loop/scripts/post.py. The script exists only on dev-loop, so brief implementers to work in a separate worktree and leave the main checkout on dev-loop. The #127 implementer forgot.
 - The session /loop runs every 15 min, but a full review of a large PR takes about 60 min. A fire that comes while a tick still holds agent:wip is skipped and does not run preflight.
