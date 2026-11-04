@@ -482,3 +482,23 @@ class TestRACEErrors:
             result.select(exclude=other)
         with pytest.raises(ValueError, match="score must be"):
             result.select(score="lcb")
+
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"exclude_top_k": -1}, "exclude_top_k must be >= 0"),
+            ({"exclude_fraction": -0.1}, "exclude_fraction must be in"),
+            ({"exclude_fraction": 1.5}, "exclude_fraction must be in"),
+            ({"exclude_width": 3}, "4 neurons here but 3 in exclude"),
+        ],
+    )
+    def test_select_exclude_arguments(self, kwargs, match):
+        node = Node(0, MLP)
+        m = torch.ones(4, dtype=torch.float64)
+        result = RACEResult(n=5, mean={node: m}, ss={node: m})
+        exclude = result
+        if "exclude_width" in kwargs:
+            narrow = torch.ones(kwargs.pop("exclude_width"), dtype=torch.float64)
+            exclude = RACEResult(n=5, mean={node: narrow}, ss={node: narrow})
+        with pytest.raises(ValueError, match=match):
+            result.select(exclude=exclude, **kwargs)
