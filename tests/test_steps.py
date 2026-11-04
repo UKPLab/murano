@@ -447,7 +447,7 @@ class TestSteeringVectorLATMechanism:
         assert _cos(_direction(pos, neg, "lat"), u) > 0.99
 
     def test_swapping_sides_negates_direction(self):
-        # Dossier oracle 3: the direction follows the labels, whatever sign
+        # Dossier oracle 5: the direction follows the labels, whatever sign
         # convention the SVD backend picks for -D.
         g = torch.Generator().manual_seed(0)
         pos, neg = (
