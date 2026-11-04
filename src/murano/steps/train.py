@@ -74,7 +74,8 @@ class SteeringVector(Step):
             examples to form a pair.
         normalize: If True, normalize each stored per-layer direction to unit
             norm. A ``"lat"`` direction is a singular vector, so it is unit norm
-            either way. Note the intervention functions (``steer_direction`` /
+            either way, except the zero vector returned when no pair differs.
+            Note the intervention functions (``steer_direction`` /
             ``ablate_direction``) unit-normalize again at apply time, so
             ``normalize=False`` only affects the magnitude of the stored vector
             (e.g. if you read ``direction_per_layer`` yourself); it does not
