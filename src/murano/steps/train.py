@@ -1,4 +1,13 @@
-"""Train step: computes directions from recorded activations."""
+"""Train step: computes directions from recorded activations.
+
+Attribution:
+    Method (``SteeringVector(method="lat")``): Zou, Phan, Chen, Campbell et al.
+    (2023), "Representation Engineering: A Top-Down Approach to AI
+    Transparency", arXiv. https://arxiv.org/abs/2310.01405
+    Reference code: andyzoujm/representation-engineering@5455d8a375d5fb1cb191f9ebcd089b7c21e9a31e
+    (MIT), adapted: ``PCARepReader`` direction and sign rule
+    (``repe/rep_readers.py``).
+"""
 
 from __future__ import annotations
 
@@ -75,14 +84,6 @@ class SteeringVector(Step):
         ValueError: If ``method`` is not a supported value, or if
             ``method="lat"`` and a layer has different positive and negative
             counts.
-
-    Attribution:
-        Method (``"lat"``): Zou, Phan, Chen, Campbell et al. (2023),
-        "Representation Engineering: A Top-Down Approach to AI Transparency",
-        arXiv. https://arxiv.org/abs/2310.01405
-        Reference code: andyzoujm/representation-engineering@5455d8a375d5fb1cb191f9ebcd089b7c21e9a31e
-        (MIT), adapted: ``PCARepReader`` direction and sign rule
-        (``repe/rep_readers.py``).
     """
 
     reads = [keys.RECORD]
