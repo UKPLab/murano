@@ -566,13 +566,21 @@ class RACE(Step):
         try:
             with no_grad():
                 for batch in _batched(prompts, self.batch_size):
-                    tokens = self.model.tokenizer(
-                        batch,
-                        return_tensors="pt",
-                        padding=True,
-                        truncation=True,
-                        return_token_type_ids=False,
-                    )
+                    # Right padding, as the reference's prefill_recorder.py does,
+                    # so a left-padding tokenizer cannot shift absolute positions.
+                    tok = self.model.tokenizer
+                    prev_side = tok.padding_side
+                    tok.padding_side = "right"
+                    try:
+                        tokens = tok(
+                            batch,
+                            return_tensors="pt",
+                            padding=True,
+                            truncation=True,
+                            return_token_type_ids=False,
+                        )
+                    finally:
+                        tok.padding_side = prev_side
                     attention_mask = tokens["attention_mask"]
                     # Differs from Nexround/RACE@cf6fb23 packages/race/src/race/llm/
                     # recording/prefill_recorder.py: observes every non-padding

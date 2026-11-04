@@ -57,11 +57,17 @@ def _from_evidence(e: torch.Tensor, node="L0.mlp", **prior) -> RACEResult:
     return RACEResult(n=n, mean={node: mean}, ss={node: ss}, **prior)
 
 
-def _module_outputs(model, prompts, layer, module):
+def _module_outputs(model, prompts, layer, module, side="right"):
     """Per-position module outputs ``[B, S, d]`` and the attention mask."""
-    tokens = model.tokenizer(
-        prompts, return_tensors="pt", padding=True, return_token_type_ids=False
-    )
+    tok = model.tokenizer
+    prev_side = tok.padding_side
+    tok.padding_side = side
+    try:
+        tokens = tok(
+            prompts, return_tensors="pt", padding=True, return_token_type_ids=False
+        )
+    finally:
+        tok.padding_side = prev_side
     with model.trace(tokens):
         saved = model.resolve_module(layer, module).output.save()
     return unwrap_traced(saved), tokens["attention_mask"].bool()
@@ -310,6 +316,29 @@ class TestRACEMechanism:
         for node in alone.mean:
             assert torch.allclose(padded.mean[node], alone.mean[node], atol=1e-5)
             assert torch.allclose(padded.ss[node], alone.ss[node], atol=1e-5)
+
+    def test_left_padding_tokenizer_is_forced_right(self, gpt2_model):
+        # GPT-2 has absolute positions, so left padding would shift the short
+        # prompt's tokens and change its activations.
+        prompts = ["hello", "prompt response hello world good"]
+        alone = _run(gpt2_model, prompts=prompts, batch_size=1)
+        tok = gpt2_model.tokenizer
+        prev_side = tok.padding_side
+        tok.padding_side = "left"
+        try:
+            padded = _run(gpt2_model, prompts=prompts, batch_size=2)
+            assert tok.padding_side == "left"  # restored after the step
+        finally:
+            tok.padding_side = prev_side
+        for node in alone.mean:
+            assert torch.allclose(padded.mean[node], alone.mean[node], atol=1e-5)
+            assert torch.allclose(padded.ss[node], alone.ss[node], atol=1e-5)
+        # Precondition: left padding really moves the short prompt's activations.
+        right, right_mask = _module_outputs(gpt2_model, prompts, 0, MLP, "right")
+        left, left_mask = _module_outputs(gpt2_model, prompts, 0, MLP, "left")
+        assert not torch.allclose(
+            left[0][left_mask[0]], right[0][right_mask[0]], atol=1e-3
+        )
 
 
 # ── Save ──────────────────────────────────────────────────────────────
