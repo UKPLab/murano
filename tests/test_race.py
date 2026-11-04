@@ -142,6 +142,8 @@ class TestRACEContract:
         assert "L0.mlp#4" not in selection
         assert "not a neuron" not in selection
         assert 3 not in selection
+        with pytest.raises(TypeError, match="expected a Neuron"):
+            NeuronSelection(neurons=[3])
 
     def test_gpt2_runs(self, gpt2_model):
         result = _run(gpt2_model)
