@@ -541,20 +541,19 @@ class RACE(Step):
         starts = self._starts(len(prompts))
 
         projections = {node: self._projection(node) for node in nodes}
-        weights = {node: _projection_weight(p) for node, p in projections.items()}
         moments: dict[Node, tuple[int, Tensor, Tensor]] = {}
         mask: dict[str, Tensor] = {}
 
         def hook(node: Node):
-            weight = weights[node]
-
             def fn(module: Any, args: tuple) -> None:
                 a = args[0][mask["obs"].to(args[0].device)].float()
+                # Built per call so only one module's float32 copy is alive at once.
+                weight = _projection_weight(module)
                 # Differs from Nexround/RACE@cf6fb23 analyzer.py
                 # compute_ffn_evidence_batch: evidence in float32 from model-dtype
                 # activations instead of the model dtype, because bf16 evidence
                 # loses the precision the moments are pooled at.
-                e = _evidence(a, weight.to(a.device), self.eps).cpu()
+                e = _evidence(a, weight, self.eps).cpu()
                 if node not in moments:
                     empty = zeros(e.shape[1], dtype=float64)
                     moments[node] = (0, empty, empty.clone())
