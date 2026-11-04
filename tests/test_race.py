@@ -108,6 +108,15 @@ class TestRACEContract:
         result = _run(murano_model, start_positions=1)
         assert result.n == sum(len(p.split()) - 1 for p in PROMPTS)
 
+    def test_per_prompt_start_positions(self, murano_model):
+        starts = [0, 1, 2, 0, 3, 1, 0, 2, 1, 0]
+        result = _run(murano_model, start_positions=starts, batch_size=2)
+        # Word counts 2 3 1 5 2 1 3 4 2 1 minus the starts, floored at zero.
+        assert result.n == 2 + 2 + 0 + 5 + 0 + 0 + 3 + 2 + 1 + 1
+        assert result.metadata["start_positions"] == starts
+        # Precondition: a zero start keeps every token.
+        assert _run(murano_model, start_positions=0).n == 24
+
     def test_select_returns_neurons(self, murano_model):
         selection = _run(murano_model).select(top_k=3)
         assert isinstance(selection, NeuronSelection)
