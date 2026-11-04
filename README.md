@@ -129,7 +129,7 @@ caught up-front.
 | `LoadPrompts`      | —                     | `prompts`                      | Load raw prompts directly without a dataset.             |
 | `LoadPaired` ‡     | —                     | `dataset`, `prompts`, `corrupt_prompts` | Load matched clean/corrupt prompt pairs for causal comparison. |
 | `Record`           | `dataset`             | `record`                       | Capture residual-stream activations via nnsight.         |
-| `SteeringVector`   | `record`              | `steering`                     | Find a contrastive steering direction (mean diff).       |
+| `SteeringVector`   | `record`              | `steering`                     | Find a contrastive steering direction (mean diff or LAT). |
 | `Intervene`        | `prompts`             | `intervene`                    | Generate baseline + intervened outputs side-by-side.     |
 | `WeightAblation`   | `prompts`, `steering` | `intervene`, `weight_ablation` | Project a direction out of model weights, then generate. |
 | `Logits` ‡         | `prompts`             | `final_logits`, `attention_mask`, `target_ids` | Run a forward pass and expose output logits plus next-token targets. With `fn=`, apply an intervention during that pass. |

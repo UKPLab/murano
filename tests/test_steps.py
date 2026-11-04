@@ -327,7 +327,7 @@ class TestSteeringVector:
     """Shape tests for SteeringVector (contrastive mean diff)."""
 
     def test_unknown_method_raises(self):
-        with pytest.raises(ValueError, match="contrastive_mean_diff"):
+        with pytest.raises(ValueError, match="contrastive_mean_diff.*'lat'"):
             SteeringVector(method="pca")
 
     def test_output_type(self, results_with_activations):
@@ -385,6 +385,152 @@ class TestSteeringVector:
         steering = results["steering"]
         best_score = steering.separation_scores[steering.best_layer]
         assert best_score == max(steering.separation_scores.values())
+
+
+# ── SteeringVector(method="lat") Tests ───────────────────────────────
+
+
+def _lat_results(positive: torch.Tensor, negative: torch.Tensor) -> Results:
+    r = Results()
+    r["record"] = ActivationStore(
+        positive={(0, "residual"): positive}, negative={(0, "residual"): negative}
+    )
+    return r
+
+
+def _direction(
+    positive: torch.Tensor, negative: torch.Tensor, method: str
+) -> torch.Tensor:
+    results = SteeringVector(method=method)(_lat_results(positive, negative))
+    return results["steering"].direction_per_layer[(0, "residual")]
+
+
+def _cos(a: torch.Tensor, b: torch.Tensor) -> float:
+    return torch.nn.functional.cosine_similarity(a, b, dim=0).item()
+
+
+def _orthonormal_pair(d: int) -> tuple[torch.Tensor, torch.Tensor]:
+    q, _ = torch.linalg.qr(
+        torch.randn(d, 2, generator=torch.Generator().manual_seed(1))
+    )
+    return q[:, 0], q[:, 1]
+
+
+class TestSteeringVectorLATContract:
+    def test_lat_is_accepted(self):
+        assert SteeringVector(method="lat").method == "lat"
+
+    def test_pipeline_writes_unit_norm_directions(self, results_with_activations):
+        results = Pipeline([SteeringVector(method="lat")]).run(results_with_activations)
+        steering = results["steering"]
+        assert isinstance(steering, SteeringResult)
+        assert set(steering.separation_scores) == set(steering.direction_per_layer)
+        for direction in steering.direction_per_layer.values():
+            assert abs(direction.norm().item() - 1.0) < 1e-5
+
+
+class TestSteeringVectorLATMechanism:
+    def test_recovers_planted_direction(self):
+        # Dossier oracle 1: pos/neg = base ± u + 0.1 noise, d=32, n=64.
+        g = torch.Generator().manual_seed(0)
+        d, n = 32, 64
+        u, _ = _orthonormal_pair(d)
+        base = 3 * torch.randn(n, d, generator=g)
+        pos = base + u + 0.1 * torch.randn(n, d, generator=g)
+        neg = base - u + 0.1 * torch.randn(n, d, generator=g)
+        # Precondition (dossier oracle 2): a centered PCA of the fixed-orientation
+        # differences loses u, so passing needs the uncentered SVD.
+        diffs = pos - neg
+        centered = torch.linalg.svd(diffs - diffs.mean(0), full_matrices=False).Vh[0]
+        assert abs(_cos(centered, u)) < 0.5
+        # The sign check also has to orient v towards the positive side.
+        assert _cos(_direction(pos, neg, "lat"), u) > 0.99
+
+    def test_swapping_sides_negates_direction(self):
+        # Dossier oracle 5: the direction follows the labels, whatever sign
+        # convention the SVD backend picks for -D.
+        g = torch.Generator().manual_seed(0)
+        pos, neg = (
+            torch.randn(16, 8, generator=g) + 1.0,
+            torch.randn(16, 8, generator=g),
+        )
+        forward = _direction(pos, neg, "lat")
+        backward = _direction(neg, pos, "lat")
+        assert torch.allclose(forward, -backward, atol=1e-5)
+
+    def test_consistent_shift_matches_mean_diff(self):
+        # Maintainer oracle: with D_i = shift for every pair, the top singular
+        # vector of D is shift / |shift|, the normalized mean difference.
+        g = torch.Generator().manual_seed(0)
+        neg = torch.randn(10, 16, generator=g)
+        pos = neg + torch.randn(16, generator=g)
+        lat = _direction(pos, neg, "lat")
+        mean_diff = _direction(pos, neg, "contrastive_mean_diff")
+        assert torch.allclose(lat, mean_diff, atol=1e-4)
+
+    def test_follows_sign_inconsistent_nuisance_axis(self):
+        # Maintainer oracle: D_i = 0.2 u + (-1)^i 5 w has mean 0.2 u but second
+        # moment 0.04 uu^T + 25 ww^T, so LAT follows w and mean-diff follows u.
+        neg = torch.randn(20, 16, generator=torch.Generator().manual_seed(0))
+        u, w = _orthonormal_pair(16)
+        signs = torch.tensor([(-1.0) ** i for i in range(20)]).unsqueeze(1)
+        pos = neg + 0.2 * u + 5 * signs * w
+        mean_diff = _direction(pos, neg, "contrastive_mean_diff")
+        lat = _direction(pos, neg, "lat")
+        assert _cos(mean_diff, u) > 0.99 and abs(_cos(mean_diff, w)) < 1e-4
+        assert abs(_cos(lat, w)) > 0.99
+
+    # Pair i differs by proj[i] * u. Each case is run with the SVD's raw sign
+    # forced to +u and to -u; expected is the result for each raw sign.
+    @pytest.mark.parametrize(
+        ("proj", "expected"),
+        [
+            # 3 of 4 pairs positive: keep +u, though the summed projection is
+            # negative (kills "always flip", "never flip" and "flip on sum < 0").
+            ([1.0, 1.0, 1.0, -10.0], (1.0, 1.0)),
+            # Exactly half positive keeps the raw sign (kills "flip on <= half").
+            ([1.0, 1.0, -1.0, -1.0], (1.0, -1.0)),
+            # Tied pairs count against the positive side, so one positive out
+            # of three always flips (kills "ties count for neither side").
+            ([1.0, 0.0, 0.0], (-1.0, 1.0)),
+        ],
+    )
+    @pytest.mark.parametrize("raw_sign", [1.0, -1.0])
+    def test_sign_rule_flips_below_half_positive(
+        self, monkeypatch, proj, expected, raw_sign
+    ):
+        u, _ = _orthonormal_pair(8)
+        real_svd = torch.linalg.svd
+
+        def svd_with_raw_sign(a, full_matrices=True):
+            out = real_svd(a, full_matrices=full_matrices)
+            vh = out.Vh.clone()
+            vh[0] *= raw_sign * torch.sign(vh[0] @ u)
+            return type(out)((out.U, out.S, vh))
+
+        monkeypatch.setattr(torch.linalg, "svd", svd_with_raw_sign)
+        # Precondition: the raw singular vector is the forced +-u.
+        diffs = torch.tensor(proj).unsqueeze(1) * u
+        raw = torch.linalg.svd(diffs, full_matrices=False).Vh[0]
+        assert _cos(raw, u) == pytest.approx(raw_sign, abs=1e-5)
+
+        neg = torch.zeros(len(proj), 8)
+        lat = _direction(neg + diffs, neg, "lat")
+        want = expected[0] if raw_sign > 0 else expected[1]
+        assert _cos(lat, u) == pytest.approx(want, abs=1e-5)
+
+
+class TestSteeringVectorLATErrors:
+    def test_identical_sides_give_zero_direction(self):
+        acts = torch.randn(6, 8, generator=torch.Generator().manual_seed(0))
+        # Precondition: the raw SVD still returns a unit vector here.
+        assert torch.linalg.svd(acts - acts, full_matrices=False).Vh[0].norm() > 0.5
+        assert torch.equal(_direction(acts, acts.clone(), "lat"), torch.zeros(8))
+
+    def test_unpaired_counts_raise(self):
+        r = _lat_results(torch.randn(5, 8), torch.randn(4, 8))
+        with pytest.raises(ValueError, match="row-aligned pairs"):
+            SteeringVector(method="lat")(r)
 
 
 # ── Intervention Function Tests ───────────────────────────────────────

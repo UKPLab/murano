@@ -135,7 +135,7 @@ my_experiment/
 |------|-------|--------|-------------|
 | `Load` | — | `dataset`, `prompts` | Loads a dataset into the pipeline |
 | `Record` | `dataset` | `record` | Captures activations via nnsight |
-| `SteeringVector` | `record` | `steering` | Computes contrastive mean diff |
+| `SteeringVector` | `record` | `steering` | Computes contrastive mean diff or LAT reading vector |
 | `Intervene` | `prompts` | `intervene` | Generates with activation patching |
 | `WeightAblation` | `prompts`, `steering` | `intervene`, `weight_ablation` | Ablates via weight projection |
 | `Probe` | `record` | `probe` | Linear probe per layer |

@@ -71,6 +71,20 @@ print(steering.direction_per_layer[steering.best_layer].shape)  # [d_model]
 4. Computes a separation score (normalized distance between projected class means)
 5. Reports the `best_layer` with the highest separation
 
+### LAT reading vectors
+
+`SteeringVector(method="lat")` computes the reading vector of Representation Engineering ([Zou et al., 2023](https://arxiv.org/abs/2310.01405)). The i-th positive and i-th negative prompts form a pair, and the direction is the top singular vector of the pair differences `positive - negative`. LAT flips its sign when fewer than half of the pairs project higher on the positive side.
+
+```python
+results = Pipeline([
+    Load(dataset),
+    Record(model, layers="all", position="last"),
+    SteeringVector(method="lat"),
+]).run()
+```
+
+The output is the same `SteeringResult`, so `best_layer`, `separation_scores` and `Intervene(direction_key="steering")` work as before. If every pair differs by about the same shift, LAT and the mean difference return the same direction. If the differences also vary a lot along another axis, with a sign that changes from pair to pair, LAT follows that axis and the mean difference averages it out. A LAT separation score much lower than the `contrastive_mean_diff` score at the same layer points to that case. LAT raises `ValueError` when the two sides have different counts.
+
 ### Saving and loading directions
 
 ```python

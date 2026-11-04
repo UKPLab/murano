@@ -1,9 +1,19 @@
-"""Train step: computes directions from recorded activations."""
+"""Train step: computes directions from recorded activations.
+
+Attribution:
+    Method (``SteeringVector(method="lat")``): Zou, Phan, Chen, Campbell et al.
+    (2023), "Representation Engineering: A Top-Down Approach to AI
+    Transparency", arXiv. https://arxiv.org/abs/2310.01405
+    Reference code: andyzoujm/representation-engineering@5455d8a375d5fb1cb191f9ebcd089b7c21e9a31e
+    (MIT), adapted: ``PCARepReader`` direction and sign rule
+    (``repe/rep_readers.py``).
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+import torch
 from torch import Tensor
 
 from murano import keys
@@ -36,8 +46,21 @@ class SteeringResult:
         self.best_layer = Node.coerce(self.best_layer)
 
 
+_METHODS = ("contrastive_mean_diff", "lat")
+
+
 class SteeringVector(Step):
-    """Find a steering direction via contrastive mean difference.
+    """Find a steering direction from contrastive activations.
+
+    ``method="contrastive_mean_diff"`` takes the mean of the differences
+    ``D = positive - negative``. ``method="lat"`` is the reading vector of
+    Linear Artificial Tomography (Zou et al., 2023): the top singular vector of
+    the row-aligned pair differences ``D``, i.e. the top eigenvector of their
+    second moment ``mean(D) mean(D)^T + Cov(D)``. With a consistent shift
+    between the sides the two agree; when the differences also vary strongly
+    along another axis, LAT follows that axis. The singular vector's sign is
+    arbitrary, so LAT flips it when fewer than half of the pairs project
+    positive above negative.
 
     Reads from results:
         results['record']: ActivationStore (must have .positive and .negative)
@@ -46,17 +69,22 @@ class SteeringVector(Step):
         results['steering']: SteeringResult
 
     Args:
-        method: Estimation method. Currently only ``"contrastive_mean_diff"``
-            is supported.
+        method: Estimation method, ``"contrastive_mean_diff"`` (default) or
+            ``"lat"``. ``"lat"`` needs the i-th positive and i-th negative
+            examples to form a pair.
         normalize: If True, normalize each stored per-layer direction to unit
-            norm. Note the intervention functions (``steer_direction`` /
+            norm. A ``"lat"`` direction is a singular vector, so it is unit norm
+            either way, except the zero vector returned when no pair differs.
+            Note the intervention functions (``steer_direction`` /
             ``ablate_direction``) unit-normalize again at apply time, so
             ``normalize=False`` only affects the magnitude of the stored vector
             (e.g. if you read ``direction_per_layer`` yourself); it does not
             change steering or ablation strength.
 
     Raises:
-        ValueError: If ``method`` is not a supported value.
+        ValueError: If ``method`` is not a supported value, or if
+            ``method="lat"`` and a layer has different positive and negative
+            counts.
     """
 
     reads = [keys.RECORD]
@@ -65,9 +93,10 @@ class SteeringVector(Step):
     write_types = {keys.STEERING: SteeringResult}
 
     def __init__(self, method: str = "contrastive_mean_diff", normalize: bool = True):
-        if method != "contrastive_mean_diff":
+        if method not in _METHODS:
             raise ValueError(
-                "SteeringVector currently only supports method='contrastive_mean_diff'."
+                f"Unknown SteeringVector method {method!r}; pass "
+                "method='contrastive_mean_diff' or method='lat'."
             )
         self.method = method
         self.normalize = normalize
@@ -82,7 +111,10 @@ class SteeringVector(Step):
             pos_acts = store.positive[key].float()
             neg_acts = store.negative[key].float()
 
-            direction = pos_acts.mean(0) - neg_acts.mean(0)
+            if self.method == "lat":
+                direction = _lat_direction(pos_acts, neg_acts, key)
+            else:
+                direction = pos_acts.mean(0) - neg_acts.mean(0)
 
             # Separation score: normalized distance between projected means
             pos_proj = pos_acts @ direction
@@ -117,3 +149,41 @@ class SteeringVector(Step):
         )
         logger.info("Best key: %s (score=%.4f)", best_key, scores[best_key])
         return results
+
+
+def _lat_direction(pos_acts: Tensor, neg_acts: Tensor, key: Node) -> Tensor:
+    """Sign-fixed top right singular vector of the pair differences."""
+    if pos_acts.shape[0] != neg_acts.shape[0]:
+        raise ValueError(
+            f"SteeringVector(method='lat') needs row-aligned pairs, but {key} has "
+            f"{pos_acts.shape[0]} positive and {neg_acts.shape[0]} negative rows. "
+            "Record a dataset with one negative per positive, or use "
+            "method='contrastive_mean_diff'."
+        )
+    diffs = pos_acts - neg_acts
+    if diffs.norm() < 1e-10:
+        # Differs from andyzoujm/representation-engineering@5455d8a
+        # repe/rep_readers.py PCARepReader.get_rep_directions: returns a zero
+        # vector, not the PCA's arbitrary unit vector, when no pair differs,
+        # because a zero direction takes the near-zero warning path, as
+        # mean-diff does.
+        return diffs.new_zeros(diffs.shape[1])
+    # Differs from andyzoujm/representation-engineering@5455d8a
+    # repe/rep_readers.py PCARepReader.get_rep_directions: an uncentered SVD of
+    # the fixed pos - neg differences, not a random within-pair shuffle
+    # (examples/honesty/utils.py) followed by a centered sklearn PCA, because
+    # the shuffle only exists to make the centered PCA act as this SVD, and the
+    # SVD is deterministic.
+    direction = torch.linalg.svd(diffs, full_matrices=False).Vh[0]
+    # Differs from andyzoujm/representation-engineering@5455d8a
+    # repe/rep_readers.py PCARepReader.get_signs: compares pos and neg through
+    # their difference, not through raw states recentered on the training mean,
+    # because the shared shift cancels in every within-pair comparison.
+    proj = diffs @ direction
+    # Differs from andyzoujm/representation-engineering@5455d8a
+    # repe/rep_readers.py PCARepReader.get_signs: a tied pair counts against the
+    # positive side, because the maintainer decision on #124 flips when fewer
+    # than half of the pairs project positive.
+    if 2 * (proj > 0).sum() < proj.numel():
+        direction = -direction
+    return direction
