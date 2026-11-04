@@ -9,7 +9,7 @@ postponed: ["2610.41445", "2610.37157", "2610.37126", "2610.36797", "2610.31407"
 - Loop runs against the `dev-loop` branch (not main): agent branches start from it, PRs target it.
 - Tuned Lens 2303.08112, Nullify 2610.10655 and ALTI 2203.04212 were accepted on score but deferred 7 days for the backlog cap; they come back through `ledger.py due`. ALTI shares the contribution decomposition with #123.
 - OPENALEX_API_KEY lives in .claude/settings.local.json (locally ignored); the cloud routine needs it in its environment.
-- #125 implemented as PR #128 (RACE). Review round 1 asked for 19 changes (https://github.com/UKPLab/murano/pull/128#issuecomment-6636570958). Revise is due. The PR has 3 open questions: stdlib Student-t quantile, single-neuron zeroing left for follow-up, new Neuron/NeuronSelection types.
+- PR #128 (RACE): all 19 round-1 findings are fixed (f916e30). The round-2 review asks for 2 tests (https://github.com/UKPLab/murano/pull/128#issuecomment-6637688753): one that `eps` reaches the evidence at race.py:570, one that NeuronSelection raises on a non-neuron entry (artifacts.py:146). The body marker says round 1. 3 open questions are unchanged.
 - Subagents that check out branches run in isolated worktrees; remove them after the tick.
 - PR #126 ready to merge (round 4, 0 findings). Open questions for the maintainer: failed oracle 7, out-of-method edits, dropped layers= argument.
 - PR #127 ready to merge (round 3 of 3, 0 findings). There are no open questions.
