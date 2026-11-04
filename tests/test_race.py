@@ -9,6 +9,7 @@ position are checked through the step itself.
 from __future__ import annotations
 
 import logging
+import math
 
 import pytest
 import torch
@@ -263,6 +264,27 @@ class TestRACEMechanism:
         assert not torch.allclose(
             moved.posterior_mean[node], 20 / 21 * moved.mean[node]
         )
+
+    def test_step_default_prior(self, murano_model):
+        # Dossier defaults (§3.1): mu_0, lambda_0, alpha_0, beta_0 = 0, 1, 1, 1.
+        assert RACE(murano_model).prior == (0.0, 1.0, 1.0, 1.0)
+        assert _run(murano_model, prompts=PROMPTS[:2]).lambda_0 == 1.0
+
+    def test_hand_nig_update_with_prior_mean(self):
+        # e = 1, 2, 3: n = 3, mean 2, centred sum of squares 2. With mu_0 = 1 and
+        # lambda_0 = 2: mu_n = (2 + 6) / 5 = 1.6, beta_n = 1 + 1 + 2*3*1 / 10 = 2.6,
+        # alpha_n = 2.5, lambda_n = 5 (Eqs. 13-16).
+        e = torch.tensor([[1.0], [2.0], [3.0]], dtype=torch.float64)
+        result = _from_evidence(e, mu_0=1.0, lambda_0=2.0)
+        node = Node(0, MLP)
+        assert result.posterior_mean[node].item() == pytest.approx(1.6)
+        assert result.beta_n[node].item() == pytest.approx(2.6)
+        t_q = 2.015048373333023  # scipy t.ppf(0.95, 5)
+        cam = 1.6 - t_q * math.sqrt(2.6 / (2.5 * 5))
+        assert result.cam()[node].item() == pytest.approx(cam, rel=1e-9)
+        # Precondition: with mu_0 = 0 the discrepancy term changes beta_n.
+        zero_prior = _from_evidence(e, lambda_0=2.0)
+        assert zero_prior.beta_n[node].item() == pytest.approx(4.4)
 
     def test_cam_bounds_and_negative_symmetry(self):
         # Dossier oracle 7, Eq. 19.
