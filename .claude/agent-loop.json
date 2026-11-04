@@ -7,7 +7,7 @@
   "max_new_issues_per_scout": 3,
   "backlog_cap": 5,
   "defer_recheck_days": 90,
-  "max_open_agent_prs": 2,
+  "max_open_agent_prs": 5,
   "max_review_rounds": 3,
   "max_sourcing_per_tick": 2,
   "max_parallel_subagents": 4,

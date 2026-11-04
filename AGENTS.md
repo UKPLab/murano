@@ -285,7 +285,28 @@ How humans steer it:
   the PR body, and your reply overrides it in the next round.
 
 Tunables (cadence, caps, thresholds, model tiers) live in
-`.claude/agent-loop.json`. To change how often it runs, edit `schedule_cron` and
-run `/schedule update` on the `murano-loop` routine. The scouting memory (every
-paper ever screened) lives on the `agent-state` branch. Never merge that branch
-into `main`.
+`.claude/agent-loop.json`. The scouting memory (every paper ever screened)
+lives on the `agent-state` branch. Never merge that branch into `main`.
+
+### Running the loop persistently
+
+The loop runs continuously in exactly one way: a cloud routine named
+`murano-loop`, managed with `/schedule`, that runs `/murano-loop` (one tick)
+on `schedule_cron` in `schedule_tz` from `.claude/agent-loop.json`. Don't use
+`/loop`, a local cron job or a session that repeats ticks.
+
+- To start it, run `/schedule list` and look for `murano-loop`. Create the
+  routine only if it's missing, with the prompt `/murano-loop` and the cron and
+  timezone from `agent-loop.json`. Keep exactly one.
+- The routine needs `gh` auth that can push `agent/*` branches and
+  `agent-state`, and `OPENALEX_API_KEY` in its environment. Locally the key
+  sits in the gitignored `.claude/settings.local.json`, which the routine
+  doesn't see.
+- The routine reads `agent-loop.json` from the pushed `base_branch`, so a
+  config change applies only after you commit and push it. To change the
+  cadence, push the new `schedule_cron`, then run `/schedule update` on the
+  routine.
+- To stop the loop, disable or delete the routine with `/schedule`. To keep
+  agents off a single issue or PR, use `agent:hold`.
+- To run a single tick by hand, run `/murano-loop`, or `/murano-loop dry-run` to
+  print the GitHub writes without making them.
