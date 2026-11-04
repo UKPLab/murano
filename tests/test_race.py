@@ -177,6 +177,11 @@ class TestRACEMechanism:
         assert not torch.allclose(expected, norm, rtol=1e-2)  # precondition
         assert torch.equal(_evidence(a, w), _evidence(a, w, eps=1e-8))
         assert RACE(murano_model).eps == 1e-8
+        # The constructor's eps reaches the pooled evidence (race.py hook).
+        node = Node(0, MLP)
+        assert not torch.allclose(
+            _run(murano_model, eps=10.0).mean[node], _run(murano_model).mean[node]
+        )
         # A silent neuron set gives finite zeros, not 0 / 0.
         silent = _evidence(torch.zeros(3, 6, dtype=torch.float64), w)
         assert torch.equal(silent, torch.zeros_like(silent))
