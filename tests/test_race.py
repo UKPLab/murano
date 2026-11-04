@@ -366,6 +366,34 @@ class TestRACEMechanism:
         assert [n.index for n in short] == [4, 5]
         assert "keeps 2/3" in caplog.text
 
+    def test_select_metadata_ties_and_full_fraction(self):
+        node = Node(0, MLP)
+        # Enough ties that an unstable sort would reorder them.
+        flat = torch.ones(2000, dtype=torch.float64)
+        result = RACEResult(
+            n=5, mean={node: flat}, ss={node: torch.zeros_like(flat)}, gamma=0.1
+        )
+        picked = result.select(top_k=5, score="posterior_mean")
+        assert [n.index for n in picked] == [0, 1, 2, 3, 4]
+        assert picked.metadata == {
+            "score": "posterior_mean",
+            "gamma": 0.1,
+            "top_k": 5,
+            "fraction": None,
+            "filtered": False,
+        }
+        everything = result.select(fraction=1.0, exclude=result, exclude_top_k=0)
+        assert len(everything) == 2000
+        assert everything.metadata == {
+            "score": "cam",
+            "gamma": 0.1,
+            "top_k": None,
+            "fraction": 1.0,
+            "filtered": True,
+        }
+        with pytest.raises(ValueError, match="fraction must be"):
+            result.select(fraction=1.01)
+
     def test_fraction_budget_rounds_with_floor_of_one(self):
         node = Node(0, MLP)
         m = torch.arange(250, dtype=torch.float64)
