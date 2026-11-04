@@ -339,6 +339,12 @@ class TestRACEMechanism:
         # Reference budget defaults to the target budget: top 3 = {1, 2, 0}.
         default = target.select(top_k=3, exclude=reference, **kw)
         assert [n.index for n in default] == [3, 4, 5]
+        # exclude_fraction of 6 neurons: 0 skips none, 0.2 the top 1, 0.5 the top 3.
+        for share, expected in ((0.0, plain), (0.2, [0, 2, 3]), (0.5, [3, 4, 5])):
+            picked = target.select(
+                top_k=3, exclude=reference, exclude_fraction=share, **kw
+            )
+            assert [n.index for n in picked] == expected
         # Too few left: fewer neurons and a warning.
         with caplog.at_level(logging.WARNING, logger="murano"):
             short = target.select(top_k=3, exclude=reference, exclude_top_k=4, **kw)
