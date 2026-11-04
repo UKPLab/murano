@@ -8,6 +8,7 @@ position are checked through the step itself.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 from types import SimpleNamespace
@@ -474,6 +475,22 @@ class TestRACESave:
             assert torch.equal(loaded.mean[node], original.mean[node])
             assert torch.equal(loaded.ss[node], original.ss[node])
             assert torch.equal(loaded.cam()[node], original.cam()[node])
+
+    def test_metadata_and_custom_key(self, murano_model, tmp_path):
+        Pipeline(
+            [
+                LoadPrompts(PROMPTS[:3]),
+                RACE(murano_model, modules="mlp", gamma=0.1, output_key="race_ref"),
+                Save(output_dir=str(tmp_path)),
+            ]
+        ).run()
+        meta_path = next(tmp_path.rglob("metadata.json"))
+        meta = json.loads(meta_path.read_text())["race_ref"]
+        # 2 + 3 + 1 words in the first three prompts.
+        assert meta == {"n": 6, "modules": ["L0.mlp", "L1.mlp"], "gamma": 0.1}
+        loaded = load_race(meta_path.parent / "race" / "race_ref.pt")
+        assert loaded.n == 6
+        assert not (meta_path.parent / "race" / "race.pt").exists()
 
 
 # ── Plot ──────────────────────────────────────────────────────────────
