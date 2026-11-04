@@ -36,6 +36,7 @@ ORDER = [
     "applications/logit_lens.ipynb",
     "applications/logit_attribution.ipynb",
     "applications/attention.ipynb",
+    "applications/information_flow.ipynb",
     "applications/ablation.ipynb",
     "applications/activation_patching.ipynb",
     "applications/circuit_discovery.ipynb",

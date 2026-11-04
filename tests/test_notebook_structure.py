@@ -47,6 +47,7 @@ _EXTRA_IMPLIED_BY = {
 _CAUSAL_STEPS = {
     "Ablate",
     "AblateAttention",
+    "InformationFlow",
     "Intervene",
     "LogitAttribution",
     "LogitLens",

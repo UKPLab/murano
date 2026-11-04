@@ -16,6 +16,7 @@ def test_core_key_values():
     assert keys.INTERVENE == "intervene"
     assert keys.PROBE == "probe"
     assert keys.LOGIT_LENS == "logit_lens"
+    assert keys.INFORMATION_FLOW == "information_flow"
     assert keys.SAE_RECORD == "sae_record"
     assert keys.FEATURE_EXAMPLES == "feature_examples"
     assert keys.METRIC == "metric"

@@ -13,6 +13,7 @@ must reject the fused-QKV GPT-2. All end-to-end runs are on CPU.
 from __future__ import annotations
 
 import math
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -26,6 +27,7 @@ from murano.steps.attention import (
     AblateAttention,
     AttentionResult,
     RecordAttention,
+    _head_value_block,
     ov_circuit,
 )
 from murano.steps.logits import Logits
@@ -249,6 +251,37 @@ class TestOVCircuit:
         for head in range(model.n_heads):
             expected = w_o[:, head * head_dim : (head + 1) * head_dim] @ w_v[:head_dim]
             assert torch.allclose(ov_circuit(model, 0, head), expected, atol=1e-5)
+
+    def test_value_block_grouped_query_with_bias(self):
+        # Llama attention with 4 query heads over 2 kv heads and a v_proj bias:
+        # query head h reads kv head h // 2, so heads 1 and 2 tell h // 2 apart
+        # from h % 2.
+        from transformers import LlamaConfig
+        from transformers.models.llama.modeling_llama import LlamaAttention
+
+        config = LlamaConfig(
+            hidden_size=16,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            attention_bias=True,
+        )
+        attn = LlamaAttention(config, layer_idx=0)
+        torch.manual_seed(0)
+        with torch.no_grad():
+            attn.v_proj.bias.normal_()
+        model = SimpleNamespace(
+            n_heads=4, head_dim=4, d_model=16, raw_module=lambda *_: attn
+        )
+        weight = attn.v_proj.weight.detach()
+        bias = attn.v_proj.bias.detach()
+        for head in range(4):
+            rows = slice((head // 2) * 4, (head // 2 + 1) * 4)
+            w_v, b_v = _head_value_block(model, 0, head)  # pyright: ignore[reportArgumentType]
+            assert torch.equal(w_v, weight[rows])
+            assert torch.equal(b_v, bias[rows])
+        # Precondition: the two kv heads differ in both weight and bias.
+        assert not torch.equal(weight[:4], weight[4:])
+        assert not torch.equal(bias[:4], bias[4:])
 
 
 # ── Intervention ──────────────────────────────────────────────────────

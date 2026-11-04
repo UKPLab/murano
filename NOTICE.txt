@@ -37,4 +37,7 @@ a third-party reference implementation. One entry per method, in the form:
     Reference code: <repo URL>@<commit SHA> (<SPDX license>);
     adapted: <what was adapted> | used as a test oracle only.
 
-(none yet)
+  - murano.steps.information_flow: Ferrando & Voita (2024), "Information Flow
+    Routes: Automatically Interpreting Language Models at Scale".
+    Reference code: https://github.com/facebookresearch/llm-transparency-tool@f1340f0757b959c75c139f7aa91aef16eddced67 (CC-BY-NC-4.0);
+    used as a test oracle only.

@@ -139,6 +139,7 @@ my_experiment/
 | `Intervene` | `prompts` | `intervene` | Generates with activation patching |
 | `WeightAblation` | `prompts`, `steering` | `intervene`, `weight_ablation` | Ablates via weight projection |
 | `Probe` | `record` | `probe` | Linear probe per layer |
+| `InformationFlow` | `prompts` | `information_flow` | Information flow routes to a prediction |
 | `GenerationMetric` | `intervene` | `metric` | Custom evaluation metric |
 | `Save` | — | `output_dir` | Saves all results to disk |
 

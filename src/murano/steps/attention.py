@@ -380,15 +380,14 @@ def _projection_weight(module: Any) -> Tensor:
     return weight
 
 
-def _head_ov_weights(
+def _head_value_block(
     model: ModelBackend, layer: int, head: int
 ) -> tuple[Tensor, Tensor]:
-    """Return one head's value and output weights ``(W_V_h [head_dim, d], W_O_h [d, head_dim])``.
+    """Return one head's value weight ``[head_dim, d]`` and bias ``[head_dim]``.
 
     Handles both a separate value projection (``self_attn.v_proj``, grouped-query
     aware) and GPT-2's fused ``c_attn`` (query, key, value concatenated in that
-    order). The output projection is resolved through the same name list as
-    per-head capture. Biases are ignored (the OV circuit is the linear map).
+    order). The bias is zeros when the projection has none.
 
     Raises:
         NotImplementedError: If neither a ``v_proj`` nor a contiguous ``c_attn``
@@ -397,26 +396,48 @@ def _head_ov_weights(
     """
     head_dim = model.head_dim
     attn = model.raw_module(layer, SELF_ATTN)
+    if hasattr(attn, "v_proj"):
+        proj, offset = attn.v_proj, 0
+        w_v = _projection_weight(proj)  # [n_kv_heads * head_dim, d]
+        n_kv_heads = w_v.shape[0] // head_dim
+        head = head // (model.n_heads // n_kv_heads)
+    elif hasattr(attn, "c_attn"):
+        # Fused q|k|v: the value block is the last third of the output rows.
+        proj, offset = attn.c_attn, 2 * model.d_model
+        w_v = _projection_weight(proj)
+    else:
+        raise NotImplementedError(
+            "Per-head value weights need a separate value projection "
+            "(self_attn.v_proj) or a contiguous fused c_attn (GPT-2 style); this "
+            "architecture's attention module exposes neither (e.g. GPT-NeoX "
+            "interleaves q/k/v)."
+        )
+    rows = slice(offset + head * head_dim, offset + (head + 1) * head_dim)
+    bias = proj.bias
+    if bias is None:
+        return w_v[rows], zeros(head_dim, device=w_v.device)
+    return w_v[rows], bias.detach().float()[rows]
+
+
+def _head_ov_weights(
+    model: ModelBackend, layer: int, head: int
+) -> tuple[Tensor, Tensor]:
+    """Return one head's value and output weights ``(W_V_h [head_dim, d], W_O_h [d, head_dim])``.
+
+    The value block comes from :func:`_head_value_block`. The output projection
+    is resolved through the same name list as per-head capture. Biases are
+    ignored (the OV circuit is the linear map).
+
+    Raises:
+        NotImplementedError: If neither a ``v_proj`` nor a contiguous ``c_attn``
+            value block is present (e.g. GPT-NeoX's interleaved
+            ``query_key_value``).
+    """
+    head_dim = model.head_dim
+    w_v_head, _ = _head_value_block(model, layer, head)
     w_o = _projection_weight(model.raw_attn_out_proj(layer, SELF_ATTN))
     w_o_head = w_o[:, head * head_dim : (head + 1) * head_dim]  # [d, head_dim]
-
-    if hasattr(attn, "v_proj"):
-        w_v = _projection_weight(attn.v_proj)  # [n_kv_heads * head_dim, d]
-        n_kv_heads = w_v.shape[0] // head_dim
-        kv_head = head // (model.n_heads // n_kv_heads)
-        w_v_head = w_v[kv_head * head_dim : (kv_head + 1) * head_dim, :]
-        return w_v_head, w_o_head
-    if hasattr(attn, "c_attn"):
-        # Fused q|k|v: the value block is the last third of the output rows.
-        d = model.d_model
-        w_v = _projection_weight(attn.c_attn)[2 * d : 3 * d, :]  # [d, d]
-        w_v_head = w_v[head * head_dim : (head + 1) * head_dim, :]
-        return w_v_head, w_o_head
-    raise NotImplementedError(
-        "ov_circuit needs a separate value projection (self_attn.v_proj) or a "
-        "contiguous fused c_attn (GPT-2 style); this architecture's attention "
-        "module exposes neither (e.g. GPT-NeoX interleaves q/k/v)."
-    )
+    return w_v_head, w_o_head
 
 
 def ov_circuit(model: ModelBackend, layer: int, head: int) -> Tensor:
